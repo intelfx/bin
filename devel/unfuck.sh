@@ -193,6 +193,7 @@ v6.12)
 		work/cddl-6.12 \
 		work/zfs-6.12 \
 		work/cpupower-6.12 \
+		work/pf-no-teo-6.12 \
 		# work/gvt-failsafe-6.12 \
 		# work/gvt-workaround-6.12 \
 		# work/i915-fastboot-revert-6.12 \
