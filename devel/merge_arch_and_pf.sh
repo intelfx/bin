@@ -243,7 +243,7 @@ if ! git_verify "$final_tag"; then
 	log "Tagging as $final_tag"
 	git tag "$final_tag"
 elif [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$final_tag")" ]]; then
-	err "Tag $final_tag already exists, ignoring"
+	log "Tag $final_tag already exists, ignoring"
 else
 	die "Tag $final_tag already exists, not overwriting"
 fi
