@@ -43,9 +43,9 @@ tag="v${ARG_MAJOR#v}"
 major="${tag#v}"
 
 export GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000"
-~/bin/devel/merge_arch_and_pf.sh --major "$tag" "${ARGS[@]}"
+Trace ~/bin/devel/merge_arch_and_pf.sh --major "$tag" "${ARGS[@]}"
 if [[ ${target[build]+set} ]]; then
-	git branch -f "${target[build]}"
+	Trace git branch -f "${target[build]}"
 fi
 
 case "$tag" in
@@ -93,8 +93,8 @@ v6.6)
 esac
 
 git describe --tags --exact build | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | read branch
-git branch -f "work/patch-${branch}"
-git branch -f "work/patch-${major}"
+Trace git branch -f "work/patch-${branch}"
+Trace git branch -f "work/patch-${major}"
 if [[ ${target[patch]+set} ]]; then
-	git branch -f "${target[patch]}"
+	Trace git branch -f "${target[patch]}"
 fi
