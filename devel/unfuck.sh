@@ -33,7 +33,6 @@ ARGS=( "${ARGS[@]:1}" )
 
 declare -A target
 if [[ ${ARG_LTS+set} ]]; then
-	shift
 	target[build]=build-lts
 else
 	target[build]=build
