@@ -239,12 +239,11 @@ log "Committing result"
 GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000" git commit --no-edit
 luntrap
 
-if git_verify "$final_tag"; then
-	if [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$final_tag")" ]]; then
-		err "Tag $final_tag already exists, ignoring"
-		exit 0
-	fi
+if ! git_verify "$final_tag"; then
+	log "Tagging as $final_tag"
+	git tag "$final_tag"
+elif [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$final_tag")" ]]; then
+	err "Tag $final_tag already exists, ignoring"
+else
 	die "Tag $final_tag already exists, not overwriting"
 fi
-log "Tagging as $final_tag"
-git tag "$final_tag"
