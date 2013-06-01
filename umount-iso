@@ -1,0 +1,49 @@
+#!/bin/bash
+
+umask 022
+
+NAME=$1
+
+declare -A DIRS
+
+if [[ "$NAME" ]]; then
+	for file in /tmp/mounted-images/*; do
+		[[ -r "$file" ]] || continue
+		grep -q "$NAME" "$file" && DIRS+=( ["$file"]="$(< "$file" )" )
+	done
+fi
+
+if ! (( "${#DIRS[@]}" )); then
+	echo "Unknown image name \"$NAME\", exiting" >&2
+	echo "Possible images:" >&2
+	echo "====" >&2
+	for file in /tmp/mounted-images/*; do
+		echo "  $(< "$file" )" >&2
+	done
+	echo "====" >&2
+	exit 1
+fi
+
+for file in "${!DIRS[@]}"; do
+	DIR="${DIRS["$file"]}"
+	echo "Unmounting image file $DIR"
+	if [ -f "$DIR/.partitions_base_directory" ]; then
+		for PART in "$DIR"/part*; do
+			echo "> Unmounting partition $(basename "$PART")"
+			umount "$PART" || { echo "==== FAILED TO UNMOUNT PARTITION ${PART##*p}. WILL NOT CONTINUE BEYOND UNMOUNT STAGE." >&2; FAILED_UMOUNT=1; }
+		done
+
+		LODEVICE=$(< "$DIR/.partitions_base_directory")
+	else
+		echo "> Unmounting whole image"
+		umount -d "$DIR"
+	fi
+	(( "$FAILED_UMOUNT" )) && exit 1
+
+	echo "> Removing loop-device $LODEVICE"
+	losetup -d "$LODEVICE" || { echo "==== FAILED TO REMOVE LOOP-DEVICE. NOT ALL PARTITIONS MAY HAVE BEEN UNMOUNTED." >&2; exit 1; }
+
+	rm -r "$DIR"
+	[[ "$DIR" =~ /mnt/image/.* ]] || mkdir -p "$DIR"
+	rm "$file"
+done

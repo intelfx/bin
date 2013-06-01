@@ -1,0 +1,118 @@
+#!/bin/bash
+
+eval set -- $( getopt -n "mount-iso" -l "partitions:,options:,fsck" -- "p:o:c" "$@" )
+
+declare -a PARTITIONS
+
+while true; do
+	case "$1" in
+		-p|--partitions)
+			shift
+			PARTITIONS=( ${1//,/ } )
+			;;
+		-o|--options)
+			shift
+			OPTIONS="$1"
+			;;
+		-c|--fsck)
+			FSCK=1
+			;;
+		--)
+			shift
+			break
+			;;
+		*)
+			cat <<- EOF
+			An image mounter.
+			Usage: mount-iso [-p|--partitions <partitions to mount>]
+			                 [-o|--options <options for mounting>]
+							 <image> [<directory for mounting>]
+			EOF
+			exit 1
+			;;
+	esac
+	shift
+done
+
+IMG="$1"
+BASE="$(basename "${IMG}")"
+BASEDIR="${2:-"/mnt/image/$BASE"}"
+
+function do_mount_part() {
+	local FSTYPE="$(blkid "$1" -o value -s TYPE)"
+	local _OPTS="${OPTIONS}"
+
+	case "$FSTYPE" in
+		iso9660|udf)
+			_OPTS="norock,$_OPTS"
+			;;
+		*)
+			;;
+	esac
+
+	case "$FSTYPE" in
+		iso9660|udf|ntfs*|vfat|ntfs*)
+			[ -n "$SUDO_UID" ] && _OPTS="$_OPTS,uid=$SUDO_UID"
+			[ -n "$SUDO_GID" ] && _OPTS="$_OPTS,gid=$SUDO_GID"
+			;;
+		*)
+			;;
+	esac
+
+	mount -t "$FSTYPE" "$@" -o "$_OPTS"
+}
+
+[ -r "$IMG" ] || { echo "Invalid image file given: $IMG"; exit 1; }
+
+LOOP="$(losetup --show -Pf "$IMG")"
+[ -b "$LOOP" ] || { echo "Could not mount loop -> $LOOP"; exit 1; }
+
+declare -a PART_FILES
+
+if (( "${#PARTITIONS[@]}" )); then
+	for partnr in "${PARTITIONS[@]}"; do
+		PART_FILES+=( "${LOOP}p${partnr}" )
+	done
+else
+	shopt -s nullglob
+	PART_FILES=( "${LOOP}p"* )
+	shopt -u nullglob
+fi
+
+if (( FSCK )); then
+	if ! (( "${#PART_FILES[@]}" )); then
+		echo "fsck'ing whole image (on $LOOP)"
+		fsck -f "$LOOP"
+	else
+		for partition in "${PART_FILES[@]}"; do
+			PARTNUM="${partition##*p}"
+
+			echo "fsck'ing partition $PARTNUM (on $LOOP)"
+			fsck -f "$partition"
+		done
+	fi
+
+	losetup -d "$LOOP"
+	exit 0
+fi
+
+if ! (( "${#PART_FILES[@]}" )); then
+	echo "Mounting whole image (on $LOOP) -> $BASEDIR"
+	mkdir -p "$BASEDIR"
+	do_mount_part "$LOOP" "$BASEDIR"
+else
+	mkdir -p "$BASEDIR"
+	echo "$LOOP" > "$BASEDIR/.partitions_base_directory"
+
+	for partition in "${PART_FILES[@]}"; do
+		PARTNUM="${partition##*p}"
+		PARTDIR="$BASEDIR/part${PARTNUM}"
+
+		echo "Mounting partition $PARTNUM (on $LOOP) -> $PARTDIR"
+		mkdir -p "$PARTDIR"
+		do_mount_part "$partition" "$PARTDIR"
+	done
+fi
+
+mkdir -p "/tmp/mounted-images"
+echo "$(realpath -q "$BASEDIR")" >| "/tmp/mounted-images/img-${BASEDIR//\//-}"

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if [ -z $PPMDMEM ]; then
+	PPMDMEM=512m;
+fi
+	
+7z a -t7z -m0=PPMd -ms=e -mf=on -mhc=on -mmt=on -mmem=$PPMDMEM $*

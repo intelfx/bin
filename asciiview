@@ -1,0 +1,73 @@
+#!/bin/bash
+# asciiview - an ascii art image browser script. Front end for aview/aaflip
+clear()
+{
+  kill $! 2>/dev/null
+  rm -f aview$$.pgm 2>/dev/null
+}
+myconvert()
+{
+   if anytopnm $1 >aview$$.pgm 2>/dev/null ; then
+     exit
+   elif convert -colorspace gray $1 pgm:- 2>/dev/null ; then
+     exit
+   fi
+   echo "Failed to convert file format to PNM by both convert and anytopnm" >&2
+   while true; do
+     echo "0 " 
+   done
+}
+filenames=""
+options=""
+if [ "$1" = "" ]; then
+  echo "$0 - an ascii art image/animation browser.
+
+  To run this script you need aview, aaflip and NetPBM or ImageMagick.
+  You may browse any graphics format supported by NetPBM or ImageMagick
+  and .fli/.flc files.
+
+  Usage:
+   $0 [options] [filenames]
+
+  type aview --help [enter] for list of options.
+  "
+  exit 1
+fi
+while [ "$1" != "" ]; do
+  case $1 in
+    "-font" | "-driver" | "-kbddriver" | "-mousedriver" | "-*width" | "-*height" | "-bright" | "-contrast" | "-gamma" | "-random" | "-dimmul" | "-boldmul")
+      options="$options $1 $2"
+      shift 
+      shift 
+      ;;
+    -*)
+      options="$options $1"
+      shift
+      ;;
+    *) 
+      filenames="$filenames $1"
+      shift
+      ;;
+  esac
+done
+trap clear 0
+# mkfifo /tmp/aview$$.pgm
+outfile=aview$$.pgm
+for name in $filenames ; do
+if test -r $name ; then
+case $name in
+*.fli | *.lfc | *.flic )
+  PATH="$PATH:."
+  aaflip $options $name
+  ;;
+*)
+  myconvert $name >aview$$.pgm &
+  pid=$!
+  PATH="$PATH:."
+  aview  $options aview$$.pgm
+  kill $pid 2>/dev/null
+esac
+else
+  echo "$name could not be opended"
+fi
+done
