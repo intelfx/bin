@@ -14,7 +14,7 @@ function get_size() {
 	du --apparent-size -sb "$@" | cut -d$'\t' -f1
 }
 
-ARGS=$(getopt -- "D:N:na:" "$@")
+ARGS=$(getopt -- "o:N:na:f" "$@")
 if (( "$?" )); then
 	exit 1
 fi
@@ -30,51 +30,70 @@ PV_SECONDSTAGE_OPTS="-b"
 
 while true; do
 	case "$1" in
-		-D)
+		-f)
+			FORCE=1
+			;;
+		-o)
 			shift
-			DIRECTORY="$1"
-			shift
+			OUTPUT="$1"
 			;;
 		-N)
 			shift
 			NAME="$1"
-			shift
 			;;
 		-n)
 			ARCHIVER=""
-			shift
 			;;
 		-a)
 			shift
 			ARCHIVER="$1"
-			shift
 			;;
 		--)
-			shift
+			shift # we won't get to the shift in the end of loop
 			break
 			;;
 		*)
 			cat <<- EOF
 			The archiver.
 			Options:
-				-D <output directory>
+				-o <output directory or file>
 				-N <archive name>
 				-a <compressor name: ${!ARCHIVERS[@]}>
-				-n - do not compress
+				-n (do not compress)
 
 			Non-options shall be directory names and common options of "du" and "tar" (e. g. --exclude).
 			EOF
 			exit 1
 			;;
 	esac
+
+	shift
 done
 
-(( $# )) || exit 1
+if ! (( $# )); then
+	echo "==== Error: no directory arguments given"
+	exit 1
+fi
 
-[[ -z "$NAME" ]] && NAME="$1"
-NAME="$(basename "$NAME")"
+[[ -z "$NAME" ]] && NAME="$(basename "$1")"
 
-OUTPUT="${DIRECTORY}/${NAME}.tar"
+if [[ -d "$OUTPUT" ]]; then
+	OUTPUT+="/${NAME}.tar"
+else
+	if (( FORCE )) && [[ -e "$OUTPUT" ]]; then
+		echo "==== Warning: output ($OUTPUT) exists and --force is given, removing"
+		rm -vf "$OUTPUT"
+	fi
+
+	if [[ -e "$OUTPUT" ]]; then
+		echo "==== Error: output ($OUTPUT) exists and is not a directory"
+		exit 1
+	fi
+	
+	if [[ -z "$OUTPUT" ]]; then
+		OUTPUT="${NAME}.tar"
+	fi
+fi
 
 echo "---- Destination file: $OUTPUT"
 
