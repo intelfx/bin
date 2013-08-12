@@ -65,7 +65,7 @@ function check_kill() {
 		done
 
 		if [ -n "$PIDS" ]; then
-			echo -n "==== Not all readers eliminated. Used by following PIDs:"
+			echo -n "==== Not all users eliminated. Used by following PIDs:"
 			for PID in $PIDS; do
 				echo -n " $PID($(ps -o comm= c $PID))"
 			done
