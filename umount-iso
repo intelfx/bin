@@ -40,8 +40,10 @@ for file in "${!DIRS[@]}"; do
 	fi
 	(( "$FAILED_UMOUNT" )) && exit 1
 
-	echo "> Removing loop-device $LODEVICE"
-	losetup -d "$LODEVICE" || { echo "==== FAILED TO REMOVE LOOP-DEVICE. NOT ALL PARTITIONS MAY HAVE BEEN UNMOUNTED." >&2; exit 1; }
+	if [[ "$LODEVICE" ]]; then
+		echo "> Removing loop-device $LODEVICE"
+		losetup -d "$LODEVICE" || { echo "==== FAILED TO REMOVE LOOP-DEVICE. NOT ALL PARTITIONS MAY HAVE BEEN UNMOUNTED." >&2; exit 1; }
+	fi
 
 	rm -r "$DIR"
 	[[ "$DIR" =~ /mnt/image/.* ]] || mkdir -p "$DIR"
