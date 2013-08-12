@@ -227,4 +227,4 @@ while read persistent directory dirbase ; do
 		;;
 	esac
 
-done < ~/ramstor_config.txt
+done < ~/.tmpfs-caches
