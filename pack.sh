@@ -146,16 +146,18 @@ function apply_link() {
 function save() {
 
 	# Compare file lists
-	local FILE_LISTS_EQUAL
-	cmp -s /proc/self/fd/{4,5} 4< <(tar -C "$DESTDIR" $COMPRESSOR -tf "${ARCFILE}.tar${SUFFIX}" | sed -re 's#/$##') \
-		                       5< <(cd "$DESTDIR"; find "$dirbase") && FILE_LISTS_EQUAL=1
+	if [[ -r "${ARCFILE}.tar${SUFFIX}" ]]; then
+		local FILE_LISTS_EQUAL
+		cmp -s /proc/self/fd/{9,10} 9< <(tar -C "$DESTDIR" $COMPRESSOR -tf "${ARCFILE}.tar${SUFFIX}" | sed -re 's#/$##') \
+								   10< <(cd "$DESTDIR"; find "$dirbase") && FILE_LISTS_EQUAL=1
+	fi
 
 	if (( "$FILE_LISTS_EQUAL" )) && tar -C "$DESTDIR" $COMPRESSOR -df "${ARCFILE}.tar${SUFFIX}" &>/dev/null; then
 		echo "==== Saved copy is up-to-date, not rewriting"
 	else
 		echo "---- Saving"
-		eval tar -C "$DESTDIR" $COMPRESSOR -cf "${ARCFILE}.new.tar${SUFFIX}" "$dirbase"
-		mv "${ARCFILE}.new.tar${SUFFIX}" "${ARCFILE}.tar${SUFFIX}"
+		tar -C "$DESTDIR" $COMPRESSOR -cf "${ARCFILE}.new.tar${SUFFIX}" "$dirbase" \
+		&& mv "${ARCFILE}.new.tar${SUFFIX}" "${ARCFILE}.tar${SUFFIX}"
 	fi
 }
 
