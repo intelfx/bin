@@ -5,7 +5,7 @@
 
 SIGLIST="STOP"
 DESTDIR="/tmp/cache-$USER"
-ARCDIR="$HOME/__linux"
+ARCDIR="$HOME/.cache/tmpfs-caches"
 LOCKFILE="$ARCDIR/worker.lock"
 
 #SUFFIX='.gz'
