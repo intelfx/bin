@@ -125,7 +125,7 @@ function prepare_destination() {
 		echo "---- Unpacking"
 		rm -rf "$DESTINATION"
 		tar -C "$DESTDIR" $COMPRESSOR -xaf "$ARCFILE"*
-	elif [ -d "$(realpath -e "$SOURCE")" ]; then
+	elif [ -d "$(realpath -qe "$SOURCE")" ]; then
 		echo "---- Moving"
 		rm -rf "$DESTINATION"
 		mv -T "$SOURCE" "$DESTINATION"
