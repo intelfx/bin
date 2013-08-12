@@ -169,19 +169,10 @@ for dirbase; do
 	eval "PROCESS_DIR_${dirbase}=1"
 done
 
-while read directory dirbase ; do
+while read persistent directory dirbase ; do
 	echo "Processing directory $directory (base-name $dirbase)"
 
-	if (( "$PROCESS_SELECTIVE" )); then
-		SKIP=1
-		if eval '(( "$PROCESS_DIR_'${dirbase}'" ))'; then
-			SKIP=0
-		fi
-	else
-		SKIP=0
-	fi
-
-	if (( "$SKIP" )); then
+	if (( "$PROCESS_SELECTIVE" )) && ! eval '(( "$PROCESS_DIR_'${dirbase}'" ))'; then
 		echo "==== Skipped"
 		continue
 	fi
@@ -191,6 +182,16 @@ while read directory dirbase ; do
 	DESTINATION="$DESTDIR/$dirbase"
 
 	cleanup_stale
+
+	if ! (( persistent )); then
+		if [[ "$TARGET" == "save" ]]; then
+			echo "==== Not persistent, skipping save"
+			continue
+		elif [[ "$TARGET" == "save-reset" ]]; then
+			echo "==== Not persistent, using reset"
+			TARGET=reset
+		fi
+	fi
 
 	case "$TARGET" in
 	"")
