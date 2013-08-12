@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# ------------------------------------------------------------------------------
+#
+# Modified TMUX start script from:
+#	 http://forums.gentoo.org/viewtopic-t-836006-start-0.html
+#
+# Store it to `~/bin/tmx` and issue `chmod +x`.
+#
+# ------------------------------------------------------------------------------
+
+# Only because I often issue `ls` to this script by accident
+if [[ "$1" == "ls" ]]; then
+	exec tmux ls
+fi
+
+# ------------------------------------------------------------------------------
+
+if [[ -z "$1" ]]; then
+	echo "Session name not given"
+	exit 1
+fi
+
+base_session="$1"
+new_session="${base_session}-$$"
+
+if ! tmux -q has-session -t "$base_session"; then
+	tmux new-session -s "$base_session" \; detach-client
+else
+	NEW_WINDOW_COMMAND="new-window ;"
+fi
+
+# Create a new session (without attaching it) and link to base session to share windows
+# Attach to the new session & kill it once orphaned
+exec tmux new-session -d -t "$base_session" -s "$new_session" \; \
+		  attach-session -t "$new_session" \; \
+		  $NEW_WINDOW_COMMAND \
+		  set-option destroy-unattached
