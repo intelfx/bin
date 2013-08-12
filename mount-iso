@@ -43,7 +43,7 @@ function do_mount_part() {
 	local _OPTS="${OPTIONS}"
 
 	case "$FSTYPE" in
-		iso9660|udf)
+		iso9660)
 			_OPTS="norock,$_OPTS"
 			;;
 		*)
