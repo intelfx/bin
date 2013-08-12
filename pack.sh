@@ -226,4 +226,4 @@ while read directory dirbase ; do
 		;;
 	esac
 
-done < <(cat ~/ramstor_config.txt)
+done < ~/ramstor_config.txt
