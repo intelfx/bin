@@ -29,8 +29,10 @@ for file in "${!DIRS[@]}"; do
 	echo "Unmounting image file $DIR"
 	if [ -f "$DIR/.partitions_base_directory" ]; then
 		for PART in "$DIR"/part*; do
-			echo "> Unmounting partition $(basename "$PART")"
-			umount "$PART" || { echo "==== FAILED TO UNMOUNT PARTITION ${PART##*p}. WILL NOT CONTINUE BEYOND UNMOUNT STAGE." >&2; FAILED_UMOUNT=1; }
+			if mountpoint -q "$PART"; then
+				echo "> Unmounting partition ${PART##*part}"
+				umount "$PART" || { echo "==== FAILED TO UNMOUNT PARTITION ${PART##*part}. WILL NOT CONTINUE BEYOND UNMOUNT STAGE." >&2; FAILED_UMOUNT=1; }
+			fi
 		done
 
 		LODEVICE=$(< "$DIR/.partitions_base_directory")
