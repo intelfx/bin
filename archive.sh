@@ -103,9 +103,9 @@ if [[ "$ARCHIVER" && "${ARCHIVERS["$ARCHIVER"]}" ]]; then
 	ARCHIVER_NAME="${ARCHIVER%% *}" # Select first word of the string (command name)
 
 	tar -c "$@" \
-		| pv $PV_OPTS -cN "Archiving $NAME (tar)" -s $(get_size "$@") \
+		| pv ${PV_OPTS}             -cN "Archiving   $NAME (tar)" -s $(get_size "$@") \
 		| $ARCHIVER_CMD \
-		| pv ${PV_SECONDSTAGE_OPTS} -cN "Compressing $NAME ($ARCHIVER_NAME)" \
+		| pv ${PV_SECONDSTAGE_OPTS} -WN "Compressing $NAME ($ARCHIVER_NAME)" \
 		> "${OUTPUT}.${ARCHIVER_EXT}"
 else
 	tar -c "$@" \
