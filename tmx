@@ -16,23 +16,23 @@ fi
 
 # ------------------------------------------------------------------------------
 
-if [[ -z "$1" ]]; then
-	echo "Session name not given"
-	exit 1
-fi
-
-base_session="$1"
+base_session="$USER"
 new_session="${base_session}-$$"
 
-if ! tmux -q has-session -t "$base_session"; then
-	tmux new-session -s "$base_session" \; detach-client
-else
-	NEW_WINDOW_COMMAND="new-window ;"
+# Count tmux sessions (1 master + N slaves).
+# If there are no slave sessions, do not create new windows.
+if (( $(tmux ls | wc -l) > 1 )); then
+	NEW_WINDOW_COMMAND=("new-window" "$*" ";")
 fi
+
+#if ! tmux -q has-session -t "$base_session"; then
+#	tmux new-session -s "$base_session" -d
+#	NEW_WINDOW_COMMAND=""
+#fi
 
 # Create a new session (without attaching it) and link to base session to share windows
 # Attach to the new session & kill it once orphaned
 exec tmux new-session -d -t "$base_session" -s "$new_session" \; \
 		  attach-session -t "$new_session" \; \
-		  $NEW_WINDOW_COMMAND \
+		  "${NEW_WINDOW_COMMAND[@]}" \
 		  set-option destroy-unattached
