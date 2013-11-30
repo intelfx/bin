@@ -9,30 +9,33 @@
 #
 # ------------------------------------------------------------------------------
 
+tmux=( "tmux" )
+base_session="$USER"
+
+if [[ "$XDG_SESSION_ID" ]]; then
+	tmux+=( "-L" "session-$XDG_SESSION_ID" )
+	base_session+="-$XDG_SESSION_ID"
+fi
+
 # Only because I often issue `ls` to this script by accident
 if [[ "$1" == "ls" ]]; then
-	exec tmux ls
+	exec "${tmux[@]}" ls
 fi
 
 # ------------------------------------------------------------------------------
 
-base_session="$USER"
+
 new_session="${base_session}-$$"
 
 # Count tmux sessions (1 master + N slaves).
 # If there are no slave sessions, do not create new windows.
-if (( $(tmux ls | wc -l) > 1 )); then
+if (( $("${tmux[@]}" ls | wc -l) > 1 )); then
 	NEW_WINDOW_COMMAND=("new-window" "$*" ";")
 fi
 
-#if ! tmux -q has-session -t "$base_session"; then
-#	tmux new-session -s "$base_session" -d
-#	NEW_WINDOW_COMMAND=""
-#fi
-
 # Create a new session (without attaching it) and link to base session to share windows
 # Attach to the new session & kill it once orphaned
-exec tmux new-session -d -t "$base_session" -s "$new_session" \; \
-		  attach-session -t "$new_session" \; \
-		  "${NEW_WINDOW_COMMAND[@]}" \
-		  set-option destroy-unattached
+exec "${tmux[@]}" new-session -d -t "$base_session" -s "$new_session" \; \
+                  attach-session -t "$new_session" \; \
+                  "${NEW_WINDOW_COMMAND[@]}" \
+                  set-option destroy-unattached
