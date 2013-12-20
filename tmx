@@ -9,17 +9,19 @@
 #
 # ------------------------------------------------------------------------------
 
+function check_session() {
+	local postfix="$1"
+	shift
+
+	"${tmux[@]}" -L "session-$postfix" list-sessions -F "#$" 2>/dev/null | grep -q "$base_session-$postfix"
+}
+
 tmux=( "tmux" )
 base_session="$USER"
 
-if [[ "$XDG_SESSION_ID" ]]; then
+if [[ "$XDG_SESSION_ID" ]] && check_session "$XDG_SESSION_ID"; then
 	tmux+=( "-L" "session-$XDG_SESSION_ID" )
 	base_session+="-$XDG_SESSION_ID"
-fi
-
-# Only because I often issue `ls` to this script by accident
-if [[ "$1" == "ls" ]]; then
-	exec "${tmux[@]}" ls
 fi
 
 # ------------------------------------------------------------------------------
