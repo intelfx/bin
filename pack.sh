@@ -45,7 +45,7 @@ function check_kill() {
 
 		case "$1" in
 		write)
-			SIGLIST="QUIT TERM KILL"
+			SIGLIST="INT TERM KILL"
 			;;
 		read)
 			SIGLIST="STOP"
