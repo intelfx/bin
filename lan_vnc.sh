@@ -1,3 +1,3 @@
 #!/bin/bash
 
-vncviewer -FullScreen -PasswordFile=$HOME/.vnc/passwd -PreferredEncoding=Hextile -NoJPEG -MenuKey=Pause "$@"
+vncviewer -FullScreen=0 -PasswordFile=$HOME/.vnc/passwd -AutoSelect -PreferredEncoding=Tight -NoJPEG -MenuKey=Pause "$@"
