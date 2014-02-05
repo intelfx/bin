@@ -15,11 +15,12 @@ function log_op() {
 while read conflict_file; do
 	initial_file=${conflict_file/ ([^ ]*\'s conflicted copy*)}
 	if (( FORCE )) || [ ! -f "$initial_file" ] || [ "$conflict_file" -nt "$initial_file" ]; then
-		mv "$conflict_file" "$initial_file"
 		log_op "USE PRE-SYNC (mv)" "$conflict_file" "$initial_file" | tee "$TMPFILE"
+		install -D "$initial_file" "$TMPDIR/$initial_file"
+		mv "$conflict_file" "$initial_file"
 	else
+		log_op "USE POST-SYNC (rm)" "$conflict_file" | tee $TMPFILE
 		install -D "$conflict_file" "$TMPDIR/$conflict_file"
 		rm "$conflict_file"
-		log_op "USE POST-SYNC (rm)" "$conflict_file" | tee $TMPFILE
 	fi
-done < <(find -L ~/Dropbox -name '*conflicted*' -print )
+done < <(find -L ~/Dropbox -name '*Конфликтующая копия*' -print )
