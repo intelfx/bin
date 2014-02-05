@@ -30,7 +30,7 @@ perform_trim
 echo ""
 echo "-- Issuing trim of ${#TRIM_RANGES[@]} range(s)"
 
-[[ -n "$DRY_RUN" ]] && exit
+(( CONFIRM_DESTROY )) || exit
 
 for range in "${TRIM_RANGES[@]}"; do
 	echo "$range"

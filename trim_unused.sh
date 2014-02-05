@@ -72,7 +72,7 @@ parse_range
 echo ""
 echo "-- Issuing trim of ${#TRIM_RANGES[@]} range(s)"
 
-[[ -n "$DRY_RUN" ]] && exit
+(( CONFIRM )) || exit
 
 for range in "${TRIM_RANGES[@]}"; do
 	echo "$range"
