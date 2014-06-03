@@ -1,0 +1,14 @@
+#!/bin/bash
+
+function xplane_arch() {
+#	echo "i386"
+	uname -m
+}
+
+BASE_DIR="/mnt/data/X-Plane 10"
+EXECUTABLE="X-Plane-$(xplane_arch)"
+GL_FIXER="glFixer-$(xplane_arch).so"
+
+cd "$BASE_DIR"
+#LD_PRELOAD="./$GL_FIXER" "./$EXECUTABLE"
+optirun "./$EXECUTABLE"
