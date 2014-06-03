@@ -14,7 +14,7 @@ function get_size() {
 	du --apparent-size -sb "$@" | cut -d$'\t' -f1
 }
 
-ARGS=$(getopt -- "o:N:na:f" "$@")
+ARGS=$(getopt -- "o:N:nc:f" "$@")
 if (( "$?" )); then
 	exit 1
 fi
@@ -44,7 +44,7 @@ while true; do
 		-n)
 			ARCHIVER=""
 			;;
-		-a)
+		-c)
 			shift
 			ARCHIVER="$1"
 			;;
@@ -58,7 +58,7 @@ while true; do
 			Options:
 				-o <output directory or file>
 				-N <archive name>
-				-a <compressor name: ${!ARCHIVERS[@]}>
+				-c <compressor name: ${!ARCHIVERS[@]}>
 				-n (do not compress)
 
 			Non-options shall be directory names and common options of "du" and "tar" (e. g. --exclude).
