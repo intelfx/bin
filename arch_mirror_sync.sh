@@ -9,7 +9,7 @@
 # Licensed under the GNU GPL (version 2)
 
 # Filesystem locations for the sync operations
-SYNC_HOME="/mnt/data1/__userfiles/arch-mirror"
+SYNC_HOME="/mnt/data1/__userfiles/dist/linux/arch"
 SYNC_LOGS="$SYNC_HOME/logs"
 SYNC_FILES="$SYNC_HOME/files"
 SYNC_LOCK="$SYNC_HOME/mirrorsync.lck"
@@ -24,8 +24,8 @@ SYNC_REPO=(iso/archboot/latest:archboot iso/latest:archiso)
 # Only official public mirrors are allowed to use rsync.archlinux.org
 # SYNC_SERVER=rsync.archlinux.org::ftp
 #SYNC_SERVER=distro.ibiblio.org::archlinux
-#SYNC_SERVER=mirror.yandex.ru::archlinux
-SYNC_SERVER=ftp://mirror.yandex.ru/archlinux
+SYNC_SERVER=mirror.yandex.ru::archlinux
+#SYNC_SERVER=ftp://mirror.yandex.ru/archlinux
 
 # Set the format of the log file name
 # This example will output something like this: sync_20070201-8.log
