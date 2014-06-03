@@ -70,10 +70,14 @@ PART_START="$(( $DISK_END + 1 ))"
 parse_range
 
 echo ""
-echo "-- Issuing trim of ${#TRIM_RANGES[@]} range(s)"
 
-(( CONFIRM )) || exit
+if ! (( CONFIRM )); then
+	echo "-- Not issuing TRIM of ${#TRIM_RANGES[@]} range(s): pass CONFIRM=1 to perform actions"
+else
+	echo "-- Issuing TRIM of ${#TRIM_RANGES[@]} range(s)"
 
-for range in "${TRIM_RANGES[@]}"; do
-	echo "$range"
-done | hdparm --trim-sector-ranges-stdin --please-destroy-my-drive "$DISK"
+	for range in "${TRIM_RANGES[@]}"; do
+		echo "$range"
+	done | hdparm --trim-sector-ranges-stdin --please-destroy-my-drive "$DISK"
+fi
+
