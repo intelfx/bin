@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+bup index --clear
+bup index -x "$1"
+bup save "$1" ${2:+-n "$2"}
