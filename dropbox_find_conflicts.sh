@@ -24,4 +24,4 @@ while read conflict_file; do
 		mkdir -p "$TMPDIR/$(dirname "$conflict_file")"
 		mv "$conflict_file" "$TMPDIR/$conflict_file"
 	fi
-done < <(find -L ~/Dropbox -name '*Конфликтующая копия*' -print )
+done < <(find -L "${1:-$HOME/Dropbox}" -iname '*conflict*' -print)
