@@ -1,0 +1,85 @@
+#!/usr/bin/env python
+
+from __future__ import with_statement
+
+import sys
+import subprocess
+
+import gitaggregates
+
+def read_tag(t):
+    args = ['git', 'cat-file', 'tag', t]
+    sub = subprocess.Popen(args, stdout=subprocess.PIPE, close_fds=True)
+
+    rv=None
+    for l in sub.stdout:
+        if rv is not None:
+            rv.append(l)
+        elif l.strip() == '':
+            rv = []
+
+    return ''.join(rv)
+
+def emit(prev, r, f=sys.stdout):
+    tagdesc = read_tag(r)
+
+    c = gitaggregates.Contributors([prev + '..' + r])
+    chart = c.mk_chart()
+    pie_url = chart.BASE_URL + '&amp;'.join(chart.get_url_bits())
+    vdesc = "Changes from release %s to %s" % (prev, r)
+    if not prev:
+        vdesc = "Release " + r
+    f.write("<h2>%s</h2>\n" % (vdesc))
+    f.write("""<div><img class="pie" src="%s" alt="contributors"/>"""
+            % pie_url)
+    f.write("<pre>%s</pre></div>" % tagdesc)
+
+if __name__ == '__main__':
+
+    if not sys.argv[1:]:
+        sys.stderr.write("Need to list some tag objects.\n")
+        sys.exit(1)
+
+    title = "Changelog"
+    try:
+        with open(".git/description") as f:
+            desc = f.read().strip()
+            if not desc.startswith("Unnamed repository"):
+                title= "Changelog for " + desc
+    except:
+        pass
+
+    print """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+        "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+
+<head>
+    <title>%s</title>
+    <style type="text/css">
+        .pie {
+            float: right;
+        }
+        h2 {
+            clear: both;
+        }
+    </style>
+</head>
+
+<body>
+""" % title
+
+    print "<h1>%s</h1>" % title
+
+    prev = ''
+
+    pairs = []
+
+    for r in sys.argv[1:]:
+        pairs.append((prev, r))
+        prev = r
+
+    for prev, r in reversed(pairs):
+        emit(prev, r)
+
+    print "</body></html>"
