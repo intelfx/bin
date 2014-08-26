@@ -6,6 +6,15 @@ function process() {
 	"$@" "${SCREENSHOT}" "${SCREENSHOT}-1" && mv "${SCREENSHOT}-1" "${SCREENSHOT}"
 }
 
+function locker() {
+	i3lock -i "${SCREENSHOT}"
+}
+
 scrot "${SCREENSHOT}"
 process convert -blur 0x5
-i3lock -i "${SCREENSHOT}"
+
+if [[ "$XSS_SLEEP_LOCK_FD" ]]; then
+	locker {XSS_SLEEP_LOCK_FD}<&-
+else
+	locker
+fi
