@@ -1,6 +1,6 @@
 #!/bin/bash
 
-function add_replay_gain() {
+function add_replay_gain_flac() {
 	local TMPSCRIPT="/tmp/replay_gain.sh"
 
 	cat > "$TMPSCRIPT" <<"EOF"
@@ -14,6 +14,20 @@ EOF
 	rm "$TMPSCRIPT"
 }
 
+function add_replay_gain_mp3() {
+	local TMPSCRIPT="/tmp/replay_gain.sh"
+
+	cat > "$TMPSCRIPT" <<"EOF"
+echo "mp3gain: '$1'"
+exec mp3gain "$1"/*.mp3
+EOF
+	chmod +x "$TMPSCRIPT"
+
+	find . -iname '*.mp3' -printf '%h\n' | sort -u | parallel "$TMPSCRIPT {}"
+
+	rm "$TMPSCRIPT"
+}
+
 function split() {
 	while read -u 9 dir; do
 		split2flac "$dir"
@@ -23,7 +37,7 @@ function split() {
 function cleanup() {
 	echo "== cleanup: removing non-media files"
 	find . -type f \
-	       -not -iname '*.flac' \
+	       -not \( -iname '*.flac' -or -iname '*.mp3' \) \
 	       -print -delete
 
 	echo "== cleanup: merging soundkonverter suffixed files"
