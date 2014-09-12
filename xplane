@@ -5,7 +5,7 @@ function xplane_arch() {
 	uname -m
 }
 
-BASE_DIR="/mnt/data/X-Plane 10"
+BASE_DIR="$HOME/bin/games/X-Plane 10"
 EXECUTABLE="X-Plane-$(xplane_arch)"
 GL_FIXER="glFixer-$(xplane_arch).so"
 
