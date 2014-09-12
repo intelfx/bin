@@ -38,7 +38,8 @@ for file in "${!DIRS[@]}"; do
 		LODEVICE=$(< "$DIR/.partitions_base_directory")
 	else
 		echo "> Unmounting whole image (loop-device will be removed)"
-		umount -d "$DIR" || { echo "==== FAILED TO UNMOUNT WHOLE IMAGE. WILL NOT CONTINUE BEYOND UNMOUNT STAGE." >&2; FAILED_UMOUNT=1; }
+		umount "$DIR" || { echo "==== FAILED TO UNMOUNT WHOLE IMAGE. WILL NOT CONTINUE BEYOND UNMOUNT STAGE." >&2; FAILED_UMOUNT=1; }
+		losetup -D # detaches all un-mounted devices
 	fi
 	(( "$FAILED_UMOUNT" )) && exit 1
 
