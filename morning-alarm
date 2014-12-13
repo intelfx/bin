@@ -1,0 +1,13 @@
+#!/bin/bash
+
+function set_volume() {
+	amixer sset Master unmute
+	amixer sset Master 80%
+}
+
+( while true; do
+	set_volume
+	sleep 1
+done ) &
+
+exec mpv --quiet --mute=no --volume=100 --vo=null "$HOME/.morning-alarm"
