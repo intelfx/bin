@@ -1,8 +1,0 @@
-#!/bin/bash
-
-[[ "$1" ]] || { echo "Time not set!" >&2; exit 1; }
-
-TIMEOUT="$(( $(date -d "$1" +%s) - $(date +%s) ))"
-shift
-
-exec /usr/bin/icsy -t "$TIMEOUT" -s 0 -c "mpv --really-quiet --no-consolecontrols --osc=no -vo=none $HOME/.icsy.mp3" "$@"
