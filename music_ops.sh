@@ -53,5 +53,7 @@ function cleanup() {
 }
 
 function reflac() {
-	find . -iname '*.flac' -print0 | parallel -0 flac -f -8 {}
+	find "${1:-.}" -iname '*.flac' \
+		-exec bash -c "exec mkdir -pv \"\$(dirname \"${2:-.}/{}\")\" >&2" \; \
+		-print0 | parallel -0 -N1 flac -f -8 {} -o "\"${2:-.}/\"{}"
 }
