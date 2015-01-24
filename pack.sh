@@ -227,4 +227,4 @@ while read persistent directory dirbase ; do
 		;;
 	esac
 
-done < ~/.tmpfs-caches
+done < ~/.config/tmpfs-caches
