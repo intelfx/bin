@@ -35,7 +35,7 @@ function cleanup() {
 trap cleanup EXIT
 
 echo -n "$IN ... "
-{ ffmpeg -i "$IN" -f caf - | fdkaac -m 5 -G 2 -w 20000 - -o "$OUT_TMP"; } &>/dev/null
+{ ffmpeg -i "$IN" -f caf - | fdkaac -m 5 -w 20000 - -o "$OUT_TMP"; } &>/dev/null
 
 mv -n "$OUT_TMP" "$OUT.$$-$RANDOM.$OUT_EXT"
 echo "done"
