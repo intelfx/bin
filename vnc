@@ -1,11 +1,11 @@
 #!/bin/bash
 
 vncviewer \
-	-FullScreen=0 \
+	-FullScreen=1 \
 	-PasswordFile=$HOME/.vnc/passwd \
 	-MenuKey=Insert \
 	-NoJPEG \
-	-PreferredEncoding=Hextile \
+	-PreferredEncoding=Tight \
 	-LowColorLevel=1 \
 	-FullColor=1 \
 	"$@"
