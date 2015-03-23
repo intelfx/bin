@@ -10,3 +10,7 @@ LDLIBS += -ldl -lm
 
 install-%: %
 	install -m755 $< $(DESTDIR)
+
+%: %.asm
+	nasm -f elf32 $< -o $@.o
+	$(CC) -m32 $(LDFLAGS) $@.o $(LDLIBS) -o $@
