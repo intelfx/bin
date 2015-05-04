@@ -1,0 +1,63 @@
+#!/bin/bash
+
+VNC_ARGS=()
+
+while (( $# )); do
+	case "$1" in
+	-p)
+		shift
+		SSH_PORT="$1"
+		;;
+
+	*:*|*@*:*)
+		VNC_DISPLAY="${1##*:}"
+		VNC_PORT="$(( 5900 + VNC_DISPLAY ))"
+		SSH_HOST="${1%:*}" # incl. user
+		;;
+
+	*)
+		VNC_ARGS+=( "$1" )
+	esac
+
+	shift
+done
+
+UNIT_FILE_PREFIX="vnc-ssh-$$"
+UNIT_DIR="$XDG_RUNTIME_DIR/systemd/user"
+
+mkdir -p "$UNIT_DIR"
+
+cat > "$UNIT_DIR/$UNIT_FILE_PREFIX-ssh.service" <<EOF
+[Unit]
+Description=SSH TCP tunnel forwarding port $VNC_PORT from host $SSH_HOST (port ${SSH_PORT:-22}) to localhost
+StopWhenUnneeded=true
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/ssh -fN -o ExitOnForwardFailure=yes -L "$VNC_PORT:localhost:$VNC_PORT" "$SSH_HOST" ${SSH_PORT:+-p $SSH_PORT}
+KillMode=control-group
+Environment=DISPLAY=$DISPLAY SSH_ASKPASS=$SSH_ASKPASS
+EOF
+
+cat > "$UNIT_DIR/$UNIT_FILE_PREFIX-vnc.service" <<EOF
+[Unit]
+Description=VNC session to $SSH_HOST display $VNC_DISPLAY tunneled via SSH
+Requires=$UNIT_FILE_PREFIX-ssh.service
+After=$UNIT_FILE_PREFIX-ssh.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/vncviewer \
+	-FullScreen=1 \
+	-MenuKey=Insert \
+	-NoJPEG \
+	-PreferredEncoding=Tight \
+	-LowColorLevel=1 \
+	-FullColor=1 ${VNC_ARGS[*]} \
+	localhost:${VNC_DISPLAY}
+KillMode=control-group
+Environment=DISPLAY=$DISPLAY
+EOF
+
+systemctl --user daemon-reload
+systemctl --user start $UNIT_FILE_PREFIX-vnc
