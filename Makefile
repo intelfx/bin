@@ -6,7 +6,7 @@ CXX = clang++
 CFLAGS += -g -O3 -Wall -Wextra -std=c99 -DLOCAL
 CXXFLAGS += -g -O3 -Wall -Wextra -std=c++11
 LDFLAGS += -rdynamic -Wl,-O1,--relax,-z,relro,--sort-common
-LDLIBS += -ldl -lm
+LDLIBS += -ldl -lm -lrt -lpthread
 
 install-%: %
 	install -m755 $< $(DESTDIR)
