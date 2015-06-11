@@ -3,4 +3,5 @@
 set -e
 
 git reflog expire --expire=now --all
-git gc --aggressive --prune=now "$@"
+git repack -a -d -f --depth=250 --window=250 "$@"
+git prune --expire=now
