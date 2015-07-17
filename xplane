@@ -1,14 +1,3 @@
 #!/bin/bash
 
-function xplane_arch() {
-#	echo "i386"
-	uname -m
-}
-
-BASE_DIR="$HOME/bin/games/X-Plane 10"
-EXECUTABLE="X-Plane-$(xplane_arch)"
-GL_FIXER="glFixer-$(xplane_arch).so"
-
-cd "$BASE_DIR"
-#LD_PRELOAD="./$GL_FIXER" "./$EXECUTABLE"
-optirun "./$EXECUTABLE"
+exec optirun "$HOME/bin/games/X-Plane 10/X-Plane-$(uname -m)"
