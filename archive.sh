@@ -143,6 +143,8 @@ if [[ "$ARCHIVER" ]]; then
 	else
 		EXTENSION=".tar.$ARCHIVER"
 	fi
+else
+	EXTENSION=".tar"
 fi
 
 if [[ -z "$OUTPUT" ]]; then
