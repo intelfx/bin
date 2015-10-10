@@ -1,22 +1,29 @@
 #!/bin/bash
 
+set -e
+
 SVG_PATH="/tmp/systemd-analyze.svg"
 MAIN_UNIT="gdm.service"
-ACTION="$1"
 #SVG_APP="xdg-open"
 SVG_APP="firefox"
+
+ACTION="$1"
 shift
 
 case "$ACTION" in
 	critical-chain)
-		exec systemd-analyze critical-chain "${1:-$MAIN_UNIT}"
+		if (( $# )); then
+			MAIN_UNIT="$1"
+			shift
+		fi
+		exec systemd-analyze critical-chain "$MAIN_UNIT" "$@"
 		;;
 	plot)
-		systemd-analyze plot > "$SVG_PATH" || exit 1
+		systemd-analyze plot "$@" > "$SVG_PATH"
 		exec "${SVG_APP[@]}" "$SVG_PATH"
 		;;
 	dot)
-		systemd-analyze dot "$@" | dot -Tsvg > "$SVG_PATH" || exit 1
+		systemd-analyze dot "$@" | dot -Tsvg > "$SVG_PATH"
 		exec "${SVG_APP[@]}" "$SVG_PATH"
 		;;
 	*)
