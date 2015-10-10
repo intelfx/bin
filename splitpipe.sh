@@ -16,7 +16,8 @@ function main_to() {
 		local TEMP_FILE="$(mktemp -p "$TMPDIR")"
 		trap "rm -f '$TEMP_FILE'" RETURN EXIT
 		log ":: Piece $PIECE_NR, retry 1 via tee."
-		head -c "$SIZE" | tee --output-error=warn "$TEMP_FILE" | "${COMMAND[@]//$PATTERN/$PIECE_NR}" || {
+		eval "$(printf "$COMMAND_SERIALIZED" "$PIECE_NR")"
+		head -c "$SIZE" | tee --output-error=warn "$TEMP_FILE" | "${COMMAND[@]}" || {
 			# the command had failed
 			RETRY_NR=2
 			while :; do
@@ -78,12 +79,15 @@ while (( $# )); do
 	shift
 done
 
-COMMAND=( "$@" )
-
 log "N: using piece size $SIZE."
 log "N: using temporary directory $TEMPDIR to store at most one piece."
 log "N: using command $(printf "'%s' " "${COMMAND[@]}"), piece id pattern is '$PATTERN'."
 log "N: piping $MODE command."
+
+COMMAND=( "$@" )
+COMMAND_SERIALIZED="$(declare -p COMMAND | sed -r -e 's|\{\}|%d|' -e 's|\{([0-9]+)\}|%0\1d|')"
+eval "$COMMAND_SERIALIZED"
+log "N: printf-ized command is $(printf "'%s' " "${COMMAND[@]}")"
 
 case "$MODE" in
 to)
