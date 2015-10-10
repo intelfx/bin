@@ -1,0 +1,274 @@
+#!/bin/bash
+
+function warn() {
+	echo "W: $*" >&2
+}
+
+function error() {
+	echo "E: $*" >&2
+}
+
+function die() {
+	error "$*"
+	exit 1
+}
+
+function check() {
+	local expr="$1"
+	shift
+
+	if ! eval "$expr"; then
+		die "in ${FUNCNAME[1]}: assertion '$expr' failed: $*"
+	fi
+}
+
+function handle_fail() {
+	local cmd="$BASH_COMMAND" function="${FUNCNAME[1]}" exitcode="$?"
+
+	die "in ${FUNCNAME[1]}: command '$cmd' failed with exit-code $exitcode"
+}
+
+EFIVARFS="/sys/firmware/efi/efivars"
+ENCODING="UCS-2"
+declare -A ATTRIBUTE_LIST
+ATTRIBUTE_LIST=(
+	[non-volatile]="0x00000001"
+	[boot-service-access]="0x00000002"
+	[runtime-access]="0x00000004"
+	[hardware-error-record]="0x00000008"
+	[authenticated-write-access]="0x00000010"
+)
+
+function check_efivarfs() {
+	check "mountpoint -q '$EFIVARFS'" "efivarfs not mounted on '$EFIVARFS'"
+}
+
+function check_var() {
+	local name="$1"
+	check "[[ -f '$EFIVARFS/$name' ]]" "EFI variable '$name' does not exist"
+}
+
+function efivar_attrs() {
+	local name="$1"
+	check_var "$name"
+	dd if="$EFIVARFS/$name" bs=1 count=4 status=none
+}
+
+function explicit_attrs() {
+	local mask="$1" i
+
+	for (( i=0; i < 4; ++i )); do
+		printf "\\$(printf '%03o' "$(( mask & 0xFF ))")"
+		mask="$(( mask >> 8 ))"
+	done
+}
+
+function efivar_data() {
+	local name="$1"
+	check_var "$name"
+	dd if="$EFIVARFS/$name" bs=1 skip=4 status=none
+}
+
+function efivar_write() {
+	local name="$1" file="$2"
+	if [[ -e "$EFIVARFS/$name" ]]; then
+		rm "$EFIVARFS/$name"
+		touch "$EFIVARFS/$name"
+	fi
+	hexdump -C "$file"
+
+	dd if="$file" of="$EFIVARFS/$name" bs="$(stat --printf '%s' "$file")" count=1 status=none
+	# use efivar to do writes...
+	#local name_name="${name%%-*}" name_guid="${name#*-}"
+	#efivar -n "$name_guid-$name_name" -a -f "$file"
+}
+
+function convert_from_efi() {
+	iconv -f "$ENCODING" "$@"
+}
+
+function convert_to_efi() {
+	iconv -t "$ENCODING" "$@"
+}
+
+function _usage_attrs() {
+	local attr
+	for attr in "${!ATTRIBUTE_LIST[@]}"; do
+		cat <<EOF
+
+	$attr
+		Maps to ${ATTRIBUTE_LIST[$attr]}
+EOF
+	done
+}
+
+function usage() {
+	cat <<EOF
+Usage: efivar-crud [-a|--attrs ATTRS] ACTION ...
+
+ATTRS is a colon-separated list of attributes to set for a variable
+we're writing. If attributes are not given, existing attributes of
+the variable are used (this requires the variable to be already
+present).
+Possible attributes:
+$(_usage_attrs)
+
+ACTION is an action to perform, followed by its own arguments.
+Possible actions:
+
+	efivar-crud read VARIABLE
+		Read and print data of EFI variable specified by VARIABLE
+		(converted to current encoding from $ENCODING)
+
+	efivar-crud read-attributes VARIABLE
+		Read and print attributes of EFI variable specified by VARIABLE
+		(in a format suitable for feeding back into '-a')
+
+	efivar-crud write VARIABLE VALUE
+		Write VALUE to EFI variable specified by VARIABLE
+		(converted to $ENCODING from current encoding)
+
+	efivar-crud write-file VARIABLE FILE
+		Write data from FILE to EFI variable specified by VARIABLE
+		(converted to $ENCODING from current encoding)
+
+	efivar-crud write-file-raw VARIABLE FILE
+		Write raw data from FILE to EFI variable specified by VARIABLE
+		(not altered in any way)
+
+	Actions may be abbreviated using first letters of each word
+	(write-file-raw becomes w-f-r).
+EOF
+		
+}
+
+set -o pipefail
+trap handle_fail ERR
+
+ARGS=$(getopt -l "attrs:" -o "a:" -- "$@")
+if (( "$?" )); then
+    usage
+    exit 1
+fi
+eval set -- "$ARGS"
+
+while true; do
+    case "$1" in
+        # HANDLING HERE
+		-a|--attrs)
+			ATTRS_SET=1
+			ATTRS=0
+
+			shift
+			IFS=:
+			for attr in $1; do
+				ATTRS="$(( ATTRS | ATTRIBUTE_LIST[$attr] ))"
+			done
+			unset IFS
+			;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+if (( $# < 1 )); then
+	error "At least one argument expected."
+	usage
+	exit 1
+fi
+
+ACTION="$1"
+
+case "$ACTION" in
+r|read)
+	if (( $# != 2 )); then
+		error "Two arguments expected."
+		usage
+		exit 1
+	fi
+	VARIABLE="$2"
+	efivar_data "$VARIABLE" | convert_from_efi | sed -e 's/\x0$//'
+	;;
+
+r-a|read-attrs)
+	if (( $# != 2 )); then
+		error "Two arguments expected."
+		usage
+		exit 1
+	fi
+	VARIABLE="$2"
+	ATTRS="$(efivar_attrs "$VARIABLE" | od -A n --endian=little -t u4 | tr -d ' \n\t')"
+
+	for attr in "${!ATTRIBUTE_LIST[@]}"; do
+		if (( ATTRS & ATTRIBUTE_LIST[$attr] )); then
+			echo -n "$attr:"
+		fi
+	done
+	;;
+
+w|write)
+	if (( $# != 3 )); then
+		error "Three arguments expected."
+		usage
+		exit 1
+	fi
+	VARIABLE="$2"
+	VALUE="$3"
+	TEMPFILE="$(mktemp)"
+	trap "rm -f '$TEMPFILE'" EXIT
+
+	if (( ATTRS_SET )); then
+		explicit_attrs "$ATTRS"                        > "$TEMPFILE"
+	else
+		efivar_attrs "$VARIABLE"                       > "$TEMPFILE"
+	fi
+	echo -ne "$VALUE\\0" | convert_to_efi             >> "$TEMPFILE"
+	efivar_write "$VARIABLE" "$TEMPFILE"
+	;;
+
+w-f|write-file)
+	if (( $# != 3 )); then
+		error "Three arguments expected."
+		usage
+		exit 1
+	fi
+	VARIABLE="$2"
+	FILE="$3"
+	TEMPFILE="$(mktemp)"
+	trap "rm -f '$TEMPFILE'" EXIT
+
+	if (( ATTRS_SET )); then
+		explicit_attrs "$ATTRS"                        > "$TEMPFILE"
+	else
+		efivar_attrs "$VARIABLE"                       > "$TEMPFILE"
+	fi
+	{ cat "$FILE"; echo -ne "\\0"; } | convert_to_efi >> "$TEMPFILE"
+	efivar_write "$VARIABLE" "$TEMPFILE"
+	;;
+
+w-f-r|write-file-raw)
+	if (( $# != 3 )); then
+		error "Three arguments expected."
+		usage
+		exit 1
+	fi
+	VARIABLE="$2"
+	FILE="$3"
+	TEMPFILE="$(mktemp)"
+	trap "rm -f '$TEMPFILE'" EXIT
+
+	if (( ATTRS_SET )); then
+		explicit_attrs "$ATTRS"                        > "$TEMPFILE"
+	else
+		efivar_attrs "$VARIABLE"                       > "$TEMPFILE"
+	fi
+	cat "$FILE"                                       >> "$TEMPFILE"
+	efivar_write "$VARIABLE" "$TEMPFILE"
+	;;
+esac
