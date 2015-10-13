@@ -22,7 +22,7 @@ function main_to() {
 			RETRY_NR=2
 			while :; do
 				log ":: Piece $PIECE_NR, retry $RETRY_NR."
-				"${COMMAND[@]//$PATTERN/$PIECE_NR}" < "$TEMP_FILE" && {
+				"${COMMAND[@]}" < "$TEMP_FILE" && {
 					break
 				}
 			done
@@ -79,12 +79,13 @@ while (( $# )); do
 	shift
 done
 
+COMMAND=( "$@" )
+
 log "N: using piece size $SIZE."
-log "N: using temporary directory $TEMPDIR to store at most one piece."
+log "N: using temporary directory $TMPDIR to store at most one piece."
 log "N: using command $(printf "'%s' " "${COMMAND[@]}"), piece id pattern is '$PATTERN'."
 log "N: piping $MODE command."
 
-COMMAND=( "$@" )
 COMMAND_SERIALIZED="$(declare -p COMMAND | sed -r -e 's|\{\}|%d|' -e 's|\{([0-9]+)\}|%0\1d|')"
 eval "$COMMAND_SERIALIZED"
 log "N: printf-ized command is $(printf "'%s' " "${COMMAND[@]}")"
