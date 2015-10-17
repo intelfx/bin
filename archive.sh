@@ -84,12 +84,12 @@ while true; do
 			;;
 		-o|--output)
 			shift
+			OUTPUT="$1"
+
 			if [[ ! "$OUTPUT" ]]; then
 				log "E: empty output name."
 				exit 1
 			fi
-
-			OUTPUT="$1"
 
 			if [[ "$OUTPUT" != "-" && ! -d "$OUTPUT" ]]; then
 				if [[ -z "$NAME" ]]; then
