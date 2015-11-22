@@ -1,3 +1,0 @@
-#!/bin/bash
-
-exec optirun "$HOME/bin/games/X-Plane 10/X-Plane-$(uname -m)"
