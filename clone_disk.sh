@@ -107,17 +107,21 @@ for src_part in "$SRC_LOOP_PART_PREFIX"*; do
 	dest_part="$DEST_LOOP_PART_PREFIX$partnr"
 
 	part_type="$(blkid "$src_part" -o value -s TYPE)"
+	echo -n "   -> '$src_part' "
+
 	if [[ "$part_type" ]]; then
-		echo -n "   -> '$src_part' of type '$part_type' - "
-
-		if type -t partclone.$part_type &>/dev/null; then
-			echo "using 'partclone.$part_type'"
-			"partclone.$part_type" -b -s "$src_part" -O "$dest_part"
-		else
-			echo "using partclone.dd"
-			partclone.dd -s "$src_part" -O "$dest_part"
-		fi
-
-		echo
+		echo -n "of type '$part_type' "
 	fi
+
+	echo -n "- "
+
+	if [[ "$part_type" ]] && type -t partclone.$part_type &>/dev/null; then
+		echo "using 'partclone.$part_type'"
+		"partclone.$part_type" -b -s "$src_part" -O "$dest_part"
+	else
+		echo "using partclone.dd"
+		partclone.dd -s "$src_part" -O "$dest_part"
+	fi
+
+	echo
 done
