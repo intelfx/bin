@@ -14,13 +14,14 @@ function main_to() {
 	local PIECE_NR="1"
 	while :; do
 		local TEMP_FILE="$(mktemp -p "$TMPDIR")"
+		local RETRY_NR=1
 		trap "rm -f '$TEMP_FILE'" RETURN EXIT
-		log ":: Piece $PIECE_NR, retry 1 via tee."
+		log ":: Piece $PIECE_NR, retry $RETRY_NR via tee."
 		eval "$(printf "$COMMAND_SERIALIZED" "$PIECE_NR")"
 		head -c "$SIZE" | tee --output-error=warn "$TEMP_FILE" | "${COMMAND[@]}" || {
 			# the command had failed
-			RETRY_NR=2
 			while :; do
+				(( ++RETRY_NR ))
 				log ":: Piece $PIECE_NR, retry $RETRY_NR."
 				"${COMMAND[@]}" < "$TEMP_FILE" && {
 					break
@@ -40,7 +41,36 @@ function main_to() {
 }
 
 function main_from() {
-	die "E: Not implemented."
+	local PIECE_NR="1"
+	set -o pipefail
+	while :; do
+		local TEMP_FILE="$(mktemp -p "$TMPDIR")"
+		local RETRY_NR=1
+		trap "rm -f '$TEMP_FILE'" RETURN EXIT
+		log ":: Piece $PIECE_NR, retry $RETRY_NR via tee."
+		eval "$(printf "$COMMAND_SERIALIZED" "$PIECE_NR")"
+		"${COMMAND[@]}" | tee "$TEMP_FILE" || {
+			# the command had failed
+			while :; do
+				(( ++RETRY_NR ))
+				CURRENT_SIZE="$(stat --printf='%s' "$TEMP_FILE")"
+				log ":: Piece $PIECE_NR, retry $RETRY_NR (already downloaded $CURRENT_SIZE bytes)."
+				# this is suboptimal: we download but deliberately throw away first $CURRENT_SIZE bytes
+				"${COMMAND[@]}" | tail -c +$(( CURRENT_SIZE + 1 )) | tee -a "$TEMP_FILE" && {
+					break
+				}
+			done
+		}
+
+		[[ -s "$TEMP_FILE" ]] || {
+			log ":: Piece of zero size, exiting with total of $PIECE_NR pieces of which last is empty."
+			return
+		}
+
+		rm -f "$TEMP_FILE"
+		trap - RETURN EXIT
+		(( ++PIECE_NR ))
+	done
 }
 
 set -e
