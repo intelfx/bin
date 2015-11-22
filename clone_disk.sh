@@ -5,12 +5,26 @@ set -e
 SRC="$1"
 DEST="$2"
 
+function blk_size() {
+	echo $(( $(blockdev --getsz "$1") * 512 ))
+}
+
+function file_size() {
+	stat -c "%s" "$1"
+}
+
 if [[ -b "$SRC" ]]; then
 	SRC_IS_BLK=1
+	SRC_SIZE=$(blk_size "$SRC")
+else
+	SRC_SIZE=$(file_size "$SRC")
 fi
 
 if [[ -b "$DEST" ]]; then
 	DEST_IS_BLK=1
+	DEST_SIZE=$(blk_size "$DEST")
+else
+	DEST_SIZE=$(file_size "$DEST")
 fi
 
 function cleanup() {
@@ -46,14 +60,14 @@ trap cleanup_err ERR
 
 echo ":: truncate '$DEST' to size of '$SRC'"
 if ! (( DEST_IS_BLK )); then
-	rm -f "$DEST"
-	if (( SRC_IS_BLK )); then
-		truncate --size $(( $(blockdev --getsz "$SRC") * 512 )) "$DEST"
+	if (( DEST_SIZE >= SRC_SIZE )); then
+		echo "   -> not truncating block device $DEST of size $DEST_SIZE >= $SRC_SIZE"
 	else
-		truncate --reference "$SRC" "$DEST"
+		echo "   -> block device $DEST is of size $DEST_SIZE < $SRC_SIZE, cannot proceed"
 	fi
 else
-	echo "   -> not truncating block device $DEST"
+	rm -f "$DEST"
+	truncate --size "$SRC_SIZE" "$DEST"
 fi
 echo
 
@@ -81,23 +95,23 @@ echo
 
 echo ":: setup loop devices..."
 if (( SRC_IS_BLK )); then
-	SRC_LOOP=$(losetup -Pf --show "$SRC")
-	SRC_LOOP_PART_PREFIX="${SRC_LOOP}p"
-	echo "   -> '$SRC_LOOP' for '$SRC'"
-else
 	SRC_LOOP="$SRC"
 	SRC_LOOP_PART_PREFIX="$SRC"
 	echo "   -> skipping loopback for block device $SRC"
+else
+	SRC_LOOP=$(losetup -Pf --show "$SRC")
+	SRC_LOOP_PART_PREFIX="${SRC_LOOP}p"
+	echo "   -> '$SRC_LOOP' for '$SRC'"
 fi
 
 if (( DEST_IS_BLK )); then
-	DEST_LOOP=$(losetup -Pf --show "$DEST")
-	DEST_LOOP_PART_PREFIX="${DEST_LOOP}p"
-	echo "   -> '$DEST_LOOP' for '$DEST'"
-else
 	DEST_LOOP="$DEST"
 	DEST_LOOP_PART_PREFIX="$DEST"
 	echo "   -> skipping loopback for block device $DEST"
+else
+	DEST_LOOP=$(losetup -Pf --show "$DEST")
+	DEST_LOOP_PART_PREFIX="${DEST_LOOP}p"
+	echo "   -> '$DEST_LOOP' for '$DEST'"
 fi
 echo
 
