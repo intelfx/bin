@@ -8,4 +8,5 @@ vncviewer \
 	-PreferredEncoding=Tight \
 	-LowColorLevel=1 \
 	-FullColor=1 \
+	-DotWhenNoCursor \
 	"$@"
