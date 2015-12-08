@@ -24,7 +24,7 @@ if [[ -b "$DEST" ]]; then
 	DEST_IS_BLK=1
 	DEST_SIZE=$(blk_size "$DEST")
 else
-	DEST_SIZE=$(file_size "$DEST")
+	DEST_SIZE=$(file_size "$DEST" || echo 0)
 fi
 
 function cleanup() {
@@ -59,7 +59,7 @@ trap cleanup EXIT
 trap cleanup_err ERR
 
 echo ":: truncate '$DEST' to size of '$SRC'"
-if ! (( DEST_IS_BLK )); then
+if (( DEST_IS_BLK )); then
 	if (( DEST_SIZE >= SRC_SIZE )); then
 		echo "   -> not truncating block device $DEST of size $DEST_SIZE >= $SRC_SIZE"
 	else
@@ -116,7 +116,7 @@ fi
 echo
 
 echo ":: clone partitions..."
-for src_part in "$SRC_LOOP_PART_PREFIX"*; do
+for src_part in "$SRC_LOOP_PART_PREFIX"?*; do
 	partnr="${src_part#$SRC_LOOP_PART_PREFIX}"
 	dest_part="$DEST_LOOP_PART_PREFIX$partnr"
 
