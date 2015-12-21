@@ -29,7 +29,7 @@ select NEXT_ENTRY in "${POSSIBLE_ENTRIES_NAMES[@]}"; do
 	if ! [[ "$NEXT_ENTRY" ]]; then
 		echo "E: invalid entry selected." >&2
 	else
-		NEXT_ENTRY="${POSSIBLE_ENTRIES[$REPLY]}"
+		NEXT_ENTRY="${POSSIBLE_ENTRIES[$REPLY-1]}"
 		break
 	fi
 done
