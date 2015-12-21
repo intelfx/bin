@@ -3,6 +3,7 @@
 function suppress_filter() {
 	case "$1" in
 		"/SYSV"*) return 0 ;;
+		"/memfd:"*) return 0 ;;
 		"/drm mm object") return 0 ;;
 		"/run/user/"*) return 0 ;;
 		*"/dconf/user") return 0 ;;
