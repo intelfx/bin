@@ -1,42 +1,183 @@
 #!/bin/bash
 
+source ~/bin/framework/framework || exit
+
 VENDOR_UUID="4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
 CURRENT_ENTRY_VAR="LoaderEntrySelected"
 NEXT_ENTRY_VAR="LoaderEntryOneShot"
 
-set -e
+function usage() {
+	cat <<EOF
+efi-set-next -- an utility to pick next boot entry in
+                systemd-boot-specification-compliant bootloaders.
 
-CURRENT_ENTRY="$(efivar-crud read "$CURRENT_ENTRY_VAR-$VENDOR_UUID")"
-NEXT_ENTRY_VARIANT="$1"
+Usage: $0 [-c|--current] [-k|--kernel KERNEL] [-v|--variant VARIANT]
 
-echo "Current booted entry is '$CURRENT_ENTRY'." >&2
+Options:
+	-c, --current
+		Use current booted entry (kernel and variant may be overridden
+		separately).
 
-readarray -t POSSIBLE_ENTRIES < <(find /boot/loader/entries -mindepth 1 -maxdepth 1 -type f -iname "$(< /etc/machine-id)-*.conf" | sed -re 's|\.conf$||' | grep -v '+' | xargs -n1 basename)
-POSSIBLE_ENTRIES_NAMES=()
+	-k, --kernel KERNEL
+		Specify the kernel to boot.
 
-for entry in "${POSSIBLE_ENTRIES[@]}"; do
-	case "$entry" in
-	"${CURRENT_ENTRY%+*}")
-		POSSIBLE_ENTRIES_NAMES+=( "$entry (*)" )
+	-v, --variant VARIANT
+		Specify the variant of the kernel to boot.
+
+
+EOF
+}
+
+
+eval "$(__eh_enable exit)"
+
+ARGS="$(getopt --options "k:v:c" --long "kernel:,variant:,current" -- "$@")" || {
+	usage
+	exit 1
+}
+eval "set -- $ARGS"
+
+while true; do
+	case "$1" in
+	-k|--kernel)
+		shift
+		NEXT_ENTRY_KERNEL="$1"
+		;;
+
+	-c|--current)
+		NEXT_ENTRY_CURRENT=1
+		;;
+
+	-v|--variant)
+		shift
+		NEXT_ENTRY_VARIANT="$1"
+		;;
+	--)
+		shift
+		break
 		;;
 	*)
-		POSSIBLE_ENTRIES_NAMES+=( "$entry" )
+		die "Invalid argument: $(i_e "$1")"
 		;;
 	esac
+	shift
 done
 
-select NEXT_ENTRY in "${POSSIBLE_ENTRIES_NAMES[@]}"; do
-	if ! [[ "$NEXT_ENTRY" ]]; then
-		echo "E: invalid entry selected." >&2
-	else
-		NEXT_ENTRY="${POSSIBLE_ENTRIES[$REPLY-1]}"
-		break
+eh_assert "! (( $# ))" "Stray arguments: $(i_e "$*")"
+
+CURRENT_ENTRY="$(efivar-crud read "$CURRENT_ENTRY_VAR-$VENDOR_UUID")"
+
+notice "Current booted entry is $(i_n "$CURRENT_ENTRY")."
+
+CURRENT_ENTRY="${CURRENT_ENTRY#+([0-9a-fA-F])-}" # strip machine-id
+CURRENT_KERNEL="${CURRENT_ENTRY%+*}"
+CURRENT_VARIANT="${CURRENT_ENTRY#*+}"
+
+# Default to current entry, if asked.
+if (( NEXT_ENTRY_CURRENT )); then
+	if ! check_is_set NEXT_ENTRY_KERNEL; then
+		NEXT_ENTRY_KERNEL="$CURRENT_KERNEL"
 	fi
-done
+	if ! check_is_set NEXT_ENTRY_VARIANT; then
+		NEXT_ENTRY_VARIANT="$CURRENT_VARIANT"
+	fi
+fi
+
+readarray -t POSSIBLE_KERNELS \
+	< <(find /boot/loader/entries -mindepth 1 -maxdepth 1 -type f -iname "$(< /etc/machine-id)-*.conf" -printf "%P\n" \
+	    | sed -nre "s|^([0-9a-fA-F]+)-([^+]+)(\+.*)?\.conf|\2|p" \
+	    | sort -u)
+
+log "Possible kernels: $(printf "%s\n" "${POSSIBLE_KERNELS[@]}")"
+
+if ! check_is_set NEXT_ENTRY_KERNEL; then
+	# Ask user to select kernel, if not set.
+	POSSIBLE_KERNELS_LABELS=()
+	for kernel in "${POSSIBLE_KERNELS[@]}"; do
+		if [[ "$kernel" == "$CURRENT_KERNEL" ]]; then
+			POSSIBLE_KERNELS_LABELS+=( "$kernel (*)" )
+			HAVE_CURRENT_KERNEL=1
+		else
+			POSSIBLE_KERNELS_LABELS+=( "$kernel" )
+		fi
+	done
+
+	echo "Choose kernel:"
+	select CHOICE in "${POSSIBLE_KERNELS_LABELS[@]}"; do
+		if ! [[ "$REPLY" ]] && (( HAVE_CURRENT_KERNEL )); then
+			echo "Selecting current kernel."
+			NEXT_ENTRY_KERNEL="$CURRENT_KERNEL"
+			break
+		elif [[ "$CHOICE" ]]; then
+			NEXT_ENTRY_KERNEL="${POSSIBLE_KERNELS[REPLY - 1]}"
+			break
+		else
+			echo "Invalid input."
+		fi
+	done
+else
+	# Otherwise, validate non-interactive selection.
+	for kernel in "${POSSIBLE_KERNELS[@]}"; do
+		if [[ "$kernel" == "$NEXT_ENTRY_KERNEL" ]]; then
+			HAVE_NEXT_KERNEL=1
+		fi
+	done
+
+	eh_assert "(( HAVE_NEXT_KERNEL ))" "Specified kernel $(i_n "$NEXT_ENTRY_KERNEL") does not exist"
+fi
+
+eh_assert "check_is_set NEXT_ENTRY_KERNEL" "Kernel not selected"
+
+readarray -t POSSIBLE_VARIANTS \
+	< <(find /boot/loader/entries -mindepth 1 -maxdepth 1 -type f -iname "$(< /etc/machine-id)-$NEXT_ENTRY_KERNEL*.conf" -printf "%P\n" \
+	    | sed -nre "s|^([0-9a-fA-F]+)-([^+]+)(\+(.*))?\.conf|\4|p" \
+	    | sort -u)
+
+if ! check_is_set NEXT_ENTRY_VARIANT; then
+	# Ask user to select variant, if not set.
+	POSSIBLE_VARIANTS_LABELS=()
+
+	echo "Choose variant:"
+	for variant in "${POSSIBLE_VARIANTS[@]}"; do
+		variant_label="${variant:-"(none)"}"
+
+		if [[ "$variant" == "$CURRENT_VARIANT" ]]; then
+			POSSIBLE_VARIANTS_LABELS+=( "$variant_label (*)" )
+			HAVE_CURRENT_VARIANT=1
+		else
+			POSSIBLE_VARIANTS_LABELS+=( "$variant_label" )
+		fi
+	done
+
+	select CHOICE in "${POSSIBLE_VARIANTS_LABELS[@]}"; do
+		if ! [[ "$REPLY" ]] && (( HAVE_CURRENT_VARIANT )); then
+			echo "Selecting current variant."
+			NEXT_ENTRY_VARIANT="$CURRENT_VARIANT"
+			break
+		elif [[ "$CHOICE" ]]; then
+			NEXT_ENTRY_VARIANT="${POSSIBLE_VARIANTS[REPLY - 1]}"
+			break
+		else
+			echo "Invalid input."
+		fi
+	done
+else
+	# Otherwise, validate non-interactive selection.
+	for variant in "${POSSIBLE_VARIANTS[@]}"; do
+		if [[ "$variant" == "$NEXT_ENTRY_VARIANT" ]]; then
+			HAVE_NEXT_VARIANT=1
+		fi
+	done
+
+	eh_assert "(( HAVE_NEXT_VARIANT ))" "Specified variant $(i_n "$NEXT_ENTRY_VARIANT") does not exist"
+fi
+
+eh_assert "check_is_set NEXT_ENTRY_VARIANT" "Variant not selected"
 
 if [[ "$NEXT_ENTRY_VARIANT" ]]; then
-	echo "Next variant to boot is '$NEXT_ENTRY_VARIANT'."
-	NEXT_ENTRY+="+$NEXT_ENTRY_VARIANT"
+	NEXT_ENTRY="$(< /etc/machine-id)-$NEXT_ENTRY_KERNEL+$NEXT_ENTRY_VARIANT"
+else
+	NEXT_ENTRY="$(< /etc/machine-id)-$NEXT_ENTRY_KERNEL"
 fi
 
 echo "Next booted entry will be '$NEXT_ENTRY'."
