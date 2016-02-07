@@ -1,6 +1,0 @@
-#!/bin/sh
-
-for i in "$@"
-do
-        echo "2k $i 32 - 5 * 9 / p" | dc
-done
