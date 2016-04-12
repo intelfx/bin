@@ -10,7 +10,11 @@ function blk_size() {
 }
 
 function file_size() {
-	stat -c "%s" "$1"
+	if [[ -f "$1" ]]; then
+		stat -c "%s" "$1"
+	else
+		echo 0
+	fi
 }
 
 if [[ -b "$SRC" ]]; then
@@ -132,6 +136,8 @@ for src_part in "$SRC_LOOP_PART_PREFIX"?*; do
 	if [[ "$part_type" ]] && type -t partclone.$part_type &>/dev/null; then
 		echo "using 'partclone.$part_type'"
 		"partclone.$part_type" -b -s "$src_part" -O "$dest_part"
+	elif [[ "$part_type" == "swap" ]]; then
+		echo "not copying or recreating swapspace label '$(blkid "$src_part" -o value -s LABEL)' uuid '$(blkid "$src_part" -o value -s UUID)'"
 	else
 		echo "using partclone.dd"
 		partclone.dd -s "$src_part" -O "$dest_part"
