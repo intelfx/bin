@@ -1,0 +1,7 @@
+#!/bin/bash
+
+for bzImage in /lib/modules/*/bzImage; do
+	tmp=(${bzImage//\// })
+	version="${tmp[-2]}"
+	kernel-install add "$version" "$bzImage"
+done
