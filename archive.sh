@@ -6,10 +6,14 @@
 declare -A ARCHIVERS
 ARCHIVERS=(
 	[xz]="xz -9e"
+	[xzfast]="xz -1"
 	[gz]="gzip -9"
+	[gzfast]="gzip -1"
 	[bz2]="bzip2 -9"
 	[7z]="7z a -t7z -mx=9 -ms=on -mf=on -mhc=on -mmt=2 -m0=LZMA2:a=1:d=30"
 	[lzop]="lzop"
+	[lzopfast]="lzop -1"
+	[lzopbest]="lzop -9"
 	[lrzip]="lrzip"
 )
 
