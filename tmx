@@ -10,10 +10,9 @@
 # ------------------------------------------------------------------------------
 
 function check_session() {
-	local postfix="$1"
-	shift
+	local suffix="$1"
 
-	"${tmux[@]}" -L "session-$postfix" list-sessions -F "#S" 2>/dev/null | grep -q "$base_session-$postfix"
+	"${tmux[@]}" -L "session-$suffix" list-sessions -F "#S" 2>/dev/null | grep -q "$base_session-$suffix"
 }
 
 tmux=( "tmux" )
@@ -32,7 +31,7 @@ new_session="${base_session}-$$"
 # Count tmux sessions (1 master + N slaves).
 # If there are no slave sessions, do not create new windows.
 if (( $("${tmux[@]}" ls | wc -l) > 1 )); then
-	NEW_WINDOW_COMMAND=("new-window" "$*" ";")
+	NEW_WINDOW_COMMAND=( "new-window" "$@" ";" )
 fi
 
 # Create a new session (without attaching it) and link to base session to share windows
