@@ -137,7 +137,11 @@ for src_part in "$SRC_LOOP_PART_PREFIX"?*; do
 		echo "using 'partclone.$part_type'"
 		"partclone.$part_type" -b -s "$src_part" -O "$dest_part"
 	elif [[ "$part_type" == "swap" ]]; then
-		echo "not copying or recreating swapspace label '$(blkid "$src_part" -o value -s LABEL)' uuid '$(blkid "$src_part" -o value -s UUID)'"
+		echo "recreating swapspace label '$(blkid "$src_part" -o value -s LABEL)' uuid '$(blkid "$src_part" -o value -s UUID)'"
+		mkswap \
+			-L "$(blkid "$src_part" -o value -s LABEL)" \
+			-U "$(blkid "$src_part" -o value -s UUID)" \
+			"$dest_part"
 	else
 		echo "using partclone.dd"
 		partclone.dd -s "$src_part" -O "$dest_part"
