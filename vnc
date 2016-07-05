@@ -4,9 +4,10 @@ vncviewer \
 	-FullScreen=1 \
 	-PasswordFile=$HOME/.vnc/passwd \
 	-MenuKey=Insert \
-	-NoJPEG \
 	-PreferredEncoding=Tight \
+	-AutoSelect=0 \
+	-FullColor=0 \
 	-LowColorLevel=1 \
-	-FullColor=1 \
+	-QualityLevel=8 \
 	-DotWhenNoCursor \
 	"$@"
