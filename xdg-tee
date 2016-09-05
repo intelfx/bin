@@ -1,0 +1,6 @@
+#!/bin/bash
+
+FILE="$(mktemp)"
+trap "rm -f \"$FILE\"" EXIT
+cat > "$FILE"
+xdg-open "$FILE" &
