@@ -34,6 +34,10 @@ if (( $("${tmux[@]}" ls | wc -l) > 1 )); then
 	NEW_WINDOW_COMMAND=( "new-window" "$@" ";" )
 fi
 
+if ! "${tmux[@]}" has-session -t "$base_session"; then
+	systemd-run --user --service-type=forking  -p KillMode=control-group tmux new-session -s "$USER" -d
+fi
+
 # Create a new session (without attaching it) and link to base session to share windows
 # Attach to the new session & kill it once orphaned
 exec "${tmux[@]}" new-session -d -t "$base_session" -s "$new_session" \; \
