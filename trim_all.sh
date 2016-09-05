@@ -28,10 +28,13 @@ TRIM_RANGE_END="$(( DISK_SIZE - 1 ))"
 perform_trim
 
 echo ""
-echo "-- Issuing trim of ${#TRIM_RANGES[@]} range(s)"
 
-(( CONFIRM_DESTROY )) || exit
+if ! (( CONFIRM_DESTROY )); then
+	echo "-- Not issuing trim of ${#TRIM_RANGES[@]} range(s), pass CONFIRM_DESTROY=1 to perform actions"
+else
+	echo "-- Issuing trim of ${#TRIM_RANGES[@]} range(s)"
 
-for range in "${TRIM_RANGES[@]}"; do
-	echo "$range"
-done | hdparm --trim-sector-ranges-stdin --please-destroy-my-drive "$DISK"
+	for range in "${TRIM_RANGES[@]}"; do
+		echo "$range"
+	done | hdparm --trim-sector-ranges-stdin --please-destroy-my-drive "$DISK"
+fi
