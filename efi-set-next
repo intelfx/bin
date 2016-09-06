@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source "${BASH_SOURCE##*/}/framework/src/framework" || exit
+source "${BASH_SOURCE%/*}/framework/src/framework" || exit
 
 VENDOR_UUID="4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
 CURRENT_ENTRY_VAR="LoaderEntrySelected"

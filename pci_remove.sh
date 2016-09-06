@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source "${BASH_SOURCE##*/}/framework/src/framework" || exit
+source "${BASH_SOURCE%/*}/framework/src/framework" || exit
 
 PCI_ID="$1"
 
