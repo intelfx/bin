@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+shopt -s extglob
 
 SRC="$1"
 DEST="$2"
@@ -100,29 +101,34 @@ echo
 echo ":: setup loop devices..."
 if (( SRC_IS_BLK )); then
 	SRC_LOOP="$SRC"
-	SRC_LOOP_PART_PREFIX="$SRC"
 	echo "   -> skipping loopback for block device $SRC"
 else
 	SRC_LOOP=$(losetup -Pf --show "$SRC")
-	SRC_LOOP_PART_PREFIX="${SRC_LOOP}p"
 	echo "   -> '$SRC_LOOP' for '$SRC'"
 fi
 
 if (( DEST_IS_BLK )); then
 	DEST_LOOP="$DEST"
-	DEST_LOOP_PART_PREFIX="$DEST"
 	echo "   -> skipping loopback for block device $DEST"
 else
 	DEST_LOOP=$(losetup -Pf --show "$DEST")
-	DEST_LOOP_PART_PREFIX="${DEST_LOOP}p"
 	echo "   -> '$DEST_LOOP' for '$DEST'"
 fi
 echo
 
+function arg_exists() { [[ -e "$1" ]]; }
+
 echo ":: clone partitions..."
-for src_part in "$SRC_LOOP_PART_PREFIX"?*; do
-	partnr="${src_part#$SRC_LOOP_PART_PREFIX}"
-	dest_part="$DEST_LOOP_PART_PREFIX$partnr"
+for src_part in "$SRC_LOOP"?*; do
+	# determine source partition number, accounting for two different naming schemas (diskXY and diskXpY)
+	partnr="${src_part##$SRC_LOOP?(p)}"
+
+	# determine destination naming schema
+	if arg_exists "${DEST_LOOP}p"*; then
+		dest_part="${DEST_LOOP}p${partnr}"
+	else
+		dest_part="${DEST_LOOP}${partnr}"
+	fi
 
 	part_type="$(blkid "$src_part" -o value -s TYPE)"
 	echo -n "   -> '$src_part' "
