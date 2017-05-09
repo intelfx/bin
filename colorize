@@ -1,8 +1,15 @@
 #!/bin/bash
 
+config_path="$(systemd-path user-configuration)"
+
 # $1: whether to enable dark (1 or 0)
 function adjust_gtk3() {
-	git config --file="$HOME/.config/gtk-3.0/settings.ini" Settings.gtk-application-prefer-dark-theme "$1"
+	local gtk3_theme=( Arc Arc-Dark )
+	local shell_theme=( Arc Arc-Dark )
+
+	git config --file="$config_path/gtk-3.0/settings.ini" Settings.gtk-application-prefer-dark-theme "$1"
+	dconf write /org/gnome/desktop/interface/gtk-theme "'${gtk3_theme[$1]}'"
+	dconf write /org/gnome/shell/extensions/user-theme/name "'${shell_theme[$1]}'"
 }
 
 function adjust_gedit() {
@@ -27,17 +34,20 @@ function adjust_builder() {
 
 function adjust_kde() {
 	local kdeglobals=( light dark )
-	local config_path="$(systemd-path user-configuration)"
+	local icon_theme=( breeze breeze-dark )
 
+	# Configure Breeze
 	cp -a "$config_path/kdeglobals-${kdeglobals[$1]}" "$config_path/kdeglobals"
 	kbuildsycoca5
+
+	# Configure qt5ct
+	sed -re "s|^icon_theme=.*|icon_theme=${icon_theme[$1]}|" -i "$config_path/qt5ct/qt5ct.conf"
 }
 
 function adjust_kate() {
 	local schema=( "Solarized (light)" "Solarized (dark)" )
-	local config_path="$(systemd-path user-configuration)/katepartrc"
 
-	sed -re "s|^Schema=.*|Schema=${schema[$1]}|" -i "$config_path"
+	sed -re "s|^Schema=.*|Schema=${schema[$1]}|" -i "$config_path/katepartrc"
 }
 
 MODE=()
