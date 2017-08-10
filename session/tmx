@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Check whether a per-session tmux is running for session $1
+# (implemented as a predefined root session name under a predefined custom socket).
+function check_session() {
+	"${tmux[@]}" -L "session-$1" list-sessions -F "#S" 2>/dev/null | grep -q "$base_session-$1"
+}
+
+tmux=( "tmux" )
+
+# Use our username to name tmux sessions.
+base_session="$USER"
+
+# If there is a per-session tmux for current xdg session, use it.
+if [[ "$XDG_SESSION_ID" ]] && check_session "$XDG_SESSION_ID"; then
+	tmux+=( "-L" "session-$XDG_SESSION_ID" )
+	base_session+="-$XDG_SESSION_ID"
+fi
+
+# Use our PID to name the slave session.
+new_session="$base_session-$$"
+
+# Count tmux sessions (1 master + N slaves).
+# If this is the first slave session being opened, do not create a new window.
+# However, if we are told to open in a non-standard directory or if we are given a command,
+# create a new window anyway and pass cwd/command to it.
+if (( $("${tmux[@]}" ls | wc -l) > 1 )) || [[ "$(pwd)" != "$HOME"  ]] || (( $# > 0 )); then
+	NEW_WINDOW_COMMAND=( "new-window" "-c" "$(pwd)" "$@" ";" )
+fi
+
+# cd to a sane path to avoid tmux holding a removable drive even when the offending pane is closed
+cd "$HOME"
+
+if ! "${tmux[@]}" has-session -t "$base_session"; then
+	systemd-run --user --service-type=forking  -p KillMode=control-group tmux new-session -s "$USER" -d
+fi
+
+# Create a new session (without attaching it) and link to base session to share windows
+# Attach to the new session & kill it once orphaned
+exec "${tmux[@]}" new-session -d -t "$base_session" -s "$new_session" \; \
+                  attach-session -t "$new_session" \; \
+                  "${NEW_WINDOW_COMMAND[@]}" \
+                  set-option destroy-unattached

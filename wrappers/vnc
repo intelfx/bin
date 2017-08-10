@@ -9,5 +9,6 @@ vncviewer \
 	-FullColor=0 \
 	-LowColorLevel=1 \
 	-QualityLevel=8 \
+	-NoJpeg=0 \
 	-DotWhenNoCursor \
 	"$@"

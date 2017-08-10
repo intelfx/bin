@@ -16,11 +16,13 @@ while (( $# )); do
 		;;
 
 	*)
-		VNC_ARGS+=( "$1" )
+		VNC_ARGS+=( "'$1'" )
 	esac
 
 	shift
 done
+
+VNC_ARGS+=( "'localhost:${VNC_DISPLAY}'" )
 
 UNIT_FILE_PREFIX="vnc-ssh-$$"
 UNIT_DIR="$XDG_RUNTIME_DIR/systemd/user"
@@ -47,14 +49,7 @@ After=$UNIT_FILE_PREFIX-ssh.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/vncviewer \
-	-FullScreen=1 \
-	-MenuKey=Insert \
-	-NoJPEG \
-	-PreferredEncoding=Tight \
-	-LowColorLevel=1 \
-	-FullColor=1 ${VNC_ARGS[*]} \
-	localhost:${VNC_DISPLAY}
+ExecStart=$HOME/bin/vnc ${VNC_ARGS[*]}
 KillMode=control-group
 Environment=DISPLAY=$DISPLAY
 EOF

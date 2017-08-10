@@ -1,0 +1,28 @@
+#!/bin/bash
+
+queries=()
+pathes=()
+assignments=()
+flags=()
+
+for arg; do
+	if [[ "$arg" == -* ]]; then
+		flags+=( "$arg" )
+	elif [[ "$arg" == /* ]]; then
+		pathes+=( "path:$arg" , )
+	elif [[ "$arg" == */* ]]; then
+		pathes+=( "path:$(pwd)/$arg" , )
+	elif [[ "$arg" == ^* ]] || [[ "$arg" == -* ]] || [[ "$arg" == *:* ]]; then
+		queries+=( "$arg" , )
+	elif [[ "$arg" == *=* ]] || [[ "$arg" == *! ]]; then
+		assignments+=( "$arg" )
+	else
+		pathes+=( "path:$(pwd)/$arg" , )
+	fi
+done
+
+if (( "${#pathes[@]}" )); then
+	unset pathes[-1] # remove last comma
+fi
+
+exec beet modify "${queries[@]}" "${pathes[@]}" "${assignments[@]}"
