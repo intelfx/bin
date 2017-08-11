@@ -188,3 +188,11 @@ if sftp_need_download:
 	                      stdout=sys.stderr,
 	                      universal_newlines=True,
 	                      check=True)
+
+# Finally, remove the temporary directory.
+
+ssh_rmtemp = subprocess.run(ssh_slave_cmdline + [ "rm", "-r", work_path ],
+                            stdin=subprocess.DEVNULL,
+                            stdout=sys.stderr,
+                            universal_newlines=True,
+                            check=True)
