@@ -1,22 +1,24 @@
 #!/bin/bash
 
 INTERFACE="${1:-wlan0}"
-MONITOR="$INTERFACE-mon"
 
 function bring_back_up() {
 	local __r=$?
-	iw dev "$MONITOR" del
-	systemctl unmask NetworkManager
-	systemctl start NetworkManager
-	return $__r
+	trap - ERR EXIT
+	sleep 0.5
+
+	echo "-- Restoring"
+	systemctl start wpa_supplicant
+	nmcli device connect "$INTERFACE"
+	exit $__r
 }
 
 trap bring_back_up ERR EXIT
 
-systemctl mask NetworkManager
-systemctl stop --no-block NetworkManager
-systemctl kill NetworkManager
+echo "-- Preparing"
+nmcli device disconnect "$INTERFACE" ||:
 systemctl stop wpa_supplicant
-iw dev "$INTERFACE" interface add "$MONITOR" type monitor
-rfkill unblock wlan
-horst -i "$MONITOR"
+ip link set "$INTERFACE" down
+
+sleep 0.5
+horst -i "$INTERFACE"
