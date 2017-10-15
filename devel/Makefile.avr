@@ -184,8 +184,9 @@ CC=avr-gcc
 OBJCOPY=avr-objcopy
 OBJDUMP=avr-objdump
 SIZE=avr-size
-AVRDUDE=avrdude
 REMOVE=rm -f
+
+AVRDUDE?=avrdude
 
 ##### automatic target names ####
 TRG=$(PROJECTNAME).out
@@ -242,7 +243,7 @@ stats: $(TRG)
 hex: $(HEXTRG)
 
 
-writeflash: all
+flash: all
 	$(AVRDUDE) -p $(PROGRAMMER_MCU) -e -U flash:w:$(TRG):e $(AVRDUDE_ARGS)
 
 install: writeflash
