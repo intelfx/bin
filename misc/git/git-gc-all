@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -e
+
+git reflog expire --expire=now --all
+git repack -a -d -f --depth=250 --window=250 --unpack-unreachable=now "$@"
+git prune --expire=now

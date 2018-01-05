@@ -11,7 +11,7 @@ function locker() {
 }
 
 scrot "${SCREENSHOT}"
-process convert -blur 0x5
+process env MAGICK_OCL_DEVICE=OFF convert -blur 0x5
 
 if [[ "$XSS_SLEEP_LOCK_FD" ]]; then
 	locker {XSS_SLEEP_LOCK_FD}<&-

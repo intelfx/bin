@@ -1,0 +1,9 @@
+#!/bin/sh
+#
+# Status output if running on terminal
+#
+if [[ -t 2 && -t 1 ]]; then
+	exec colordiff "$@"
+else
+	exec diff "$@"
+fi

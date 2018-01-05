@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 FILE="$(mktemp)"
 trap "rm -f \"$FILE\"" EXIT

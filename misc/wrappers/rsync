@@ -1,0 +1,9 @@
+#!/bin/sh
+#
+# Status output if running on terminal
+#
+if [[ -t 2 && -t 1 ]]; then
+	exec rsync --info=progress2 --human-readable "$@"
+else
+	exec rsync "$@"
+fi

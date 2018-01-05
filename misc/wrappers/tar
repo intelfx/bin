@@ -1,0 +1,9 @@
+#!/bin/sh
+#
+# Status output if running on terminal
+#
+if [[ -t 2 && -t 1 ]]; then
+	exec tar --checkpoint=1000 --checkpoint-action=ttyout=%c "$@"
+else
+	exec tar "$@"
+fi

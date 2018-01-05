@@ -1,0 +1,6 @@
+#!/bin/bash
+
+if (( $# == 0 )); then
+	set -- $(git rev-list --tags --max-count=1)
+fi
+exec git describe --tags --abbrev=0 "$@"
