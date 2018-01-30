@@ -1,5 +1,11 @@
 #!/bin/bash
 
+function dbg() {
+	if (( LIBSH_DEBUG )); then
+		echo "DBG: $*" >&2
+	fi
+}
+
 function log() {
 	echo ":: $*" >&2
 }
