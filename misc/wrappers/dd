@@ -2,8 +2,8 @@
 #
 # Status output if running on terminal
 #
-if [[ -t 2 && -t 1 ]]; then
-	exec dd status=progress "$@"
+if [[ -t 2 && -t 1 && -t 0 ]]; then
+	exec /usr/bin/dd status=progress "$@"
 else
-	exec dd "$@"
+	exec /usr/bin/dd "$@"
 fi

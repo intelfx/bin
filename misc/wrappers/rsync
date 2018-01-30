@@ -2,8 +2,8 @@
 #
 # Status output if running on terminal
 #
-if [[ -t 2 && -t 1 ]]; then
-	exec rsync --info=progress2 --human-readable "$@"
+if [[ -t 2 && -t 1 && -t 0 ]]; then
+	exec /usr/bin/rsync --info=progress2 --human-readable "$@"
 else
-	exec rsync "$@"
+	exec /usr/bin/rsync "$@"
 fi

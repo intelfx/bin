@@ -2,8 +2,8 @@
 #
 # Status output if running on terminal
 #
-if [[ -t 2 && -t 1 ]]; then
-	exec colordiff "$@"
+if [[ -t 2 && -t 1 && -t 0 ]]; then
+	exec /usr/bin/colordiff "$@"
 else
-	exec diff "$@"
+	exec /usr/bin/diff "$@"
 fi
