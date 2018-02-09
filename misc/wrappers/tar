@@ -2,7 +2,9 @@
 #
 # Status output if running on terminal
 #
-if [[ -t 2 && -t 1 && -t 0 ]]; then
+
+# tar: only do this if tar is invoked in UNIX or GNU style, otherwise the parsing will break (tar won't recognize traditional style options after dashed ones)
+if [[ -t 2 && "$1" == -* ]]; then
 	exec /usr/bin/tar --checkpoint=1000 --checkpoint-action=ttyout=%c "$@"
 else
 	exec /usr/bin/tar "$@"
