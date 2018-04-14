@@ -6,27 +6,51 @@ import tempfile
 import logging
 import yaml
 
+# TODO: mutable container modifications are honored (attr-converted) only for dict itself
+# i. e. `an_attrdict['newindex'] = { 'some': 'dict' }` will work, but
+# `an_attrdict['newindex'].append({ 'some': 'dict' }` won't convert the new dict
 class attrdict(dict):
+	# attr-convert: recursively convert dict -> attrdict in all known containers
+	@staticmethod
+	def _convert(v):
+		if isinstance(v, dict) and not isinstance(v, attrdict):
+			return attrdict(v)
+		if isinstance(v, list):
+			return attrdict._list(v)
+		if isinstance(v, set):
+			return attrdict._set(v)
+		return v
+
+
+	# "attrlist" fake object: list, recursively attr-converted
+	@staticmethod
+	def _list(obj):
+		return [ attrdict._convert(x) for x in obj ]
+
+
+	# "attrset" fake object: set, recursively attr-converted
+	@staticmethod
+	def _set(obj):
+		return { attrdict._convert(x) for x in obj }
+
+
+	# "attrdict" object: dict, recursively attr-converted,
+	# plus actual attr-property: attribute access translates to index access
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 		# Recursively convert dict -> attrdict
 		for k, v in self.items():
-			if isinstance(v, dict) and not isinstance(v, attrdict):
-				super().__setitem__(k, attrdict(v))
+			super().__setitem__(k, attrdict._convert(v))
 		# Magic!
 		self.__dict__ = self
 
 
 	def __setitem__(self, k, v):
-		if isinstance(v, dict) and not isinstance(v, attrdict):
-			v = attrdict(v)
-		super().__setitem__(k, v)
+		super().__setitem__(k, attrdict._convert(v))
 
 
 	def __setattr__(self, k, v):
-		if isinstance(v, dict) and not isinstance(v, attrdict):
-			v = attrdict(v)
-		super().__setattr__(k, v)
+		super().__setattr__(k, attrdict._convert(v))
 
 
 	@staticmethod
