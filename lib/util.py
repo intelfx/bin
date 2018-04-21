@@ -71,6 +71,10 @@ class attrdict(dict):
 		return dumper.represent_dict(data)
 
 
+def attrconvert(data):
+	return attrdict._convert(data)
+
+
 yaml.add_constructor(u'!attrdict', attrdict.from_yaml)
 for rep, fun in (
 	(yaml.representer.SafeRepresenter, attrdict.to_yaml_safe),
