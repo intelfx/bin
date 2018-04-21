@@ -1,0 +1,12 @@
+#!/bin/bash
+
+exec valgrind \
+	--tool=memcheck \
+	--read-inline-info=yes \
+	--read-var-info=yes \
+	--leak-check=full \
+	--show-leak-kinds=all \
+	--track-origins=yes \
+	--expensive-definedness-checks=yes \
+	--freelist-vol=$((1*1024*1024*1024)) \
+	"$@"
