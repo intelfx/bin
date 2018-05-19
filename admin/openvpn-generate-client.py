@@ -47,6 +47,7 @@ args = parser.parse_args()
 
 server_config_dir = p.dirname(args.server_config)
 
+
 def nop(*args):
 	pass
 
@@ -88,6 +89,12 @@ def handle_tls_auth(key, value):
 	out(f'key-direction {re_direction[direction]}')
 	handle_inline_file(key, filename)
 
+def handle_compression(key, value):
+	# NetworkManager's openvpn plugin does not recognize `compress` while
+	# parsing .ovpn, so include old `comp-lzo` for its sake too
+	# FIXME: invent something better
+	out('comp-lzo no')
+	out('compress')
 
 options = {
 	'proto': handle_proto,
@@ -95,18 +102,22 @@ options = {
 	'dev': handle_copy,
 	'cipher': handle_copy,
 	'auth': handle_copy,
-	'compress': lambda *args: out('compress'),
-	'comp-lzo': lambda *args: out('comp-lzo no'),
+	'compress': handle_compression,
+	'comp-lzo': handle_compression,
 	'ca': handle_inline_file,
 	'tls-auth': handle_tls_auth,
+	'tls-crypt': handle_inline_file,
 }
 
 # server hostname
 for server in args.server_host:
 	out(f'remote {server}')
 
-# TLS client
-out(f'tls-client')
+# misc client options
+out(f'client')
+out(f'persist-key')
+out(f'persist-tun')
+out(f'remote-cert-tls server')
 
 # server options
 comment = re.compile(' *(#.*)?\n')
