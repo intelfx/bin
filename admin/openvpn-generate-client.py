@@ -8,17 +8,29 @@ import argparse
 import re
 import sys
 import os.path as p
+import tempfile
+import os
 
 
 #
 # main
 #
 
+# URI syntax: ssh://user@host[:port]/path
+ssh_uri_re = re.compile('ssh://(?P<user>[^@]+)@(?P<host>[^:/]+)(:(?P<port>[0-9]+))?(?P<path>/.*)')
+# scp/sshfs syntax: user@host:path
+ssh_scp_re = re.compile('(?P<user>[^@]+)@(?P<host>[^:]+):(?P<path>.+)')
+
 parser = argparse.ArgumentParser()
-parser.add_argument('--server-config', required=True,
-	help='OpenVPN server configuration file'
+server_grp = parser.add_mutually_exclusive_group(required=True)
+server_grp.add_argument('--server-config',
+	help='Path to OpenVPN server configuration file'
 )
-parser.add_argument('--server-host', required=True, action='append',
+server_grp.add_argument('--server-config-ssh',
+	help='Path to OpenVPN server configuration file, reachable via SSH (user@host:path or ssh://user@host[:port]/path)',
+	type=lambda arg: ssh_uri_re.fullmatch(arg) or ssh_scp_re.fullmatch(arg)
+)
+parser.add_argument('--server-host', action='append', default=[],
 	help='OpenVPN server address (may be specified more than once)'
 )
 parser.add_argument('--client-key',
@@ -45,7 +57,49 @@ parser.add_argument('-o', '--output', type=argparse.FileType('w'), default=sys.s
 )
 args = parser.parse_args()
 
-server_config_dir = p.dirname(args.server_config)
+# parse server config path
+
+class SSHFS:
+	def __init__(self, *, user, host, port, path):
+		self._mountpoint = tempfile.mkdtemp(prefix='openvpn-generate-client-sshfs')
+
+		ssh_mount = [ '/usr/bin/sshfs', f'{user}@{host}:{path}' ]
+		if port is not None:
+			ssh_mount += [ '-p', f'{port}' ]
+		ssh_mount += [ self._mountpoint ]
+
+		lib.run(args=ssh_mount)
+
+	def __del__(self):
+		umount = [ '/usr/bin/fusermount', '-u', self._mountpoint ]
+		try:
+			lib.run(args=umount)
+		finally:
+			os.rmdir(self._mountpoint)
+
+	def __str__(self):
+		return self._mountpoint
+
+	def mountpoint(self):
+		return self._mountpoint
+
+
+server_host = args.server_host
+if 'server_config_ssh' in args:
+	server_config_ssh = args.server_config_ssh.groupdict()
+	server_sshfs = SSHFS(
+		user=server_config_ssh['user'],
+		host=server_config_ssh['host'],
+		port=server_config_ssh.get('port') or 22,
+		path=p.dirname(server_config_ssh['path'])
+	)
+	server_config_dir = server_sshfs.mountpoint()
+	server_config = p.join(server_sshfs.mountpoint(), p.basename(server_config_ssh['path']))
+	if not server_host:
+		server_host = [ server_config_ssh['host'] ]
+else:
+	server_config_dir = p.dirname(args.server_config)
+	server_config = args.server_config
 
 
 def nop(*args):
@@ -124,7 +178,7 @@ comment = re.compile(' *(#.*)?\n')
 for line in [
 	comment.sub('', line)
 	for line
-	in open(args.server_config, 'r')
+	in open(server_config, 'r')
 	if not comment.fullmatch(line)
 ]:
 	line_split = line.split(sep=None, maxsplit=1)
