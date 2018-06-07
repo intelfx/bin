@@ -1,0 +1,3 @@
+[submodule "git/git-branch-tools"]
+	path = git/git-branch-tools
+	url = https://github.com/whot/git-branch-tools
