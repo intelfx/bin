@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+
+import lib
+
+import argparse
+import re
+import subprocess
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--recovery', help='Display only recovery key GUIDs', action='store_true')
+parser.add_argument('-1', help='Display only first matching key GUID', action='store_true', dest='single')
+parser.add_argument('volume')
+args = parser.parse_args()
+
+guid_re = '[0-9A-F]{8}(?:-[0-9A-F]{4}){3}-[0-9A-F]{12}'
+recovery_key_re = f'(?<=Recovery Key GUID: \'){guid_re}(?=\')'
+
+dislocker_metadata = lib.run(
+	args=[ 'dislocker-metadata', '-V', args.volume ],
+	stdout=subprocess.PIPE,
+)
+
+keys = []
+
+if args.recovery:
+	keys += re.findall(recovery_key_re, dislocker_metadata.stdout)
+
+if args.single:
+	keys = keys[:1]
+
+for key in keys:
+	print(key)
