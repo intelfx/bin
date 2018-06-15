@@ -1,0 +1,23 @@
+#!/bin/bash -e
+
+. lib.sh
+
+if [[ -z "$1" || "$1" = '-' ]]; then
+	DATA="$(cat)"
+else
+	DATA="$1"
+fi
+
+if [[ "$DATA" =~ ^data:([^;]+)\;base64,(.+)$ ]]; then
+	MIME="${BASH_REMATCH[1]}"
+	BASE64="${BASH_REMATCH[2]}"
+else
+	log "undata.sh: invalid or unsupported input: $(printf "%.10s <...>" "$DATA")"
+	exit 1
+fi
+
+# decode URL64
+BASE64="$(urldecode "$BASE64")"
+
+log "undata.sh: MIME: '$MIME'"
+base64 -d <<< "$BASE64"

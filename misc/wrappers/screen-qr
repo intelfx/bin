@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -e
+
+trap 'rm "$FILE"' EXIT
+FILE="$(mktemp --suffix .png)"
+gnome-screenshot -a -f "$FILE"
+if TEXT=$(zbarimg --raw "$FILE"); then
+	notify-send 'Barcode recognized' "$TEXT" ||:
+	xsel -b <<< "$TEXT" ||:
+else
+	notify-send 'Failed to recognize a Barcode'
+fi
