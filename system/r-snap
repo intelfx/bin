@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+
+import sys
+import logging
+import lib
+import subprocess
+import os
+import os.path as p
+import atexit
+
+import datetime
+import dateutil.tz
+
+
+now = datetime.datetime.now(dateutil.tz.gettz())
+
+_subvolumes = dict()
+
+class Subvol:
+	def __init__(self, subvol):
+		self.subvol = subvol
+		self.snapshot = None
+
+	def _snapshot_path(self):
+		return p.join(self.subvol, '.snap', f'r-snap-{now.isoformat()}')
+
+	def make_snapshot(self):
+		if self.snapshot is None:
+			snapshot = self._snapshot_path()
+			logging.info(f'subvol snapshot: {self.subvol} -> {snapshot}')
+
+			os.makedirs(p.dirname(snapshot), exist_ok=True)
+			subprocess.run(
+				args=[ '/usr/bin/btrfs', 'subvolume', 'snapshot', '-r', self.subvol, snapshot ]
+			)
+			self.snapshot = snapshot
+
+	def __del__(self):
+		if self.snapshot is not None:
+			logging.info(f'subvol snapshot destruction: {self.snapshot} <- {self.subvol}')
+			subprocess.run(
+				args=[ '/usr/bin/btrfs', 'subvolume', 'delete', '-v', self.snapshot ]
+			)
+			self.snapshot = None
+
+	@staticmethod
+	def create(path):
+		return _subvolumes.setdefault(path, Subvol(path))
+
+	@staticmethod
+	def get(path):
+		subvol = lib.run(
+			args=[ 'df', '--output=target', path ],
+			stdout=subprocess.PIPE,
+		).stdout.splitlines()[-1]
+
+		return Subvol.create(subvol)
+
+#
+# this is an ad-hoc rsync(1) cmdline option parser. have fun.
+#
+
+# rsync options with arguments
+rsync_arg_opts = {
+	'--info',
+	'--debug',
+	'--backup-dir',
+	'--suffix',
+	'--chmod',
+	'--checksum-choice',
+	'-B', '--block-size',
+	'-e', '--rsh',
+	'--rsync-path',
+	'--remove-source-files',
+	'--max-delete',
+	'--max-size',
+	'--min-size',
+	'--partial-dir',
+	'-m', '--prune-empty-dirs',
+	'--usermap',
+	'--groupmap',
+	'--chown',
+	'--timeout',
+	'--contimeout',
+	'-@', '--modify-window',
+	'-T', '--temp-dir',
+	'--compare-dest',
+	'--copy-dest',
+	'--link-dest',
+	'--compress-level',
+	'--skip-compress',
+	'-f', '--filter',
+	'--exclude',
+	'--exclude-from',
+	'--include',
+	'--include-from',
+	'--address',
+	'--port',
+	'--sockopts',
+	'--outbuf',
+	'-M', '--remote-option',
+	'--out-format',
+	'--log-file',
+	'--log-file-format',
+	'--password-file',
+	'--bwlimit',
+	'--write-batch',
+	'--only-write-batch',
+	'--read-batch',
+	'--protocol',
+	'--iconv',
+	'--checksum-seed',
+}
+
+rsync_opts = []
+rsync_src = []
+
+# parse args
+sys_argv = iter(sys.argv[1:])
+while True:
+	try:
+		arg = next(sys_argv)
+	except StopIteration:
+		break
+
+	if '=' in arg:
+		arg_name, arg_val = arg.split('=')
+		if arg_name not in rsync_arg_opts:
+			raise RuntimeError(f'rsync syntax error: \'{arg}\' should not have a value')
+		rsync_opts += [ arg ]
+	elif arg in rsync_arg_opts:
+		try:
+			rsync_opts += [ arg, next(sys_argv) ]
+		except StopIteration:
+			raise RuntimeError(f'rsync syntax error: \'{arg}\' should have a value, but has none')
+	elif arg.startswith('-'):
+		rsync_opts += [ arg ]
+	else:
+		rsync_src += [ arg ]
+
+rsync_dest = rsync_src[-1]
+rsync_src = rsync_src[:-1]
+sources = dict()
+
+for src in rsync_src:
+	subvol = Subvol.get(src)
+	subvol.make_snapshot()
+	sources[src] = subvol
+
+
