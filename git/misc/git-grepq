@@ -1,0 +1,15 @@
+#!/bin/bash
+
+cmdline=(
+	git grep -E
+)
+
+for arg; do
+	if [[ $arg == -* ]]; then
+		cmdline+=( "$arg" )
+	else
+		cmdline+=( "'$arg'|\"$arg\"" )
+	fi
+done
+
+exec "${cmdline[@]}"
