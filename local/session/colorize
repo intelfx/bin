@@ -2,10 +2,12 @@
 
 config_path="$(systemd-path user-configuration)"
 
+GTK_THEME=Adwaita # Arc
+
 # $1: whether to enable dark (1 or 0)
 function adjust_gtk3() {
-	local gtk3_theme=( Arc Arc-Dark )
-	local shell_theme=( Arc Arc-Dark )
+	local gtk3_theme=( Adwaita Adwaita-dark ) #( Arc Arc-Dark )
+	local shell_theme=( Adwaita Adwaita ) #( Arc Arc-Dark )
 
 	git config --file="$config_path/gtk-3.0/settings.ini" Settings.gtk-application-prefer-dark-theme "$1"
 	dconf write /org/gnome/desktop/interface/gtk-theme "'${gtk3_theme[$1]}'"
