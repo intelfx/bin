@@ -1,3 +1,6 @@
 [submodule "git/git-branch-tools"]
 	path = git/git-branch-tools
 	url = https://github.com/whot/git-branch-tools
+[submodule "git/git-fixup"]
+	path = git/git-fixup
+	url = https://github.com/keis/git-fixup
