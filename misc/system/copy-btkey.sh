@@ -2,8 +2,8 @@
 
 . lib.sh
 
-HIVE_DIR="$1"
-BT_ID="$2"
+BT_ID="$1"
+HIVE_DIR="$2"
 
 
 BT_ID=$(echo "$BT_ID" | tr 'a-z' 'A-Z')
@@ -15,7 +15,7 @@ if ! [[ -d "$HIVE_DIR" ]]; then
 	die "Hive directory '$HIVE_DIR' is invalid"
 fi
 
-if ! [[ -r "$1/SYSTEM" ]]; then
+if ! [[ -r "$HIVE_DIR/SYSTEM" ]]; then
 	die "Hive file '$HIVE_DIR/SYSTEM' does not exist or is unreadable"
 fi
 
