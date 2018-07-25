@@ -1,5 +1,5 @@
 STYLE = $(HOME)/devel/__auxiliary/small-things/site/css/main.css
-LOR_GENERATOR = $(HOME)/devel/__auxiliary/small-things/pandoc-lorcode/pandoc-lorcode.lua
+LOR_GENERATOR = $(HOME)/devel/landfill/all/pandoc-lorcode/lorcode.lua
 LATEX_FLAGS = --pdf-engine=xelatex -V mainfont="CMU Sans Serif" -V sansfont="CMU Sans Serif" -V setmonofont="CMU Typewriter Text" -V setmathfont="Latin Modern Math"
 
 %.html: %.md
