@@ -9,9 +9,15 @@ function check_session() {
 tmux=( "tmux" )
 
 # Use our username to name tmux sessions.
+# NB: actually, "base session" is a named "session group" which can contain 1
+#     or more sessions which share windows and suchlike. Throughout this script,
+#     "master session" means "first session in the group" and "slave session"
+#     means any other session in this group.
+#     The first session in a group is created automatically and is given a
+#     suffix of "-0" appended to the session group name.
 base_session="$USER"
 
-# If there is a per-session tmux for current xdg session, use it.
+# If there is a per-xdg-session tmux for current xdg session, use it.
 if [[ "$XDG_SESSION_ID" ]] && check_session "$XDG_SESSION_ID"; then
 	tmux+=( "-L" "session-$XDG_SESSION_ID" )
 	base_session+="-$XDG_SESSION_ID"
@@ -20,25 +26,48 @@ fi
 # Use our PID to name the slave session.
 new_session="$base_session-$$"
 
-# Count tmux sessions (1 master + N slaves).
-# If this is the first slave session being opened, do not create a new window.
-# However, if we are told to open in a non-standard directory or if we are given a command,
-# create a new window anyway and pass cwd/command to it.
-if (( $("${tmux[@]}" ls | wc -l) > 1 )) || [[ "$(pwd)" != "$HOME"  ]] || (( $# > 0 )); then
-	NEW_WINDOW_COMMAND=( "new-window" "-c" "$(pwd)" "$@" ";" )
+#
+# The tmx script aims to be transparent. Hence, we want to copy the current
+# working directory, command and environment to the user-facing shell.
+#
+# Furthermore, if a user creates a new pane, we want the client environment
+# to be carried there as well, depending on which client created the pane.
+# Thankfully, semantics of sessions in tmux align with our goals: each session
+# has an environment which is copied to every pane created in this session.
+# The environment of the session group does not matter.
+# At the same time, cwd and command are honoured at window level, which also
+# aligns with what we want (we don't want every window created by a user
+# to start with the given command).
+
+# Due to environment copying concerns, we always need to create a fresh window
+# to get the correct environment to the user-facing shell.
+NEW_WINDOW_COMMAND=( "new-window" "-c" "$(pwd)" "$@" ";" )
+
+# When a session is created, it is already created with a single window in it.
+# It is impossible to create a window-less session or session group in tmux.
+# Hence, if this is the first window being created, we kill the "default" window.
+if "${tmux[@]}" list-windows -t "$base_session-0" -F "#{window_id}" | grep -q --line-regexp --fixed-strings '@0'; then
+	NEW_WINDOW_COMMAND+=( "kill-window" "-t" "@0" ";" )
 fi
 
-# cd to a sane path to avoid tmux holding a removable drive even when the offending pane is closed
-cd "$HOME"
+# Now build the command line to actually copy the environment to the target session.
+while IFS='=' read -d $'\0' -r name value; do
+	ENVIRONMENT_COMMAND+=( "set-environment" "-t" "$new_session" "$name" "$value" ";" )
+done < <(env -0)
 
-if ! "${tmux[@]}" has-session -t "$base_session"; then
-	systemd-run --user --service-type=forking  -p KillMode=control-group tmux new-session -s "$USER" -d
+# cd to a sane path to avoid tmux holding a removable drive even when the offending pane is closed
+cd /
+
+if ! "${tmux[@]}" has-session -t "$base_session-0"; then
+	# create a session group if the master session is absent
+	systemd-run --user --service-type=forking  -p KillMode=control-group tmux new-session -t "$base_session" -d
 fi
 
 # Create a new session (without attaching it) and link to base session to share windows
 # Attach to the new session & kill it once orphaned
 exec "${tmux[@]}" \
 	new-session -d -t "$base_session" -s "$new_session" \; \
+	"${ENVIRONMENT_COMMAND[@]}" \
 	attach-session -t "$new_session" \; \
 	"${NEW_WINDOW_COMMAND[@]}" \
 	set-option destroy-unattached
