@@ -35,9 +35,8 @@ new_session="$base_session-$$"
 # Thankfully, semantics of sessions in tmux align with our goals: each session
 # has an environment which is copied to every pane created in this session.
 # The environment of the session group does not matter.
-# At the same time, cwd and command are honoured at window level, which also
-# aligns with what we want (we don't want every window created by a user
-# to start with the given command).
+# On the other hand, cwd and command are honoured at window/pane level, which
+# is, again, exactly what we need.
 
 # Due to environment copying concerns, we always need to create a fresh window
 # to get the correct environment to the user-facing shell.
@@ -55,8 +54,9 @@ while IFS='=' read -d $'\0' -r name value; do
 	ENVIRONMENT_COMMAND+=( "set-environment" "-t" "$new_session" "$name" "$value" ";" )
 done < <(env -0)
 
-# cd to a sane path to avoid tmux holding a removable drive even when the offending pane is closed
-cd /
+# This path is inherited by all new windows of this session (except the one
+# expressly crated, see above).
+cd "$HOME"
 
 if ! "${tmux[@]}" has-session -t "$base_session-0"; then
 	# create a session group if the master session is absent
