@@ -165,7 +165,7 @@ options = {
 }
 
 # server hostname
-for server in args.server_host:
+for server in server_host:
 	out(f'remote {server}')
 
 # misc client options
