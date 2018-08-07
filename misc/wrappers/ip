@@ -1,0 +1,9 @@
+#!/bin/bash
+#
+# Status output if running on terminal
+#
+if [[ -t 2 && -t 1 && -t 0 ]]; then
+	exec /usr/bin/ip -c "$@"
+else
+	exec /usr/bin/ip "$@"
+fi
