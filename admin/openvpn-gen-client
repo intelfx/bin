@@ -114,6 +114,7 @@ def handle_copy(*args):
 def handle_proto(key, value):
 	re_proto = {
 		'udp': 'udp',
+		'udp6': 'udp6',
 		'tcp-server': 'tcp-client',
 	}
 	out(f'proto {re_proto[value]}')
