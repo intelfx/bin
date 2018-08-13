@@ -1,0 +1,9 @@
+#!/bin/bash
+
+#
+# AFAIU real mksrcinfo (pkgbuild-introspection) actually is long in status of
+# "unmaintained prototype" (with package dropped to AUR), with its functionality
+# copied into makepkg(8) albeit in a very much less usable form.
+#
+
+exec makepkg --printsrcinfo > .SRCINFO
