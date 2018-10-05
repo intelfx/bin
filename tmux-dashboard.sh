@@ -1,8 +1,23 @@
 #!/bin/bash
 
-SELECTOR=( "$@" )
+#
+# tmux-dashboard.sh -- spawns a new tmux window with `stern`, `kubectl top pods`
+#                      and `kubectl get pods` in watch(1) for a given selector.
+#
+# ----------------------- 
+# |          |          |
+# | get pods | top pods |
+# |          |          |
+# |---------------------|
+# |                     |
+# |       stern         |
+# |                     |
+# -----------------------
+#
 
 set -e
+
+SELECTOR=( "$@" )
 
 pane_stern=$(tmux new-window -P -F '#{pane_id}' -d -n "(k8s: ${SELECTOR[*]})" \
   -- stern "${SELECTOR[@]}")
