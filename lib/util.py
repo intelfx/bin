@@ -139,7 +139,7 @@ def configure_logging(*, prefix=None):
 	fmt+='%(levelname)s: %(message)s'
 
 	logging.basicConfig(
-		level=logging.INFO,
+		level='LIB_DEBUG' in os.environ and logging.DEBUG or logging.INFO,
 		format=fmt
 	)
 
