@@ -2,8 +2,15 @@
 
 OPKG_STATUS="usr/lib/opkg/status"
 
-if [ "$1" ]; then
-	OPKG_STATUS="$1"
+if [ "$#" -eq 2 ]; then
+	OPKG_STATUS_ROM="$1"
+	OPKG_STATUS_OVL="$2"
+elif [ "$#" -eq 1 ]; then
+	OPKG_STATUS_ROM="/rom/$1"
+	OPKG_STATUS_OVL="/$1"
+else
+	OPKG_STATUS_ROM="/rom/$OPKG_STATUS"
+	OPKG_STATUS_OVL="/$OPKG_STATUS"
 fi
 
 AWK_FIND_MIN_TIME='
@@ -43,8 +50,8 @@ trap cleanup EXIT
 PKGS_IN_ROM="$(mktemp)"
 PKGS_IN_OVERLAY="$(mktemp)"
 
-awk "$AWK_FILTER_PACKAGES" /rom/$OPKG_STATUS | sort > "$PKGS_IN_ROM"
-awk "$AWK_FILTER_PACKAGES" /$OPKG_STATUS | sort > "$PKGS_IN_OVERLAY"
+awk "$AWK_FILTER_PACKAGES" $OPKG_STATUS_ROM | sort > "$PKGS_IN_ROM"
+awk "$AWK_FILTER_PACKAGES" $OPKG_STATUS_OVL | sort > "$PKGS_IN_OVERLAY"
 
 # comm -12
 cat "$PKGS_IN_ROM" "$PKGS_IN_OVERLAY" | sort | uniq -u
