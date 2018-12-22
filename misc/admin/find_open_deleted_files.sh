@@ -8,6 +8,8 @@ function suppress_filter() {
 		"/run/user/"*) return 0 ;;
 		*"/dconf/user") return 0 ;;
 		*"/gvfs-metadata/"*) return 0 ;;
+		"/[aio]") return 0 ;;
+		"/dev/zero") return 0 ;;
 	esac
 
 	return 1
