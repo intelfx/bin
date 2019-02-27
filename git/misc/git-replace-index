@@ -3,7 +3,7 @@
 : ${GIT_DIR:="$(git rev-parse --git-dir)"}
 : ${GIT_INDEX_FILE:="$GIT_DIR/index"}
 
-GIT_INDEX_NEW="$GIT_INDEX_FILE-"
+GIT_INDEX_NEW="$GIT_INDEX_FILE.new"
 GIT_INDEX_FILE="$GIT_INDEX_NEW" git update-index "$@"
 rm -f "$GIT_INDEX_FILE"
 if [ -e "$GIT_INDEX_NEW" ]; then
