@@ -1,0 +1,6 @@
+#!/bin/bash -e
+
+INDEX_FILTER="$1"
+shift
+
+exec git filter-branch --prune-empty --index-filter "git ls-files -s | ( $INDEX_FILTER ) | git replace-index --index-info" "$@"
