@@ -32,11 +32,11 @@ function parse_file() {
 		fi
 
 		EXECUTABLE="$(readlink "/proc/$CURRENT_PID/exe")"
-		CGROUP="$(grep 'systemd:/' "/proc/$CURRENT_PID/cgroup")"
+		CGROUP="$(grep -F '.slice/' "/proc/$CURRENT_PID/cgroup" | head -n1)"
 		readarray -t SERVICE < <(grep -Eo '[^/]*\.service' <<< "$CGROUP")
 		readarray -t SCOPE < <(grep -Eo '[^/]*\.scope' <<< "$CGROUP")
 
-		echo "PID $CURRENT_PID ($EXECUTABLE) (services: ${SERVICE[*]}) (scopes: ${SCOPE[*]}) holds the deleted file \"${CURRENT_FILE[name]}\""
+		echo "PID $CURRENT_PID ($EXECUTABLE) (cgroup: $CGROUP) (services: ${SERVICE[*]}) (scopes: ${SCOPE[*]}) holds the deleted file \"${CURRENT_FILE[name]}\""
 
 		if (( ${#SERVICE[@]} )); then
 			(( ++SERVICE_COUNTER[${SERVICE[*]}] ))
