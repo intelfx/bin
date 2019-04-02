@@ -22,12 +22,15 @@ function ssh_prep() {
 
 	dbg "$0: ssh: host '$host' parsed as user='$user' addr='$addr' port='$port'"
 
-	if ! ping -c 1 -w 5 -q "$addr"; then
+	# FIXME: drop -4
+	if ! ping -4 -c 1 -w 5 -q "$addr"; then
 		die "$0: ssh: address '$addr' is unresponsive, exiting"
 	fi
 
 	local ssh_args
 	ssh_args=(
+		# FIXME: drop -4
+		-4
 		-o StrictHostKeyChecking=accept-new
 	)
 	if [[ "$identity" ]]; then
