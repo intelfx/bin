@@ -35,7 +35,7 @@ function ssh_prep() {
 	)
 	if [[ "$identity" ]]; then
 		ssh_args+=(
-			-o IdentityFile="$identity"
+			-i "$identity"
 		)
 	fi
 
