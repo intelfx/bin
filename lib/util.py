@@ -143,3 +143,12 @@ def configure_logging(*, prefix=None):
 		format=fmt
 	)
 
+
+def file_get(path):
+	with open(path, 'r') as f:
+		return f.read()
+
+
+def file_put(path, text):
+	with open(path, 'w') as f:
+		return f.write(text)
