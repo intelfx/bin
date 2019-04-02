@@ -6,13 +6,13 @@
 # out: do_ssh(): ssh to $host using $identity
 # out: do_sftp(): sftp to $host using $identity
 # out: do_scp(): scp to $host using $identity
+# out: $user, $addr, $port: parsed $host
 # error handling: die()
 function ssh_prep() {
 	if ! [[ "$host" ]]; then
 		die "$0: ssh: host not provided, exiting"
 	fi
 
-	local user addr port
 	if ! [[ "$host" =~ ^(([^@]+)@)?(.+)(:([0-9]+))?$ ]]; then
 		die "$0: ssh: host '$host' is invalid, exiting"
 	fi
