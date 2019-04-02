@@ -46,6 +46,7 @@ function ssh_prep() {
 		"${user:-root}@$addr"
 	)
 	do_ssh() {
+		dbg "$0: ssh: will run ${ssh_cmd[*]} $*"
 		"${ssh_cmd[@]}" "$@"
 	}
 	sftp_cmd=(
@@ -55,6 +56,7 @@ function ssh_prep() {
 		"${user:-root}@$addr"
 	)
 	do_sftp() {
+		dbg "$0: ssh: will run ${sftp_cmd[*]} $*"
 		"${sftp_cmd[@]}" "$@"
 	}
 }
