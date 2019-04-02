@@ -133,14 +133,14 @@ def mkmount(*, src, dest, type=None, options=[], args=[]):
 
 
 def configure_logging(*, prefix=None):
-	fmt=''
+	fmt = '%(levelname)s: %(message)s'
+
 	if prefix is not None:
-		fmt=f'{prefix}: '
-	fmt+='%(levelname)s: %(message)s'
+		fmt = f'{prefix}: ' + fmt
 
 	logging.basicConfig(
 		level='LIB_DEBUG' in os.environ and logging.DEBUG or logging.INFO,
-		format=fmt
+		format=fmt,
 	)
 
 
