@@ -7,8 +7,10 @@
 #
 
 function jq_patch() {
-  jq '.spec.template.spec |= ( del(.initContainers) | .containers[] |= ( .command = [ "sleep", "infinity" ] | del(.livenessProbe) | del(.readinessProbe) | del(.lifecycle) ) )'
-  #jq '.spec.template.spec |= ( del(.initContainers) | .containers[] |= ( .image = "k8s.gcr.io/pause:3.1" | .imagePullPolicy = "IfNotPresent" | .command = [ "/pause" ] | del(.livenessProbe) | del(.readinessProbe) | del(.lifecycle) ) )'
+  jq '
+  (if .kind == "Pod" then .spec elif (.kind == "StatefulSet" or .kind == "Deployment") then .spec.template.spec else error("unsupported kind: \(.kind)") end)
+  |= ( del(.initContainers) | .containers[] |= ( .command = [ "sleep", "infinity" ] | del(.livenessProbe) | del(.readinessProbe) | del(.lifecycle) ) )
+  '
 }
 
 kubectl get "$@" -o json | jq_patch | kubectl replace -f -
