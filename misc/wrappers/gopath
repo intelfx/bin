@@ -1,0 +1,38 @@
+#!/bin/bash -e
+
+. lib.sh
+
+#
+# Work-around the brain-dead notion of $GOPATH.
+# aka "I want to reinvent vendoring"
+# (actually, I have no idea what "vendoring" is, I just work around problems as they appear)
+#
+
+fs_id() {
+	stat -f -c '%i' "$1"
+}
+
+if ! [[ $GOPATH ]]; then
+	godir="$(pwd)"
+	pwd_id="$(fs_id "$godir")"
+
+	while :; do
+		if [[ -d $godir/.gopath ]]; then
+			log "\$GOPATH = '$godir/.gopath'"
+			echo "export GOPATH='$godir/.gopath'"
+			gopath_ok=1
+			break
+		fi
+		if [[ $godir == / ]]; then
+			log "\$GOPATH not selected: reached root"
+			break
+		fi
+		newgodir="$(dirname "$godir")"
+		if [[ $(fs_id "$newgodir") != $pwd_id ]]; then
+			log "\$GOPATH not selected: reached fs boundary at '$godir'"
+			break
+		fi
+		godir="$newgodir"
+	done
+fi
+
