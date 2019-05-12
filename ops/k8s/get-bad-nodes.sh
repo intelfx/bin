@@ -10,4 +10,4 @@ done
 
 
 kubectl get pods "${KUBECTL_GET_ARGS[@]}" -o json \
-  | jq -r '.items[] | select(.status.containerStatuses[]?.ready == false) | .spec.nodeName'
+  | jq -r '.items[] | select(.status.phase != "Succeeded") | select(.status.containerStatuses[]?.ready == false) | .spec.nodeName'
