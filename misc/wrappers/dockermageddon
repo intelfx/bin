@@ -1,5 +1,87 @@
-#!/bin/bash
+#!/bin/bash -e
 
-docker container ls -qa | xargs -r docker container stop | xargs -r docker container rm
-docker volume ls -q | xargs -r docker volume rm
-docker network ls -q | xargs -r docker network rm
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+
+ARGS="$(getopt -o 'rcnviC:N:V:I:' -n 'dockermageddon' -- "$@")"
+eval set -- "$ARGS"
+unset ARGS
+
+DOCKER_STOP=0
+declare -A DOCKER_PRUNE
+declare -A DOCKER_PRUNE_DEFAULT=(
+	[container]="'--force' "
+	[network]="'--force' "
+	[volume]="'--force' "
+	[image]="'--force' "
+)
+
+while :; do
+	case "$1" in
+	-r)
+		DOCKER_STOP=1
+		;;
+	-c)
+		DOCKER_PRUNE[container]+=""
+		;;
+	-n)
+		DOCKER_PRUNE[network]+=""
+		;;
+	-v)
+		DOCKER_PRUNE[volume]+=""
+		;;
+	-i)
+		DOCKER_PRUNE[image]+=""
+		;;
+	-C)
+		shift
+		DOCKER_PRUNE[container]+="'$1' "
+		;;
+	-N)
+		shift
+		DOCKER_PRUNE[network]+="'$1' "
+		;;
+	-V)
+		shift
+		DOCKER_PRUNE[volume]+="'$1' "
+		;;
+	-I)
+		shift
+		DOCKER_PRUNE[image]+="'$1' "
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		die "Internal error: unexpected argument '$1'"
+		;;
+	esac
+	shift
+done
+
+declare -p DOCKER_PRUNE
+
+if (( DOCKER_STOP )); then
+	log "Stopping running containers"
+	docker container ls -q | xargs -r docker container stop
+fi
+
+for verb in container network volume image; do
+	if (( ${DOCKER_PRUNE[$verb]+1} )); then
+		cmd="docker $verb prune ${DOCKER_PRUNE_DEFAULT[$verb]} ${DOCKER_PRUNE[$verb]}"
+		log "Pruning ${verb}s: $(eval "echo $cmd")"
+		eval "$cmd"
+	fi
+done
