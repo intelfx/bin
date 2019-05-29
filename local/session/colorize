@@ -14,12 +14,14 @@ function adjust_gtk3() {
 	dconf write /org/gnome/shell/extensions/user-theme/name "'${shell_theme[$1]}'"
 }
 
+# $1: whether to enable dark (1 or 0)
 function adjust_gedit() {
 	local scheme=( solarized-light solarized-dark )
 
 	dconf write /org/gnome/gedit/preferences/editor/scheme "'${scheme[$1]}'"
 }
 
+# $1: whether to enable dark (1 or 0)
 function adjust_terminal() {
 	local profiles_default=( 4b05dbdf-11e8-4f29-b788-7016ec6b6de9
 	                         b739b980-6bbc-4e0c-9dda-313ad61029ff )
@@ -29,12 +31,13 @@ function adjust_terminal() {
 
 	# reconfigure existing windows
 	local o objects=()
-	read -a objects < <(busctl --list --user tree org.gnome.Terminal | grep '^/org/gnome/Terminal/window/')
+	read -a objects < <(busctl --list --user tree org.gnome.Terminal | grep '^/org/gnome/Terminal/window/') || return 0
 	for o in "${objects[@]}"; do
-		busctl -j --user call org.gnome.Terminal "$o" org.gtk.Actions Activate "sava{sv}" "profile" "1" "s" "${profiles_default[$1]}" "0"
+		busctl -j --user call org.gnome.Terminal "$o" org.gtk.Actions Activate "sava{sv}" "profile" "1" "s" "${profiles_default[$1]}" "0" || true
 	done
 }
 
+# $1: whether to enable dark (1 or 0)
 function adjust_builder() {
 	local night_mode=( false true )
 	local style_scheme_name=( solarized-light solarized-dark )
@@ -43,6 +46,7 @@ function adjust_builder() {
 	dconf write /org/gnome/builder/editor/style-scheme-name "'${style_scheme_name[$1]}'"
 }
 
+# $1: whether to enable dark (1 or 0)
 function adjust_kde() {
 	local kdeglobals=( light dark )
 	local icon_theme=( breeze breeze-dark )
@@ -57,6 +61,7 @@ function adjust_kde() {
 	sed -re "s|^icon_theme=.*|icon_theme=${icon_theme[$1]}|" -i "$config_path/qt5ct/qt5ct.conf"
 }
 
+# $1: whether to enable dark (1 or 0)
 function adjust_kate() {
 	local schema=( "Solarized (light)" "Solarized (dark)" )
 
