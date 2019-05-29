@@ -23,7 +23,16 @@ function adjust_gedit() {
 function adjust_terminal() {
 	local profiles_default=( 4b05dbdf-11e8-4f29-b788-7016ec6b6de9
 	                         b739b980-6bbc-4e0c-9dda-313ad61029ff )
+
+	# set defaults for new windows
 	dconf write /org/gnome/terminal/legacy/profiles:/default "'${profiles_default[$1]}'"
+
+	# reconfigure existing windows
+	local o objects=()
+	read -a objects < <(busctl --list --user tree org.gnome.Terminal | grep '^/org/gnome/Terminal/window/')
+	for o in "${objects[@]}"; do
+		busctl -j --user call org.gnome.Terminal "$o" org.gtk.Actions Activate "sava{sv}" "profile" "1" "s" "${profiles_default[$1]}" "0"
+	done
 }
 
 function adjust_builder() {
@@ -40,7 +49,9 @@ function adjust_kde() {
 
 	# Configure Breeze
 	cp -a "$config_path/kdeglobals-${kdeglobals[$1]}" "$config_path/kdeglobals"
-	kbuildsycoca5
+	if command -v kbuildsycoca5 &>/dev/null; then
+		kbuildsycoca5
+	fi
 
 	# Configure qt5ct
 	sed -re "s|^icon_theme=.*|icon_theme=${icon_theme[$1]}|" -i "$config_path/qt5ct/qt5ct.conf"
@@ -62,7 +73,7 @@ esac
 shift
 
 if (( ! $# )); then
-	set -- gtk3 gedit terminal kde kate
+	set -- "$@" gtk3 gedit terminal builder kde kate
 fi
 
 for arg; do
