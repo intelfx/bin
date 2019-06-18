@@ -1,10 +1,10 @@
 #!/bin/sh
 
-OPKG_STATUS="/usr/lib/opkg/status"
+OPKG_STATUS="${1:-/usr/lib/opkg/status}"
 
-if [ "$1" ]; then
-	OPKG_STATUS="$1"
-fi
+function awk_opkg_status() {
+	awk "$@" "$OPKG_STATUS"
+}
 
 AWK_FIND_MIN_TIME='
 BEGIN { min = systime(); FS = ": " }
@@ -33,9 +33,5 @@ BEGIN { FS = ": " }
 /^Installed-Time: / { if ($2 > min_time) { p_time = 1; pkg_check() } }
 '
 
-function awk_opkg_status() {
-	awk "$@" "$OPKG_STATUS"
-}
-
 MIN_TIME="$(awk_opkg_status "$AWK_FIND_MIN_TIME")"
-awk_opkg_status -v min_time="$MIN_TIME" "$AWK_FILTER_PACKAGES"
+awk_opkg_status -v min_time="$MIN_TIME" "$AWK_FILTER_PACKAGES" | sort
