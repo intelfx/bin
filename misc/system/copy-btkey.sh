@@ -79,7 +79,7 @@ reg_file="$(mktemp)"
 win_to_bluez() {
 	reged -x "$HIVE_DIR/SYSTEM" "SYSTEM" "ControlSet001\\Services\\BTHPORT\\Parameters\\Keys\\$hive_bt_ctrl_addr" "$reg_file"
 
-	if ! grep -q "^$hive_bt_dev_addr=hex:" "$reg_file"; then
+	if ! grep -q "^\"$hive_bt_dev_addr\"=hex:" "$reg_file"; then
 		cat "$reg_file" >&2
 		die "No regular devices with address \"$BT_ADDR\" are paired with Windows. Maybe try -l/--le?"
 	fi
@@ -89,12 +89,12 @@ win_to_bluez() {
 		die "Internal error: invalid key: '${bt_key}'"
 	fi
 
-	bt_key_old="$(grep -Po "(?<=Key=)([A-F0-9]+)" "$bt_path/info")"
+	bt_key_old="$(grep -Po "(?<=Key=)([A-F0-9]+)" "$BLUEZ_DIR/$bt_path/info")"
 	if ! (( ${#bt_key_old} == 32 )); then
 		die "Internal error: invalid existing key: '${bt_key_old}'"
 	fi
 	log "Adapter '$bt_ctrl_addr': device '$bt_dev_addr': changing key from '$bt_key_old' to '$bt_key'"
-	sed -re "s|^Key=.*$|Key=$bt_key|" -i "$bt_path/info"
+	sed -re "s|^Key=.*$|Key=$bt_key|" -i "$BLUEZ_DIR/$bt_path/info"
 }
 
 win_to_bluez_le() {
