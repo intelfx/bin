@@ -1,0 +1,3 @@
+#!/bin/sh
+
+exec systemd-inhibit --mode=block --what=shutdown:idle:handle-lid-switch --who="systemd-inhibit-auto" --why="$*" "$@"

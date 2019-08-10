@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec systemd-inhibit-all "/usr/bin/${0##*/}" "$@"
