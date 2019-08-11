@@ -193,11 +193,13 @@ class UserUnit:
 
 	def systemctl(self):
 		return [
-			'sudo',
-			'-u',
-			f'"#{self.uid}"',
-			f'XDG_RUNTIME_DIR="/run/user/{self.uid}"',
-			f'DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/{self.uid}/bus"',
+			'setpriv',
+			'--reuid', f'{self.uid}',
+			'--regid', f'{self.uid}', # FIXME this assumes GID==UID exists, find how to set GID to primary group in setpriv(1)
+			'--init-groups',
+			'env',
+			f'XDG_RUNTIME_DIR=\'/run/user/{self.uid}\'',
+			f'DBUS_SESSION_BUS_ADDRESS=\'unix:path=/run/user/{self.uid}/bus\'',
 			'systemctl',
 			'--user',
 		]
