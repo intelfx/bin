@@ -146,7 +146,7 @@ class Process:
 			},
 		)
 
-	SYSTEM_UNIT_RE = re.compile('^/(([^/]+\.slice)/)*(?P<unit>[^/]+\.service)$')
+	SYSTEM_UNIT_RE = re.compile('^/(([^/]+\.slice)/)*(?P<unit>[^/]+\.service)(/init.scope)?$')
 	USER_UNIT_RE = re.compile('^/(([^/]+\.slice)/)*user@(?P<uid>[0-9]+)\.service/(([^/]+\.slice)/)*(?P<unit>[^/]+\.service)$')
 	OTHER_UNIT_RE = re.compile('^/(([^/]+\.slice)/)*(?P<unit>[^/]+)$')
 
