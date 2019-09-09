@@ -4,3 +4,6 @@
 [submodule "git/git-fixup"]
 	path = git/git-fixup
 	url = https://github.com/keis/git-fixup
+[submodule "lib"]
+	path = lib
+	url = gh:intelfx/lib
