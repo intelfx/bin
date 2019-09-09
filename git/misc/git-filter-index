@@ -1,6 +1,14 @@
 #!/bin/bash -e
 
+#
+# git-filter-index -- what `git filter-branch --index-filter` must've been
+#                     (pipe index contents through a filter command)
+#
+# Intended usage: `git filter-index FILTER [FILTER-BRANCH-ARGS...]`
+# (e. g. `git filter-index "awk '$4 ~ /re/ { print }'"
+#
+
 INDEX_FILTER="$1"
 shift
 
-exec git filter-branch --prune-empty --index-filter "git ls-files -s | ( $INDEX_FILTER ) | git replace-index --index-info" "$@"
+exec git filter-branch --prune-empty --index-filter "git ls-files --stage | ( $INDEX_FILTER ) | git replace-index --index-info" "$@"

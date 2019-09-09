@@ -1,5 +1,11 @@
 #!/bin/sh -e
 
+#
+# git-replace-index -- non-incremental `git-update-index`
+#
+# Intended usage: `git ls-files --stage | FILTER | git replace-index --index-info`
+#
+
 : ${GIT_DIR:="$(git rev-parse --git-dir)"}
 : ${GIT_INDEX_FILE:="$GIT_DIR/index"}
 
