@@ -1,6 +1,4 @@
-#!/bin/bash
-
-set -e
+#!/bin/sh -e
 
 git pull --rebase "$@"
 git push "$@"
