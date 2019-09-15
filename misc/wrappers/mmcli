@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import argparse
+import subprocess
+
+MMCLI_PATH = '/usr/bin/mmcli'
+MMCLI_ARGS = [ 'mmcli' ]
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-m', '--modem',
+	help='Specify modem by path or index, or "-" to pick the only available one.')
+args, remainder = parser.parse_known_args()
+
+if args.modem == '-':
+	mm_busctl_tree = subprocess.run(
+		[ 'busctl', '--auto-start=false', '--list', 'tree', 'org.freedesktop.ModemManager1' ],
+		text=True,
+		check=True,
+		stdout=subprocess.PIPE,
+	)
+	mm_objects = mm_busctl_tree.stdout.splitlines()
+	mm_modems = [ o for o in mm_objects if o.startswith('/org/freedesktop/ModemManager1/Modem/') ]
+	if len(mm_modems) != 1:
+		raise RuntimeError('mmcli: {len(mm_modems)} != 1 modems available, cannot auto-pick modem')
+	args.modem = mm_modems[0]
+
+if args.modem:
+	MMCLI_ARGS += [ '--modem', args.modem ]
+
+sys.stdout.flush()
+sys.stderr.flush()
+os.execv(MMCLI_PATH, MMCLI_ARGS + remainder)
