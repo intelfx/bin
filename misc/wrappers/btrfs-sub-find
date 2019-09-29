@@ -14,6 +14,7 @@ import logging
 import attr
 
 import btrfs
+import enum
 import libmount
 
 
@@ -38,7 +39,27 @@ def configure_logging(*, prefix=None, handler=None, **kwargs):
 	)
 
 
-def parse_args():
+@attr.s(kw_only=True)
+class FindSubvolumeArgs:
+	class Filter(enum.Enum):
+		Path = 0
+		Mountpoint = 1
+		All = 2
+
+	class Output(enum.Enum):
+		Find = 0
+		FindRelative = 1
+		Physical = 2
+		MountpointRelative = 3
+		Absolute = 4
+
+	list_root_subvolume: bool = attr.ib()
+	filter: Filter = attr.ib()
+	output: Output = attr.ib()
+	search_root: str = attr.ib()
+
+
+def parse_args() -> FindSubvolumeArgs:
 	parser = argparse.ArgumentParser(
 		description='''
 btrfs-sub-find -- a _sane_ alternative to `btrfs subvolume list`, designed for scripting and automation
@@ -50,33 +71,56 @@ btrfs-sub-find -- a _sane_ alternative to `btrfs subvolume list`, designed for s
 	)
 
 	path_mode = parser.add_mutually_exclusive_group()
-	path_mode.add_argument('-p', '--physical', action='store_true',
-		help='Show pathes of subvolumes inside the filesystem (counting from the root subvolume)',
+	path_mode.add_argument('-f', '--find', action='store_const',
+		dest='output', const=FindSubvolumeArgs.Output.Find,
+		help='Show pathes of subvolumes using specified search root (`find -print`)',
 	)
-	path_mode.add_argument('-r', '--relative', action='store_true',
-		help='Show pathes of subvolumes relative to the search root (`find -printf \'%P\\n\'`)',
+	path_mode.add_argument('-r', '--relative', action='store_const',
+		dest='output', const=FindSubvolumeArgs.Output.FindRelative,
+		help='Show pathes of subvolumes relative to the search root (`find -printf \'%%P\\n\'`)',
 	)
-	path_mode.add_argument('-f', '--find', action='store_true', default=True,
-		help='Show pathes of subvolumes relative to cwd, using the specified search root (`find -print`)',
+	path_mode.add_argument('-a', '--absolute', action='store_const',
+		dest='output', const=FindSubvolumeArgs.Output.Absolute,
+		help='Show absolute pathes of subvolumes (prepend mountpoint)',
 	)
-	path_mode.add_argument('-m', '--mountpoint', action='store_true',
-		help='Show pathes of subvolumes relative to their mountpoint',
+	path_mode.add_argument('-m', '--mountpoint', action='store_const',
+		dest='output', const=FindSubvolumeArgs.Output.MountpointRelative,
+		help='Show pathes of subvolumes relative to the mountpoint',
 	)
-	path_mode.add_argument('-a', '--absolute', action='store_true',
-		help='Show absolute pathes of subvolumes (i. e. with mountpoint path prepended)',
+	path_mode.add_argument('-p', '--physical', action='store_const',
+		dest='output', const=FindSubvolumeArgs.Output.Physical,
+		help='Show physical pathes of subvolumes within filesystem (from the root subvolume)',
+	)
+	parser.add_argument('-M', '--visible', action='store_const',
+		dest='filter', const=FindSubvolumeArgs.Filter.Mountpoint,
+		help='Consider all subvolumes below mountpoint, not just those below search path'
+	)
+	parser.add_argument('-A', '--all', action='store_const',
+		dest='filter', const=FindSubvolumeArgs.Filter.All,
+		help='Consider all subvolumes in the filesystem, not just those currently visible'
+		     ' (only possible with --physical output)',
+	)
+	parser.add_argument('-R', '--root-subvolume', action='store_true',
+		help='Consider the root subvolume too',
+	)
+	#parser.add_argument('-F', '--format',
+	#	help='Print subvolumes using this Python 3 str.format() specification (available variables: {path})',
+	#)
+
+	raw = parser.parse_args()
+	# noinspection PyArgumentList
+	args = FindSubvolumeArgs(
+		search_root=raw.path,
+		filter=raw.filter or FindSubvolumeArgs.Filter.Path,
+		output=raw.output or FindSubvolumeArgs.Output.Find,
+		list_root_subvolume=raw.root_subvolume,
 	)
 
-	parser.add_argument('-A', '--all', action='store_true',
-		help='Consider all subvolumes below mountpoint, not just those below search root (when used with -a, considers all subvolumes in the filesystem)',
-	)
-	parser.add_argument('-R', '--root', action='store_true',
-		help='Consider root subvolume too',
-	)
-	parser.add_argument('-F', '--format',
-		help='Print subvolumes using this Python 3 str.format() specification (available variables: {path})',
-	)
+	if args.filter == FindSubvolumeArgs.Filter.All \
+	and args.output != FindSubvolumeArgs.Output.Physical:
+		parser.error('-A/--all is only allowed with -p/--physical!')
 
-	return parser.parse_args()
+	return args
 
 
 def _do_btrfs_search(
@@ -117,7 +161,7 @@ class Subvolume:
 	path: bytes = attr.ib()
 
 
-def _do_list_subvolumes(fs: btrfs.ctree.FileSystem, parent: Subvolume) -> Iterator[Subvolume]:
+def _do_list_subvolumes(fs: btrfs.ctree.FileSystem, parent: Subvolume, search_root: bytes) -> Iterator[Subvolume]:
 	#
 	# There is a great method btrfs.ctree.FileSystem.subvolumes() that
 	# is supposed to return all subvolume root items in a filesystem.
@@ -142,15 +186,18 @@ def _do_list_subvolumes(fs: btrfs.ctree.FileSystem, parent: Subvolume) -> Iterat
 			path=p.join(parent.path, dir.name_bytes, root_ref.name),
 		)
 		logging.debug(f'_do_list_root_refs(parent={str(parent)}): {str(subvol)}')
-		yield subvol
-		yield from _do_list_subvolumes(fs, parent=subvol)
+
+		commonpath = p.commonpath((subvol.path, search_root))
+		# if subvol is below search root, it is a match
+		if commonpath == search_root:
+			yield subvol
+		# if subvol is below search root or search root is below subvol, descend
+		if commonpath == search_root or commonpath == subvol.path:
+			yield from _do_list_subvolumes(fs, parent=subvol, search_root=search_root)
 
 
-def list_subvolumes(fs: btrfs.ctree.FileSystem, list_root_subvolume: bool):
-	min_id = 256
-	if list_root_subvolume:
-		min_id = 5
-
+def list_subvolumes(fs: btrfs.ctree.FileSystem, search_root: bytes, list_root_subvolume: bool):
+	# noinspection PyArgumentList
 	root_subvol = Subvolume(
 		tree_id=btrfs.ctree.FS_TREE_OBJECTID,
 		root_item=_do_lookup_root_item(fs=fs, tree_id=btrfs.ctree.FS_TREE_OBJECTID),
@@ -158,10 +205,9 @@ def list_subvolumes(fs: btrfs.ctree.FileSystem, list_root_subvolume: bool):
 		path=b'/',
 	)
 
-	if list_root_subvolume:
+	if list_root_subvolume and search_root == b'/':
 		yield root_subvol
-
-	yield from _do_list_subvolumes(fs, root_subvol)
+	yield from _do_list_subvolumes(fs, parent=root_subvol, search_root=search_root)
 
 
 g_mountinfo: List[libmount.Fs] = []
@@ -179,6 +225,11 @@ def read_mountinfo():
 		)
 
 
+def p_join_norm(path: str, *paths: str) -> str:
+	# compensate for '.' from p.relpath(), but don't use p.normpath()
+	return p.join(path, *[ x for x in paths if x not in ('', '.') ])
+
+
 # find mountpoint for vfs path
 def path_vfs_to_mountpoint(path: str) -> Tuple[libmount.Fs, str]:
 	global g_mountinfo
@@ -190,7 +241,8 @@ def path_vfs_to_mountpoint(path: str) -> Tuple[libmount.Fs, str]:
 		# fs.target is guaranteed normalized
 		if p.commonpath((fs.target, realpath)) == fs.target:
 			# p.relpath('/', '/') returns '.' rather than empty string (ugh!)
-			subpath = p.relpath(realpath, start=fs.target) if realpath != '/' else ''
+			# but we are better compensating for this elsewhere
+			subpath = p.relpath(realpath, start=fs.target)
 			logging.debug(f'path_vfs_to_mountpoint(path={path}): realpath {realpath} -> fs {fs}, subpath {subpath}')
 			return fs, subpath
 
@@ -200,22 +252,26 @@ def path_vfs_to_mountpoint(path: str) -> Tuple[libmount.Fs, str]:
 # find physical path (full path inside the btrfs volume) for vfs path
 def path_vfs_to_physical(path: str) -> str:
 	fs, subpath = path_vfs_to_mountpoint(path)
-	# p.join(..., '') appends a trailing separator (ugh!)
-	physpath = p.join(fs.root, subpath) if subpath else fs.root
+	physpath = p_join_norm(fs.root, subpath)
 	logging.debug(f'path_vfs_to_absolute_physical(path={path}): fs root {fs.root}, physpath {physpath}')
 	return physpath
 
 
-def find_subvolumes(fs: btrfs.ctree.FileSystem, search_root: str, list_root_subvolume: bool):
-	# TODO: optimize search based on @search_root
-	search_root_physical = path_vfs_to_physical(search_root)
+def find_subvolumes(fs: btrfs.ctree.FileSystem, args: FindSubvolumeArgs):
+	if args.filter == FindSubvolumeArgs.Filter.Path:
+		search_root = path_vfs_to_physical(args.search_root)
+	elif args.filter == FindSubvolumeArgs.Filter.Mountpoint:
+		search_root = path_vfs_to_mountpoint(args.search_root)[0].root
+	elif args.filter == FindSubvolumeArgs.Filter.All:
+		search_root = '/'
+	else:
+		raise RuntimeError(f'find_subvolumes(): internal error: bad filter type: {args.filter}')
 
-	return [
-		x
-		for x in list_subvolumes(fs=fs, list_root_subvolume=list_root_subvolume)
-		# search_root_physical is guaranteed normalized
-		if p.commonpath((search_root_physical, x.path.decode('utf-8'))) == search_root_physical
-	]
+	return list_subvolumes(
+		fs=fs,
+		search_root=search_root.encode('utf-8'),
+		list_root_subvolume=args.list_root_subvolume,
+	)
 
 
 def main():
@@ -223,17 +279,25 @@ def main():
 	args = parse_args()
 	read_mountinfo()
 
-	with btrfs.ctree.FileSystem(args.path) as fs:
-		logging.debug(f'Created btrfs filesystem from {args.path}: {fs}')
+	with btrfs.ctree.FileSystem(args.search_root) as fs:
+		logging.debug(f'btrfs.ctree.FileSystem(path={args.search_root}): {fs}')
 
-		subvolumes = find_subvolumes(
-			fs=fs,
-			search_root=args.path,
-			list_root_subvolume=args.root,
-		)
+		search_root_physical = path_vfs_to_physical(args.search_root)
+		search_fs, search_subpath = path_vfs_to_mountpoint(args.search_root)
 
-		for s in subvolumes:
-			print(s.path.decode('utf-8'))
+		for s in find_subvolumes(fs=fs, args=args):
+			path = s.path.decode('utf-8')
+			if args.output == FindSubvolumeArgs.Output.Physical:
+				pass
+			elif args.output == FindSubvolumeArgs.Output.Find:
+				path = p_join_norm(args.search_root, p.relpath(path, start=search_root_physical))
+			elif args.output == FindSubvolumeArgs.Output.FindRelative:
+				path = p.relpath(path, start=search_root_physical)
+			elif args.output == FindSubvolumeArgs.Output.MountpointRelative:
+				path = p.relpath(path, start=search_fs.root)
+			elif args.output == FindSubvolumeArgs.Output.Absolute:
+				path = p_join_norm(search_fs.target, p.relpath(path, start=search_fs.root))
+			print(path)
 
 
 if __name__ == "__main__":
