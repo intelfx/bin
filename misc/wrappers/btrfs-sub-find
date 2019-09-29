@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+
+#
+# btrfs-sub-find -- a _sane_ alternative to `btrfs subvolume list`.
+#
+
+from typing import *
+
+import os
+import os.path as p
+import sys
+import argparse
+import logging
+import attr
+
+import btrfs
+import libmount
+
+
+T = TypeVar('T')
+
+
+def configure_logging(*, prefix=None, handler=None, **kwargs):
+	fmt = '%(levelname)s: %(message)s'
+
+	if prefix is not None:
+		fmt = f'{prefix}: ' + fmt
+
+	if handler is not None:
+		kwargs.update({
+			'handlers': [ handler ],
+		})
+
+	logging.basicConfig(
+		level='LIB_DEBUG' in os.environ and logging.DEBUG or logging.INFO,
+		format=fmt,
+		**kwargs,
+	)
+
+
+def parse_args():
+	parser = argparse.ArgumentParser(
+		description='''
+btrfs-sub-find -- a _sane_ alternative to `btrfs subvolume list`, designed for scripting and automation
+'''.strip(),
+	)
+
+	parser.add_argument('path', default='.',
+		help='Path to the filesystem and/or to the search root',
+	)
+
+	path_mode = parser.add_mutually_exclusive_group()
+	path_mode.add_argument('-p', '--physical', action='store_true',
+		help='Show pathes of subvolumes inside the filesystem (counting from the root subvolume)',
+	)
+	path_mode.add_argument('-r', '--relative', action='store_true',
+		help='Show pathes of subvolumes relative to the search root (`find -printf \'%P\\n\'`)',
+	)
+	path_mode.add_argument('-f', '--find', action='store_true', default=True,
+		help='Show pathes of subvolumes relative to cwd, using the specified search root (`find -print`)',
+	)
+	path_mode.add_argument('-m', '--mountpoint', action='store_true',
+		help='Show pathes of subvolumes relative to their mountpoint',
+	)
+	path_mode.add_argument('-a', '--absolute', action='store_true',
+		help='Show absolute pathes of subvolumes (i. e. with mountpoint path prepended)',
+	)
+
+	parser.add_argument('-A', '--all', action='store_true',
+		help='Consider all subvolumes below mountpoint, not just those below search root (when used with -a, considers all subvolumes in the filesystem)',
+	)
+	parser.add_argument('-R', '--root', action='store_true',
+		help='Consider root subvolume too',
+	)
+	parser.add_argument('-F', '--format',
+		help='Print subvolumes using this Python 3 str.format() specification (available variables: {path})',
+	)
+
+	return parser.parse_args()
+
+
+def _do_btrfs_search(
+	fs: btrfs.ctree.FileSystem,
+	tree: int,
+	min_key: btrfs.ctree.Key,
+	max_key: btrfs.ctree.Key,
+	factory: Callable[..., T]
+) -> Iterable[T]:
+	for header, data in btrfs.ioctl.search_v2(
+			fd=fs.fd,
+			tree=tree,
+			min_key=min_key,
+			max_key=max_key,
+		):
+		yield factory(header, data)
+
+
+def _do_lookup_root_item(fs: btrfs.ctree.FileSystem, tree_id: int) -> btrfs.ctree.RootItem:
+	root_items = list(_do_btrfs_search(
+		fs=fs,
+		tree=btrfs.ctree.ROOT_TREE_OBJECTID,
+		min_key=btrfs.ctree.Key(tree_id, btrfs.ctree.ROOT_ITEM_KEY, 0),
+		max_key=btrfs.ctree.Key(tree_id, btrfs.ctree.ROOT_ITEM_KEY, -1),
+		factory=btrfs.ctree.RootItem,
+	))
+
+	logging.debug(f'_do_lookup_root_item(tree_id={tree_id}): {root_items}')
+	assert (len(root_items) == 1)
+	return root_items[0]
+
+
+@attr.s(kw_only=True)
+class Subvolume:
+	tree_id: int = attr.ib()
+	root_item: btrfs.ctree.RootItem = attr.ib()
+	root_ref: btrfs.ctree.RootRef = attr.ib()
+	path: bytes = attr.ib()
+
+
+def _do_list_subvolumes(fs: btrfs.ctree.FileSystem, parent: Subvolume) -> Iterator[Subvolume]:
+	#
+	# There is a great method btrfs.ctree.FileSystem.subvolumes() that
+	# is supposed to return all subvolume root items in a filesystem.
+	# Unfortunately, it is completely useless.
+	#
+
+	for root_ref in _do_btrfs_search(
+			fs=fs,
+			tree=btrfs.ctree.ROOT_TREE_OBJECTID,
+			min_key=btrfs.ctree.Key(parent.tree_id, btrfs.ctree.ROOT_REF_KEY, 0),
+			max_key=btrfs.ctree.Key(parent.tree_id, btrfs.ctree.ROOT_REF_KEY, -1),
+			factory=btrfs.ctree.RootRef,
+		):
+		# lookup the directory containing the subvolume in its parent subvolume
+		# both are pointed to by the RootRef
+		dir = btrfs.ioctl.ino_lookup(fd=fs.fd, treeid=root_ref.parent_tree, objectid=root_ref.dirid)
+		# noinspection PyArgumentList
+		subvol = Subvolume(
+			tree_id=root_ref.tree,
+			root_item=_do_lookup_root_item(fs=fs, tree_id=root_ref.tree),
+			root_ref=root_ref,
+			path=p.join(parent.path, dir.name_bytes, root_ref.name),
+		)
+		logging.debug(f'_do_list_root_refs(parent={str(parent)}): {str(subvol)}')
+		yield subvol
+		yield from _do_list_subvolumes(fs, parent=subvol)
+
+
+def list_subvolumes(fs: btrfs.ctree.FileSystem, list_root_subvolume: bool):
+	min_id = 256
+	if list_root_subvolume:
+		min_id = 5
+
+	root_subvol = Subvolume(
+		tree_id=btrfs.ctree.FS_TREE_OBJECTID,
+		root_item=_do_lookup_root_item(fs=fs, tree_id=btrfs.ctree.FS_TREE_OBJECTID),
+		root_ref=None,
+		path=b'/',
+	)
+
+	if list_root_subvolume:
+		yield root_subvol
+
+	yield from _do_list_subvolumes(fs, root_subvol)
+
+
+g_mountinfo: List[libmount.Fs] = []
+
+
+def read_mountinfo():
+	global g_mountinfo
+	if not g_mountinfo:
+		table = libmount.Table(path='/proc/self/mountinfo')
+		# longest first
+		g_mountinfo = sorted(
+			iter(table.next_fs, None),
+			key=lambda x: len(x.target),
+			reverse=True,
+		)
+
+
+# find mountpoint for vfs path
+def path_vfs_to_mountpoint(path: str) -> Tuple[libmount.Fs, str]:
+	global g_mountinfo
+	realpath = p.realpath(path)
+	logging.debug(f'path_vfs_to_mountpoint(path={path}): realpath {realpath}')
+
+	fs: libmount.Fs
+	for fs in g_mountinfo:
+		# fs.target is guaranteed normalized
+		if p.commonpath((fs.target, realpath)) == fs.target:
+			# p.relpath('/', '/') returns '.' rather than empty string (ugh!)
+			subpath = p.relpath(realpath, start=fs.target) if realpath != '/' else ''
+			logging.debug(f'path_vfs_to_mountpoint(path={path}): realpath {realpath} -> fs {fs}, subpath {subpath}')
+			return fs, subpath
+
+	raise RuntimeError(f'path_vfs_to_mountpoint(path={path}): could not find a filesystem!')
+
+
+# find physical path (full path inside the btrfs volume) for vfs path
+def path_vfs_to_physical(path: str) -> str:
+	fs, subpath = path_vfs_to_mountpoint(path)
+	# p.join(..., '') appends a trailing separator (ugh!)
+	physpath = p.join(fs.root, subpath) if subpath else fs.root
+	logging.debug(f'path_vfs_to_absolute_physical(path={path}): fs root {fs.root}, physpath {physpath}')
+	return physpath
+
+
+def find_subvolumes(fs: btrfs.ctree.FileSystem, search_root: str, list_root_subvolume: bool):
+	# TODO: optimize search based on @search_root
+	search_root_physical = path_vfs_to_physical(search_root)
+
+	return [
+		x
+		for x in list_subvolumes(fs=fs, list_root_subvolume=list_root_subvolume)
+		# search_root_physical is guaranteed normalized
+		if p.commonpath((search_root_physical, x.path.decode('utf-8'))) == search_root_physical
+	]
+
+
+def main():
+	configure_logging(prefix='btrfs-sub-find')
+	args = parse_args()
+	read_mountinfo()
+
+	with btrfs.ctree.FileSystem(args.path) as fs:
+		logging.debug(f'Created btrfs filesystem from {args.path}: {fs}')
+
+		subvolumes = find_subvolumes(
+			fs=fs,
+			search_root=args.path,
+			list_root_subvolume=args.root,
+		)
+
+		for s in subvolumes:
+			print(s.path.decode('utf-8'))
+
+
+if __name__ == "__main__":
+	main()
