@@ -1,0 +1,14 @@
+#!/bin/bash
+
+Ciphers=(
+	aes128-gcm@openssh.com
+	aes128-ctr
+)
+
+MACs=(
+	umac-64-etm@openssh.com
+	umac-64@openssh.com
+)
+
+IFS=','
+exec ssh -oCompression=no -oCiphers="${Ciphers[*]}" -oMACs="${MACs[*]}" "$@"
