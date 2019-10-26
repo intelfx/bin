@@ -28,6 +28,12 @@ function adjust_terminal() {
 	# set defaults for new windows
 	dconf write /org/gnome/terminal/legacy/profiles:/default "'${profiles_default[$1]}'"
 
+	# XXX: `busctl --auto-start=false tree` appears to not work (i. e. still try to activate the target service),
+	# so check availability of org.gnome.Terminal by hand
+	if ! busctl --user --acquired --no-pager --no-legend | grep -qw org.gnome.Terminal; then
+		return
+	fi
+
 	# reconfigure existing windows
 	local o objects=()
 	read -a objects < <(busctl --auto-start=false --list --user tree org.gnome.Terminal | grep '^/org/gnome/Terminal/window/') || return 0
