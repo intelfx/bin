@@ -91,6 +91,7 @@ nh_load() {
 		fi
 	fi
 
+	NH_LAST_LOAD=""
 	if (( ${#save_names[@]} )); then
 		if ! [[ "$s" ]]; then
 			nh_echo "Choose a save to load:"
@@ -137,10 +138,18 @@ ask() {
 
 nh_run() {
 	while :; do
+		NH_PREV_LOAD="$NH_LAST_LOAD"
 		NH_LAST_LOAD=""
 		if [[ $NH_LAST_SAVE ]]; then
 			nh_echo "Reloading the just saved game..."
 			nh_load "$NH_LAST_SAVE"
+		elif ! [[ $NH_LAST_SAVE ]] && [[ $NH_PREV_LOAD ]]; then
+			ans="$(ask "Reload last (l) or load another game (y)? [L/y/n/q]" "Lynq")"
+			case "$ans" in
+			l) nh_load "$NH_PREV_LOAD" ;;
+			y) nh_load ;;
+			q) exit 0 ;;
+			esac
 		elif nh_can_load; then
 			ans="$(ask "Load a game? [Y/n/q]" "Ynq")"
 			case "$ans" in
