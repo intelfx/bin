@@ -56,7 +56,7 @@ nh_save() {
 		local save_dir="$NH_SAVE_DIR/$save_name"
 		nh_echo "Saving as '$save_name'..."
 		if [[ -e "$save_dir" ]]; then
-			die "Save directory '$save_dir' already exists!"
+			die "Attempting to save an already existing save: '$save_name'"
 		fi
 
 		mkdir -p "$save_dir"
@@ -111,7 +111,7 @@ nh_load() {
 		cp "${save_files[@]}" -t "$NH_LIVE_DIR/save/"
 		NH_LAST_LOAD="$s"
 	else
-		nh_echo "No saves to load!" >&2
+		nh_echo "Nothing to load!" >&2
 		return 1
 	fi
 }
@@ -139,6 +139,7 @@ nh_run() {
 	while :; do
 		NH_LAST_LOAD=""
 		if [[ $NH_LAST_SAVE ]]; then
+			nh_echo "Reloading the just saved game..."
 			nh_load "$NH_LAST_SAVE"
 		elif nh_can_load; then
 			ans="$(ask "Load a game? [Y/n/q]" "Ynq")"
@@ -147,10 +148,7 @@ nh_run() {
 			q) exit 0 ;;
 			esac
 		else
-			ans="$(ask "Start a game? [Y/q]" "Yq")"
-			case "$ans" in
-			q) exit 0 ;;
-			esac
+			nh_echo "Starting a new game..."
 		fi
 
 		/usr/bin/nethack
