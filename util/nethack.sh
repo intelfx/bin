@@ -86,7 +86,7 @@ nh_load() {
 	readarray -t save_names < <(nh_save_list)
 
 	if [[ "$s" ]]; then
-		if ! printf "%s\n" "${save_names[@]}" | grep -Fqx "$s"; then
+		if ! [[ -d "$NH_SAVE_DIR/$s" ]]; then
 			die "Attempting to load a bad save: '$s'"
 		fi
 	fi
