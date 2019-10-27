@@ -118,7 +118,7 @@ nh_load() {
 
 ask() {
 	local query="$1"
-	local default="$(<<<"$2" tr -d '[a-z]')"
+	local default="$(<<<"$2" tr -d '[a-z]' | tr '[A-Z]' '[a-z]')"
 	local answers="$(<<<"$2" tr '[A-Z]' '[a-z]')"
 	local r
 	while :; do
