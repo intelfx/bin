@@ -13,7 +13,13 @@ nh_echo() {
 }
 
 nh_save_name() {
-	date "+%Y-%m-%d %H:%M:%S"
+	local name date description
+	name="$(date "+%Y-%m-%d %H:%M:%S")"
+	read -p "Enter description: " description
+	if [[ $description ]]; then
+		name="$name ($description)"
+	fi
+	echo "$name"
 }
 
 nh_save_list() {
