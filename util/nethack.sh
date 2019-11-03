@@ -162,12 +162,21 @@ nh_run() {
 			y) nh_load ;;
 			q) exit 0 ;;
 			esac
-		else
+		elif [[ $NH_LOOPED ]]; then
+			ans="$(ask "Start another game? [Y/q]" "Yq")"
+			case "$ans" in
+			y) ;;
+			q) exit 0 ;;
+			esac
+		fi
+
+		if ! [[ $NH_LAST_LOAD ]]; then
 			nh_echo "Starting a new game..."
 		fi
 
 		/usr/bin/nethack
 
+		NH_LOOPED=1
 		NH_LAST_SAVE=""
 		if nh_can_save; then
 			nh_save
