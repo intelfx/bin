@@ -8,8 +8,8 @@ echo -e "\e[1;37m
 ────────────────────────────────────────────────────────────────────────────────────────
 \e[0m"
 
-for i in {0..7}; do echo -en "\e[$((30+$i))m █ $(printf "%7s" "${colors[i]}") \e[0m"; done; echo
-for i in {8..15}; do echo -en "\e[1;$((22+$i))m █ $(printf "%7s" "${colors[i]}") \e[0m"; done; echo
+for i in {0..7}; do echo -en "\e[$((30+i))m █ $(printf "%7s" "${colors[i]:-color$i}") \e[0m"; done; echo
+for i in {8..15}; do echo -en "\e[1;$((30+i-8))m █ $(printf "%7s" "${colors[i]:-color$i}") \e[0m"; done; echo
 
 echo -e "\e[1;37m
 ────────────────────────────────────────────────────────────────────────────────────────\e[0m"
