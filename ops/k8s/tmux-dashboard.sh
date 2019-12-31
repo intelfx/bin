@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/bin/bash -e
 
 #
 # tmux-dashboard.sh -- spawns a new tmux window with `stern`, `kubectl top pods`
 #                      and `kubectl get pods` in watch(1) for a given selector.
 #
-# ----------------------- 
+# -----------------------
 # |          |          |
 # | get pods | top pods |
 # |          |          |
@@ -14,8 +14,6 @@
 # |                     |
 # -----------------------
 #
-
-set -e
 
 SELECTOR=( "$@" )
 
