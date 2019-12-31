@@ -1,0 +1,33 @@
+#!/bin/bash -e
+
+. lib.sh
+
+tmp=''
+cleanup() {
+	if [[ "$tmp" ]]; then
+		rm -rf "$tmp"
+		tmp=''
+	fi
+}
+trap cleanup EXIT
+
+for file; do
+	if ! [[ -e "$file" ]]; then
+		die "Bad file: '$file'"
+	fi
+	dir="$(dirname "$file")"
+	if ! [[ -d "$dir" ]]; then
+		die "Bad dirname: '$file'"
+	fi
+	tmp="$dir/.tmp.$$"
+	if [[ -d "$file" ]]; then
+		mkdir "$tmp"
+	else
+		echo >"$tmp"
+	fi
+
+	if ! getfacl "$tmp" | setfacl --set-file=- "$file"; then
+		die "Failed to reset ACLs: '$file'"
+	fi
+	cleanup
+done
