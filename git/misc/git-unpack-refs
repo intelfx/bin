@@ -12,6 +12,7 @@ else
     HASH="$(echo $f | cut -c1-40)"
     REF_PATH="${GIT_DIR:-${git_root}}/$(echo $f | cut -c42-)"
     echo "echo $HASH > \"$REF_PATH\""
+    mkdir -p "${REF_PATH%/*}"
     echo "$HASH" > "$REF_PATH"
   done
 fi
