@@ -115,7 +115,11 @@ nh_load() {
 		if (( ${#save_files[@]} != 1 )); then
 			die "Found ${#save_files[@]} != 1 save files in save $s!"
 		fi
-		cp "${save_files[@]}" -t "$NH_LIVE_DIR/save/"
+		if (( NH_WIZARD )); then
+			cp -v "${save_files[0]}" "$NH_LIVE_DIR/save/${UID}wizard.${save_files[0]##*.}"
+		else
+			cp "${save_files[@]}" -t "$NH_LIVE_DIR/save/"
+		fi
 		NH_LAST_LOAD="$s"
 	else
 		nh_echo "Nothing to load!" >&2
@@ -174,7 +178,7 @@ nh_run() {
 			nh_echo "Starting a new game..."
 		fi
 
-		/usr/bin/nethack
+		/usr/bin/nethack "${nh_args[@]}"
 
 		NH_LOOPED=1
 		NH_LAST_SAVE=""
@@ -190,7 +194,16 @@ nh_run() {
 	done
 }
 
+
 op="$1"
+shift
+nh_args=( "$@" )
+for a in "${nh_args[@]}"; do
+	case "$a" in
+	-D) NH_WIZARD=1 ;;
+	esac
+done
+
 case "$op" in
 save)
 	nh_save
