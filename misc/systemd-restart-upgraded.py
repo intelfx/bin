@@ -247,7 +247,7 @@ def emit_restart_group(name, command, group, file):
 def main():
 	# list open deleted files and group them by holding process
 	processes = dict()
-	for r in Lsof([ 'lsof', '-F', 'pfn' ]):
+	for r in Lsof([ 'lsof', '-Pln', '-F', 'pfn' ]):
 		if r.type == 'DEL' and r.path.startswith('/usr'):
 			p = processes.get(r.pid, None)
 			if p is None:
