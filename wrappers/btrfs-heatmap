@@ -1,0 +1,6 @@
+#!/bin/bash -e
+
+pngfile="$(/usr/bin/btrfs-heatmap "$@" | tee -a /dev/stderr | grep -Po '(?<=pngfile ).*')"
+if ! [[ -t 1 ]]; then
+	echo "$pngfile"
+fi
