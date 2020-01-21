@@ -1,5 +1,77 @@
-#!/bin/sh
+#!/bin/bash -e
 
-set -e
-setfacl -d "$@"
-setfacl "$@"
+. lib.sh || exit
+
+ARGS=$(getopt -o 'bknRLPvhm:x:s:' --long 'remove-all,remove-default,no-mask,mask,test,recursive,logical,physical,version,help,modify:,remove:' -n "${0##*/}" -- "$@")
+eval set -- "$ARGS"
+unset ARGS
+
+OPTIONS=()
+FILES=()
+ACL_SET=()
+ACL_MODIFY=()
+ACL_REMOVE=()
+parse_acl() {
+	declare -n target="$1"
+	local value="$2"
+
+	local IFS=,
+	target+=( $value )
+	unset IFS
+}
+while :; do
+	case "$1" in
+	-b|-k|-n|-R|-L|-P|-v|-h)
+		;&
+	--remove-all|--remove-default|--no-mask|--mask|--test|--recursive|--logical|--physical|--version|--help)
+		OPTIONS+=( "$1" )
+		shift
+		;;
+	-s|--set)
+		parse_acl ACL_SET "$2"
+		shift 2
+		;;
+	-m|--modify)
+		parse_acl ACL_MODIFY "$2"
+		shift 2
+		;;
+	-x|--remove)
+		parse_acl ACL_REMOVE "$2"
+		shift 2
+		;;
+	--)
+		shift
+		break
+		;;
+	*)
+		die "Internal error: '$1'"
+		;;
+	esac
+done
+
+FILES=( "$@" )
+
+ACL_COMPUTED=()
+compute_acl() {
+	declare -n target="$1"
+	local arg="$2"
+	shift 2
+
+	if (( $# )); then
+		local a acls=( "$@" )
+		for a in "$@"; do
+			acls+=( "default:$a" )
+		done
+
+		local IFS=,
+		local acl_string="${acls[*]}"
+		unset IFS
+
+		target+=( "$arg" "$acl_string" )
+	fi
+}
+compute_acl ACL_COMPUTED --set "${ACL_SET[@]}"
+compute_acl ACL_COMPUTED --modify "${ACL_MODIFY[@]}"
+compute_acl ACL_COMPUTED --remove "${ACL_REMOVE[@]}"
+
+setfacl "${OPTIONS[@]}" "${ACL_COMPUTED[@]}" "${FILES[@]}"
