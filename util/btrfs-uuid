@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+
+#
+# btrfs-uuid -- shows a mounted filesystem uuid
+#
+
+import os
+import os.path as p
+import sys
+import argparse
+import logging
+import attr
+
+import btrfs
+
+
+def configure_logging(*, prefix=None, handler=None, **kwargs):
+	fmt = '%(levelname)s: %(message)s'
+
+	if prefix is not None:
+		fmt = f'{prefix}: ' + fmt
+
+	if handler is not None:
+		kwargs.update({
+			'handlers': [ handler ],
+		})
+
+	logging.basicConfig(
+		level='LIB_DEBUG' in os.environ and logging.DEBUG or logging.INFO,
+		format=fmt,
+		**kwargs,
+	)
+
+
+@attr.s(kw_only=True)
+class UuidArgs:
+	search_root: str = attr.ib()
+
+
+def parse_args() -> UuidArgs:
+	parser = argparse.ArgumentParser(
+		description='''
+btrfs-uuid -- shows UUID of a mounted btrfs filesystem
+'''.strip(),
+	)
+
+	parser.add_argument('path', default='.',
+		help='Path to the filesystem and/or to the search root',
+	)
+
+	raw = parser.parse_args()
+	# noinspection PyArgumentList
+	args = UuidArgs(
+		search_root=raw.path,
+	)
+
+	return args
+
+
+def main():
+	configure_logging(prefix='btrfs-uuid')
+	args = parse_args()
+
+	with btrfs.ctree.FileSystem(args.search_root) as fs:
+		logging.debug(f'btrfs.ctree.FileSystem(path={args.search_root}): {fs}')
+
+		uuid = fs.fsid
+
+	print(uuid)
+
+
+if __name__ == "__main__":
+	main()
