@@ -1,0 +1,21 @@
+#!/bin/bash -e
+
+. lib.sh || exit
+
+TARGET_DIR="$1"
+if ! [[ -d "$TARGET_DIR" ]]; then
+	die "Bad target directory: '$TARGET_DIR'"
+fi
+if ! [[ -w "$TARGET_DIR" ]]; then
+	die "Cannot write target directory: '$TARGET_DIR'"
+fi
+CACHEDIR_PATH="$TARGET_DIR/CACHEDIR.TAG"
+if ! [[ -e "$CACHEDIR_PATH" ]]; then
+	log "Creating '$CACHEDIR_PATH'"
+	cat >"$CACHEDIR_PATH" <<EOF
+Signature: 8a477f597d28d172789f06886806bc55
+# This file is a cache directory tag created by mkcachedirtag.
+# For information about cache directory tags, see:
+#	http://bford.info/cachedir/
+EOF
+fi
