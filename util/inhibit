@@ -1,0 +1,35 @@
+#!/bin/bash
+
+SYSTEMD_INHIBIT=(systemd-inhibit --mode=block --who=$0 --why="user request" --mode=block)
+SYSTEMD_INHIBIT_WHAT=()
+SYSTEMD_INHIBIT_PROG=(sleep infinity)
+
+while (( $# )); do
+	arg="$1"
+	shift
+	case "$arg" in
+	power) SYSTEMD_INHIBIT_WHAT+=(shutdown) ;;
+	suspend) SYSTEMD_INHIBIT_WHAT+=(sleep) ;;
+	idle) SYSTEMD_INHIBIT_WHAT+=(idle) ;;
+	keys) SYSTEMD_INHIBIT_WHAT+=(handle-power-key handle-suspend-key handle-hibernate-key) ;;
+	lid) SYSTEMD_INHIBIT_WHAT+=(handle-lid-switch) ;;
+	all) SYSTEMD_INHIBIT_WHAT+=(shutdown sleep idle handle-power-key handle-suspend-key handle-hibernate-key handle-lid-switch) ;;
+	--) break ;;
+	*) SYSTEMD_INHIBIT+=("$arg") ;;
+	esac
+done
+
+if (( $# )); then
+	SYSTEMD_INHIBIT_PROG=( "$@" )
+fi
+
+if ! (( ${#SYSTEMD_INHIBIT_WHAT[@]} )); then
+	die "Nothing to inhibit"
+fi
+
+(( ${#SYSTEMD_INHIBIT_WHAT[@]} )) || die "Nothing to inhibit"
+(( ${#SYSTEMD_INHIBIT_PROG[@]} )) || die "Nothing to run while inhibited"
+
+SYSTEMD_INHIBIT_WHAT_STRING="$(printf "%s\n" "${SYSTEMD_INHIBIT_WHAT[@]}" | sort -u | tr '\n' ':' | sed -r -e 's|^:+||' -e 's|:+$||')"
+
+exec "${SYSTEMD_INHIBIT[@]}" --what="${SYSTEMD_INHIBIT_WHAT_STRING}" -- "${SYSTEMD_INHIBIT_PROG[@]}"
