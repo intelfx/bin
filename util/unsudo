@@ -1,0 +1,22 @@
+#!/bin/bash -e
+
+. lib.sh || exit
+
+#
+# unsudo -- execute a process from within a sudo session, dropping privileges to the original user account
+#
+
+if ! [[ "$SUDO_USER" ]]; then
+	dbg "unsudo: not dropping privileges: \$SUDO_USER not set"
+	exec "$@"
+fi
+
+if ! [[ $(id -u) == 0 ]]; then
+	die "unsudo: cannot drop privileges: UID $(id -u) != 0"
+fi
+
+TARGET_UID="$(id -u "$SUDO_USER")"
+TARGET_GID="$(id -g "$SUDO_USER")"
+
+dbg "unsudo: dropping privileges: uid=$TARGET_UID, gid=$TARGET_GID"
+exec setpriv --reuid "$TARGET_UID" --regid "$TARGET_GID" --init-groups "$@"
