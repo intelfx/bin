@@ -7,6 +7,7 @@ MKTORRENT=(
 	--verbose
 	--private
 	--source RED
+	--announce "$(pass misc/redacted.ch/intelfx/announce)"
 )
 
 FILES=( "$@" )
