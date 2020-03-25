@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec systemd-run --pty --same-dir --wait --collect --service-type=exec "$@"
