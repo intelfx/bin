@@ -1,0 +1,3 @@
+#!/bin/sh
+
+MESA_LOADER_DRIVER_OVERRIDE=i965 exec /usr/bin/mpv "$@"
