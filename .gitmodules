@@ -7,3 +7,6 @@
 [submodule "lib"]
 	path = lib
 	url = https://github.com/intelfx/lib
+[submodule "git/git-autofixup"]
+	path = git/git-autofixup
+	url = https://github.com/torbiak/git-autofixup
