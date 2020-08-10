@@ -1,5 +1,8 @@
 #!/bin/bash -e
 
-git reflog expire --expire=now --all
-git repack -a -d -f --depth=250 --window=250 --unpack-unreachable=now "$@"
-git prune --expire=now
+git \
+	-c gc.aggressiveDepth=50 \
+	-c gc.aggressiveWindow=1000 \
+	-c gc.reflogExpire=now \
+	-c gc.reflogExpireUnreachable=now \
+	gc --aggressive --prune=now

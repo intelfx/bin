@@ -4,8 +4,8 @@
 # git-gc-min -- remove as much junk as possible while modifying as few packs as possible
 #
 
-git reflog expire --expire=now --all
-git -c gc.bigPackThreshold=20M gc --prune=now
-#git repack -d --unpack-unreachable=now
-#git fsck --connectivity-only --unreachable | cut -d' ' -f3 | git pack-redundant --all | xargs -r rm
-#git prune --expire=now
+git \
+	-c gc.bigPackThreshold=100M \
+	-c gc.reflogExpire=now \
+	-c gc.reflogExpireUnreachable=now \
+	gc --prune=now
