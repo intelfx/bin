@@ -1,0 +1,44 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+. lib.sh || exit
+
+# pending resolution of https://github.com/systemd/systemd/issues/16699
+systemctl_host() {
+	local host="$1"
+	shift
+	local args=( "$@" )
+
+	log "=> systemctl -H $host ${args[*]} (emulating)"
+	ssh "$host" systemctl "${args[@]}"
+}
+
+anystation_throttle() {
+	local cores="$1"
+	local quota="$2"
+
+	if [[ $cores ]]; then systemctl_host root@anystation.nexus.i.intelfx.name set-property systemd-nspawn@stratofortress.service AllowedCPUs="$cores"; fi
+	if [[ $quota ]]; then systemctl_host root@stratofortress.nexus.i.intelfx.name set-property system-cpu.slice CPUQuota="$quota"; fi
+}
+
+for arg; do
+	case "$arg" in
+	1|on|true)
+		anystation_throttle "8-15,24-31" "100%"
+		;;
+	0|off|false)
+		anystation_throttle "0-31" "3000%"
+		;;
+	partial)
+		anystation_throttle "8-15,24-31" "1500%"
+		;;
+	cores)
+		anystation_throttle "8-15,24-31" ""
+		;;
+	usage)
+		anystation_throttle "" "100%"
+		;;
+	esac
+done
