@@ -3,9 +3,9 @@
 set -e
 
 SVG_PATH="/tmp/systemd-analyze.svg"
-MAIN_UNIT="gdm.service"
-#SVG_APP="xdg-open"
-SVG_APP="firefox"
+MAIN_UNIT="display-manager.service"
+SVG_APP="xdg-open"
+#SVG_APP="firefox"
 
 ACTION="$1"
 shift
