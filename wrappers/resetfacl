@@ -11,23 +11,46 @@ cleanup() {
 }
 trap cleanup EXIT
 
+declare -A DIR_TEMPLATES FILE_TEMPLATES
+
 for file; do
 	if ! [[ -e "$file" ]]; then
 		die "Bad file: '$file'"
 	fi
-	dir="$(dirname "$file")"
-	if ! [[ -d "$dir" ]]; then
-		die "Bad dirname: '$file'"
-	fi
-	tmp="$dir/.tmp.$$"
-	if [[ -d "$file" ]]; then
-		mkdir "$tmp"
-	else
-		echo >"$tmp"
+
+	parent="${file%/*}"; if [[ $parent == $file ]]; then parent=.; fi
+	if ! [[ -d "$parent" ]]; then
+		die "Bad parent: '$parent' (file: '$file')"
 	fi
 
-	if ! getfacl "$tmp" | setfacl --set-file=- "$file"; then
+	if ! [[ ${DIR_TEMPLATES[$parent]} ]]; then
+		sample="$parent/.tmp.$$.d"
+		mkdir "$sample"
+
+		DIR_TEMPLATES[$parent]="$(getfacl "$sample")"
+		rm -d "$sample"
+
+		sample="$parent/.tmp.$$.f"
+		touch "$sample"
+		FILE_TEMPLATES[$parent]="$(getfacl "$sample")"
+		rm -f "$sample"
+	fi
+done
+
+for file; do
+	parent="${file%/*}"; if [[ $parent == $file ]]; then parent=.; fi
+
+	if [[ -d "$file" ]]; then
+		template="${DIR_TEMPLATES[$parent]}"
+	else
+		template="${FILE_TEMPLATES[$parent]}"
+	fi
+
+	if ! [[ "$template" ]]; then
+		die "Bad template for '$parent' (file: '$file')"
+	fi
+
+	if ! setfacl --set-file=- "$file" <<<"$template"; then
 		die "Failed to reset ACLs: '$file'"
 	fi
-	cleanup
 done
