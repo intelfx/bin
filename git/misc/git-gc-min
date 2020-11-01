@@ -8,4 +8,4 @@ git \
 	-c gc.bigPackThreshold=100M \
 	-c gc.reflogExpire=now \
 	-c gc.reflogExpireUnreachable=now \
-	gc --prune=now
+	gc --prune=now "$@"

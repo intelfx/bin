@@ -1,0 +1,10 @@
+#!/bin/bash -e
+
+#
+# git-gc-now -- `git gc` and remove junk
+#
+
+git \
+	-c gc.reflogExpire=now \
+	-c gc.reflogExpireUnreachable=now \
+	gc --prune=now "$@"
