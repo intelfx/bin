@@ -1,0 +1,8 @@
+#!/bin/bash
+
+exec sudo systemd-run-here \
+	-p Slice=system-cpu.slice \
+	-p User=$(id -un) \
+	-p CPUSchedulingPolicy=batch \
+	-p Nice=18 \
+	"$@"
