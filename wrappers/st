@@ -1,3 +1,5 @@
 #!/bin/sh -e
 
+export GDK_BACKEND=wayland
+
 exec subl "$@"
