@@ -11,34 +11,72 @@ systemctl_host() {
 	shift
 	local args=( "$@" )
 
-	log "=> systemctl -H $host ${args[*]} (emulating)"
-	ssh "$host" systemctl "${args[@]}"
+	#log "=> systemctl -H $host ${args[*]} (emulating)"
+	#ssh "$host" systemctl "${args[@]}"
+	log "=> systemctl -H $host ${args[*]}"
+	systemctl -H "$host" "${args[@]}"
+
 }
 
-anystation_throttle() {
-	local cores="$1"
-	local quota="$2"
+ARGS=$(getopt -o 'c:a:u:q:' --long 'cpus:,affinity:,usage:,quota:' -n "${0##*/}" -- "$@")
+eval set -- "$ARGS"
+unset ARGS
 
-	if [[ $cores ]]; then systemctl_host root@anystation.nexus.i.intelfx.name set-property systemd-nspawn@stratofortress.service AllowedCPUs="$cores"; fi
-	if [[ $quota ]]; then systemctl_host root@stratofortress.nexus.i.intelfx.name set-property system-cpu.slice CPUQuota="$quota"; fi
-}
+ARG_CPU_QUOTA=
+ARG_CPU_AFFINITY=
 
-for arg; do
-	case "$arg" in
-	1|on|true)
-		anystation_throttle "8-15,24-31" "100%"
+while :; do
+	case "$1" in
+	-u|--usage|-q|--quota)
+		ARG_CPU_QUOTA="$2"
+		shift 2
+		continue
 		;;
-	0|off|false)
-		anystation_throttle "0-31" "3000%"
+
+	-c|--cpus|-a|--affinity)
+		ARG_CPU_AFFINITY="$2"
+		shift 2
+		continue
 		;;
-	partial)
-		anystation_throttle "8-15,24-31" "1500%"
+	'--')
+		shift
+		break
 		;;
-	cores)
-		anystation_throttle "8-15,24-31" ""
-		;;
-	usage)
-		anystation_throttle "" "100%"
+	*)
+		die "Internal error"
 		;;
 	esac
 done
+
+if ! (( $# == 1 )); then
+	die "Expected 1 positional argument, got $#: $*"
+fi
+
+case "$1" in
+1|on|true)
+	CPU_AFFINITY="8-15,24-31"
+	CPU_QUOTA="100%"
+	;;
+0|off|false)
+	CPU_AFFINITY="0-31"
+	CPU_QUOTA="3000%"
+	;;
+esac
+
+update_arg() {
+	declare -n target="$1" arg="ARG_$1"
+	if [[ $arg == keep ]]; then
+		target=
+	elif [[ $arg ]]; then
+		target="$arg"
+	fi
+}
+update_arg CPU_AFFINITY
+update_arg CPU_QUOTA
+
+if [[ $CPU_AFFINITY ]]; then
+	systemctl_host root@anystation.nexus.i.intelfx.name set-property systemd-nspawn@stratofortress.service AllowedCPUs="$CPU_AFFINITY"
+fi
+if [[ $CPU_QUOTA ]]; then
+	systemctl_host root@stratofortress.nexus.i.intelfx.name set-property system-cpu.slice CPUQuota="$CPU_QUOTA"
+fi
