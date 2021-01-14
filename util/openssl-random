@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec openssl enc -aes-128-ctr -pass file:<(dd if=/dev/urandom bs=128 count=1) -nosalt </dev/zero 2>/dev/null
