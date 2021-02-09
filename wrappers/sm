@@ -2,4 +2,9 @@
 
 export GDK_BACKEND=wayland
 
+# default to opening current directory
+if ! (( $# )); then
+	set -- .
+fi
+
 exec smerge "$@"
