@@ -22,8 +22,8 @@ ARGS=$(getopt -o 'c:a:u:q:' --long 'cpus:,affinity:,usage:,quota:' -n "${0##*/}"
 eval set -- "$ARGS"
 unset ARGS
 
-ARG_CPU_QUOTA=
-ARG_CPU_AFFINITY=
+unset ARG_CPU_QUOTA
+unset ARG_CPU_AFFINITY
 
 while :; do
 	case "$1" in
@@ -58,25 +58,24 @@ case "$1" in
 	CPU_QUOTA="100%"
 	;;
 0|off|false)
-	CPU_AFFINITY="0-31"
+	#CPU_AFFINITY="0-31"
+	CPU_AFFINITY=""
 	CPU_QUOTA="3000%"
 	;;
 esac
 
 update_arg() {
 	declare -n target="$1" arg="ARG_$1"
-	if [[ $arg == keep ]]; then
-		target=
-	elif [[ $arg ]]; then
+	if [[ ${arg+set} ]]; then
 		target="$arg"
 	fi
 }
 update_arg CPU_AFFINITY
 update_arg CPU_QUOTA
 
-if [[ $CPU_AFFINITY ]]; then
+if [[ $CPU_AFFINITY != keep ]]; then
 	systemctl_host root@anystation.nexus.i.intelfx.name set-property systemd-nspawn@stratofortress.service AllowedCPUs="$CPU_AFFINITY"
 fi
-if [[ $CPU_QUOTA ]]; then
+if [[ $CPU_QUOTA != keep ]]; then
 	systemctl_host root@stratofortress.nexus.i.intelfx.name set-property system-cpu.slice CPUQuota="$CPU_QUOTA"
 fi
