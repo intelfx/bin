@@ -75,6 +75,8 @@ update_arg CPU_QUOTA
 
 if [[ $CPU_AFFINITY != keep ]]; then
 	systemctl_host root@anystation.nexus.i.intelfx.name set-property systemd-nspawn@stratofortress.service AllowedCPUs="$CPU_AFFINITY"
+	systemctl_host root@anystation.nexus.i.intelfx.name set-property -- system.slice AllowedCPUs="$CPU_AFFINITY"
+	systemctl_host root@anystation.nexus.i.intelfx.name set-property -- user.slice AllowedCPUs="$CPU_AFFINITY"
 fi
 if [[ $CPU_QUOTA != keep ]]; then
 	systemctl_host root@stratofortress.nexus.i.intelfx.name set-property system-cpu.slice CPUQuota="$CPU_QUOTA"
