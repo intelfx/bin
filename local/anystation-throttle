@@ -58,8 +58,7 @@ case "$1" in
 	CPU_QUOTA="100%"
 	;;
 0|off|false)
-	#CPU_AFFINITY="0-31"
-	CPU_AFFINITY=""
+	CPU_AFFINITY="0-31"
 	CPU_QUOTA="3000%"
 	;;
 esac
