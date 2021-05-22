@@ -73,31 +73,31 @@ function adjust_kate() {
 	sed -re "s|^Schema=.*|Schema=${schema[$1]}|" -i "$config_path/katepartrc"
 }
 
-function adjust_stext() {
-	local stext_prefs="$config_path/sublime-text-3/Packages/User/Preferences.sublime-settings"
-	local schema=(
-		"Packages/Solarized Color Scheme/Solarized (light).sublime-color-scheme"
-		"Packages/Solarized Color Scheme/Solarized (dark).sublime-color-scheme"
-	)
-	#local theme=( "Adaptive.sublime-theme" )
+#function adjust_stext() {
+#	local stext_prefs="$config_path/sublime-text-3/Packages/User/Preferences.sublime-settings"
+#	local schema=(
+#		"Packages/Solarized Color Scheme/Solarized (light).sublime-color-scheme"
+#		"Packages/Solarized Color Scheme/Solarized (dark).sublime-color-scheme"
+#	)
+#	#local theme=( "Adaptive.sublime-theme" )
+#
+#	if [[ -e "$stext_prefs" ]]; then
+#		jq --arg schema "${schema[$1]}" '.color_scheme |= $schema' \
+#			<"$stext_prefs" \
+#			| sponge "$stext_prefs"
+#	fi
+#}
 
-	if [[ -e "$stext_prefs" ]]; then
-		jq --arg schema "${schema[$1]}" '.color_scheme |= $schema' \
-			<"$stext_prefs" \
-			| sponge "$stext_prefs"
-	fi
-}
-
-function adjust_smerge() {
-	local smerge_prefs="$config_path/sublime-merge/Packages/User/Preferences.sublime-settings"
-	local theme=( "Merge.sublime-theme" "Merge Dark.sublime-theme" )
-
-	if [[ -e "$smerge_prefs" ]]; then
-		jq --arg theme "${theme[$1]}" '.theme |= $theme' \
-			<"$smerge_prefs" \
-			| sponge "$smerge_prefs"
-	fi
-}
+#function adjust_smerge() {
+#	local smerge_prefs="$config_path/sublime-merge/Packages/User/Preferences.sublime-settings"
+#	local theme=( "Merge.sublime-theme" "Merge Dark.sublime-theme" )
+#
+#	if [[ -e "$smerge_prefs" ]]; then
+#		jq --arg theme "${theme[$1]}" '.theme |= $theme' \
+#			<"$smerge_prefs" \
+#			| sponge "$smerge_prefs"
+#	fi
+#}
 
 MODE=()
 
@@ -109,7 +109,7 @@ esac
 shift
 
 if (( ! $# )); then
-	set -- "$@" gtk3 gedit terminal builder kde kate stext smerge
+	set -- "$@" gtk3 gedit terminal builder kde kate
 fi
 
 for arg; do
