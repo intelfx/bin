@@ -31,9 +31,17 @@ git_verify() {
 }
 
 log "Determining versions"
-tag="$(git_list_versions | tail -n1)"
-git_verify "$tag" || die "Failed to determine latest stable, exiting"
-log " Latest stable: $tag"
+
+if (( $# > 1 )); then
+	die "Bad usage"
+elif (( $# == 1 )); then
+	tag="$1"
+	log " Using stable: $tag"
+else
+	tag="$(git_list_versions | tail -n1)"
+	git_verify "$tag" || die "Failed to determine latest stable, exiting" || true
+	log " Latest stable: $tag"
+fi
 
 arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
 git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
