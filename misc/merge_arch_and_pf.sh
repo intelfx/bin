@@ -35,11 +35,11 @@ tag="$(git_list_versions | tail -n1)"
 git_verify "$tag" || die "Failed to determine latest stable, exiting"
 log " Latest stable: $tag"
 
-arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V)"
+arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
 git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
 log " Latest -arch tag: $arch_tag"
 
-release="$(<<<"$tag" sed -nr 's|^v([0-9]+\.[0-9]+)(\.[0-9]+)?$|\1|p')"
+release="$(<<<"$tag" sed -nr 's|^v([0-9]+\.[0-9]+)(\.[0-9]+)?$|\1|p')" || true
 git_verify "v$release" || die "Failed to determine major release, exiting"
 log " Major release: $release"
 
