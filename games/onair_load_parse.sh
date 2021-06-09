@@ -51,11 +51,19 @@ PAX_LBS=190
 declare -A REGNR_TO_OEW_LBS
 REGNR_TO_OEW_LBS=(
 	[a319]=89999
+	[a321xlr]=109746
+)
+
+declare -A REGNR_TO_XP_OEW_LBS
+REGNR_TO_XP_OEW_LBS=(
+	[a319]=89999
+	[a321xlr]=105329
 )
 
 declare -A REGNR_TO_PILOTS
 REGNR_TO_PILOTS=(
 	[a319]=2
+	[a321xlr]=2
 )
 
 if ! [[ $# == 1 ]]; then
@@ -81,7 +89,7 @@ print_ftr() {
 }
 
 print_xplane() {
-	echo "X-Plane payload: $(calc "$PAX_LBS + $CARGO_LBS") lbs"
+	echo "X-Plane payload: $(calc "$PAX_LBS + $CARGO_LBS + $XP_OEW_DIFF_LBS") lbs"
 	echo "X-Plane fuel: $FUEL_LBS lbs"
 }
 
@@ -136,6 +144,17 @@ print_airbus_mcdu() {
 
 		EOF
 	;;
+	a321xlr)
+		cat <<-EOF
+		MCDU ZFWCG guidance:
+		           empty           +0.0 in  28.6%
+		           just pilots     -1.6 in  27.6%
+		           full cargo      -4.1 in  26.1%
+		           full cargo+pax  -2.9 in  26.8%
+			   max zfw w/cg    +4.9 in  31.6%
+
+		EOF
+	;;
 	*)
 		cat <<-EOF
 		MCDU ZFWCG guidance N/A
@@ -150,20 +169,35 @@ print_airbus_mcdu() {
 }
 
 OEW_LBS="${REGNR_TO_OEW_LBS[$regnr]}"
+XP_OEW_LBS="${REGNR_TO_XP_OEW_LBS[$regnr]}"
 CREW_PILOTS="${REGNR_TO_PILOTS[$regnr]}"
 
-echo -n "Enter passenger count: "
-read PAX_NR
+XP_OEW_DIFF_LBS="$(calc "$OEW_LBS - $XP_OEW_LBS")"
 
-CREW_FA="$(onair_attendants "$PAX_NR")"
-CREW_NR="$(( CREW_PILOTS + CREW_FA ))"
-PAX_LBS="$(calc "($CREW_NR + $PAX_NR) * 190")"
+echo -n "Enter ZFW (if known): "
+read ZFW_LBS
 
-echo -n "Enter cargo weight (lbs, or enter a unit): "
-read CARGO
-parse_weight CARGO CARGO_LBS lbs lbs
+if [[ "$ZFW_LBS" ]]; then
+	PAX_NR=0
+	CREW_FA=0
+	CREW_NR="$CREW_PILOTS"
+	PAX_LBS="$(calc "($CREW_NR + $PAX_NR) * 190")"
 
-ZFW_LBS="$(calc "$OEW_LBS + $PAX_LBS + $CARGO_LBS")"
+	CARGO_LBS="$(calc "$ZFW_LBS - $OEW_LBS - $PAX_LBS")"
+else
+	echo -n "Enter passenger count: "
+	read PAX_NR
+
+	CREW_FA="$(onair_attendants "$PAX_NR")"
+	CREW_NR="$(( CREW_PILOTS + CREW_FA ))"
+	PAX_LBS="$(calc "($CREW_NR + $PAX_NR) * 190")"
+
+	echo -n "Enter cargo weight (lbs, or enter a unit): "
+	read CARGO
+	parse_weight CARGO CARGO_LBS lbs lbs
+
+	ZFW_LBS="$(calc "$OEW_LBS + $PAX_LBS + $CARGO_LBS")"
+fi
 
 print_hdr
 print_simbrief_in
