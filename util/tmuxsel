@@ -1,0 +1,38 @@
+#!/bin/bash
+
+. lib.sh || exit 1
+
+XSEL_ARGS=()
+SSH_ARGS=()
+MODE=
+
+for arg; do
+	case "$arg" in
+	-i|--input|-a|--append|-f|--follow)
+		XSEL_ARGS+=("$arg")
+		MODE=input
+		;;
+	-o|--output)
+		XSEL_ARGS+=("$arg")
+		MODE=output
+		;;
+	-p|--primary|-s|--secondary|-b|--clipboard)
+		XSEL_ARGS+=("$arg")
+		;;
+	*)
+		SSH_ARGS+=("$arg")
+		;;
+	esac
+done
+
+case "$MODE" in
+input)
+	ssh "${SSH_ARGS[@]}" 'tmux show-buffer' | xsel "${XSEL_ARGS[@]}"
+	;;
+output)
+	xsel "${XSEL_ARGS[@]}" | ssh "${SSH_ARGS[@]}" 'tmux load-buffer /dev/stdin'
+	;;
+*)
+	die "Usage: $0 [--input|--output]"
+	;;
+esac
