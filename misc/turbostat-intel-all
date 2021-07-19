@@ -1,3 +1,3 @@
 #!/bin/bash
 
-sudo turbostat -s CPU,Core,GFXMHz,GFX%C0,CPUGFX%,GFX%rc6,Bzy_MHz,Busy%,Pkg%pc2,Pkg%pc3,Pkg%pc6,Pkg%pc7,Pkg%pc8,Pkg%pc9,Pk%pc10,PkgWatt,CorWatt,GFXWatt,RAMWatt "$@"
+turbostat -s CPU,Core,GFXMHz,GFX%C0,CPUGFX%,GFX%rc6,Bzy_MHz,Busy%,Pkg%pc2,Pkg%pc3,Pkg%pc6,Pkg%pc7,Pkg%pc8,Pkg%pc9,Pk%pc10,PkgWatt,CorWatt,GFXWatt,RAMWatt "$@"
