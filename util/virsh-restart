@@ -1,0 +1,19 @@
+#!/bin/bash -e
+
+. lib.sh || exit 1
+
+TARGET="${@:$#}"
+ARGS=("${@:1:$#-1}")
+
+call_virsh() {
+	virsh "${ARGS[@]}" "$@"
+}
+
+call_virsh shutdown "$TARGET"
+
+while ! call_virsh list --inactive | grep -q -w "$TARGET"; do
+	sleep 1
+done
+sleep 1
+
+call_virsh start "$TARGET"
