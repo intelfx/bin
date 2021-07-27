@@ -1,0 +1,93 @@
+#!/bin/bash
+
+. lib.sh || exit 1
+
+mem_decode() {
+	local arg="$1" value unit
+	if ! [[ $arg =~ ^([0-9]+)([a-zA-Z])$ ]]; then
+		die "bad memory amount (expected {SIZE}{UNIT}, got $arg"
+	fi
+	value="${BASH_REMATCH[1]}"
+	unit="${BASH_REMATCH[2]}"
+	case "$unit" in
+	[tT]) (( value *= 1024*1024*1024*1024 )) ;;
+	[gG]) (( value *= 1024*1024*1024 )) ;;
+	[mM]) (( value *= 1024*1024 )) ;;
+	[kK]) (( value *= 1024 )) ;;
+	*) die "bad memory unit (expected one of K, M, G, T; got $unit)" ;;
+	esac
+	echo "$value"
+}
+
+case "$#" in
+2)
+	HUGEPAGE_ARG="$2"
+	;&
+1)
+	AMOUNT_ARG="$1"
+	;;
+*)
+	die "Wrong argument count: got $#, expected 1 or 2 (usage: <amount> [hugepage])"
+	;;
+esac
+
+AMOUNT="$(mem_decode "$AMOUNT_ARG")"
+if ! [[ "$HUGEPAGE" ]]; then
+	HUGEPAGE_ARG="$(sed -nr 's|^Hugepagesize: +([0-9]+) kB$|\1K|p' /proc/meminfo)"
+fi
+HUGEPAGE="$(mem_decode "$HUGEPAGE_ARG")"
+
+if (( HUGEPAGE % 4096 )); then
+	die "bad hugepage size (expected a multiple of 4K, got $HUGEPAGE bytes)"
+fi
+HUGEPAGE_DIR="/sys/kernel/mm/hugepages/hugepages-$((HUGEPAGE/1024))kB"
+if ! [[ -d "$HUGEPAGE_DIR" ]]; then
+	find /sys/kernel/mm/hugepages -mindepth 1 -maxdepth 1 -type d -printf '%P\n' | readarray -t HUGEPAGE_NAMES
+	die "bad hugepage size (available: $(join ", " "${HUGEPAGE_NAMES[@]#hugepages-}"), requested: $((HUGEPAGE/1024))kB)"
+fi
+
+HUGEPAGE_NR="$(( (AMOUNT+HUGEPAGE-1) / HUGEPAGE ))"
+HUGEPAGE_WASTED="$(( AMOUNT % HUGEPAGE ))"
+
+log "Allocating $AMOUNT_ARG ($AMOUNT bytes) using $HUGEPAGE_ARG ($HUGEPAGE bytes) huge pages"
+log "Allocating $HUGEPAGE_NR pages (wasting $HUGEPAGE_WASTED bytes)"
+cd "$HUGEPAGE_DIR"
+
+huge_count="$HUGEPAGE_NR"
+huge_nr_orig="$(< nr_hugepages)"
+for (( i = 1; i <= 100; ++i )); do
+	huge_free="$(< free_hugepages)"
+	huge_resv="$(< resv_hugepages)"
+	huge_avail=$(( huge_free - huge_resv ))
+	huge_nr_now="$(< nr_hugepages)"
+	huge_nr_target="$(( huge_nr_now + huge_count - huge_avail ))"
+	if (( i > 1 )); then
+		log "allocating (try $i): dropping caches"
+		sync
+		sysctl vm.drop_caches=3
+		sysctl vm.compact_memory=1
+	fi
+	log "allocating (try $i): orig=$huge_nr_orig, now=$huge_nr_now, target=$huge_nr_target"
+	if ! echo "$huge_nr_target" >nr_hugepages; then
+		log "allocating (try $i): failure, retrying in 100ms"
+		sleep 0.1
+		continue
+	fi
+
+	huge_free_actual="$(< free_hugepages)"
+	huge_resv_actual="$(< resv_hugepages)"
+	huge_avail_actual="$(( huge_free_actual - huge_resv_actual ))"
+	huge_nr_actual="$(< nr_hugepages)"
+	if ! (( huge_avail_actual >= huge_count )); then
+		log "hugepages($huge): allocating (try $i): silent failure: have just $huge_avail_actual out of $huge_count (actual=$huge_nr_actual, target=$huge_nr_target), retrying in 100ms"
+		sleep 0.1
+		continue
+	fi
+
+	log "allocating (try $i): success: have $huge_avail_actual, need $huge_count"
+	fail=0
+	break
+done
+if (( fail )); then
+	die "allocating: exceeded attempts, releasing $((huge_nr_actual-huge_nr_orig)) allocated so far"
+fi
