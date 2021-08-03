@@ -1,0 +1,66 @@
+#!/bin/bash -e
+
+. lib.sh || exit 1
+
+TARGET="$1"
+ARGS=( "${@:2}" )
+
+declare -p TARGET
+declare -p ARGS
+
+if [[ "$TARGET" =~ ([^@]+@)?([^:]*)(:.+)? ]]; then
+	USER="${BASH_REMATCH[1]%'@'}"
+	HOST="${BASH_REMATCH[2]}"
+	DIR="${BASH_REMATCH[3]#':'}"
+else
+	die "Cannot parse sshfs target: '$1'"
+fi
+
+USERHOST="${USER:+$USER@}${HOST}"
+SYMBOLIC_USER="$(ssh "${ARGS[@]}" "$USERHOST" 'whoami')"
+SYMBOLIC_USERHOST="${SYMBOLIC_USER}@${HOST}"
+
+if [[ -z "$DIR" ]]; then
+	SYMBOLIC_DIR="~"
+elif ! [[ $DIR == /* ]]; then
+	SYMBOLIC_DIR="~/$DIR"
+else
+	SYMBOLIC_DIR="$DIR"
+fi
+
+MOUNTPOINT="$HOME/mnt/${SYMBOLIC_USERHOST}/${SYMBOLIC_DIR##/}"
+mkdir -p "$MOUNTPOINT"
+
+UNIT="sshfs-$(systemd-escape "$SYMBOLIC_USER")-$(systemd-escape "$HOST")-$(systemd-escape "$DIR").service"
+ACTIVE="$(systemctl --user is-active "$UNIT" || true)"
+case "$ACTIVE" in
+inactive)
+	;;
+failed)
+	systemctl --user reset-failed "$UNIT"
+	;;
+active)
+	systemctl --user status "$UNIT"
+	exit
+	;;
+*)
+	systemctl --user status "$UNIT"
+	die "Invalid unit state for '$UNIT': '$ACTIVE'"
+	;;
+esac
+
+systemd-run \
+	--user \
+	--unit "$UNIT" \
+	sshfs \
+		"$USERHOST:$DIR" \
+		"$MOUNTPOINT" \
+		"${ARGS[@]}" \
+		-f \
+		-o BatchMode=yes \
+		-o ServerAliveInterval=15 \
+		-o reconnect \
+		-o idmap=user \
+		-o transform_symlinks \
+		-o dir_cache=yes \
+		-o max_conns=8 \
