@@ -24,6 +24,15 @@ unset ARGS
 
 unset ARG_CPU_QUOTA
 unset ARG_CPU_AFFINITY
+AFFINITY_UNITS=(
+	anystation.nexus.i.intelfx.name:kthread.slice
+	anystation.nexus.i.intelfx.name:system.slice
+	anystation.nexus.i.intelfx.name:user.slice
+	anystation.nexus.i.intelfx.name:systemd-nspawn@stratofortress.service
+)
+QUOTA_UNITS=(
+	stratofortress.nexus.i.intelfx.name:system-cpu.slice
+)
 
 while :; do
 	case "$1" in
@@ -73,11 +82,14 @@ update_arg CPU_AFFINITY
 update_arg CPU_QUOTA
 
 if [[ $CPU_AFFINITY != keep ]]; then
-	systemctl_host root@anystation.nexus.i.intelfx.name set-property -- machine.slice AllowedCPUs="$CPU_AFFINITY"
-	systemctl_host root@anystation.nexus.i.intelfx.name set-property -- user.slice AllowedCPUs="$CPU_AFFINITY"
-	systemctl_host root@anystation.nexus.i.intelfx.name set-property -- system.slice AllowedCPUs="$CPU_AFFINITY"
-	systemctl_host root@anystation.nexus.i.intelfx.name set-property -- kthread.slice AllowedCPUs="$CPU_AFFINITY"
+	for unit in "${AFFINITY_UNITS[@]}"; do
+		IFS=: read host unit <<< "$unit"
+		systemctl_host "root@$host" set-property --runtime -- "$unit" AllowedCPUs="$CPU_AFFINITY"
+	done
 fi
 if [[ $CPU_QUOTA != keep ]]; then
-	systemctl_host root@stratofortress.nexus.i.intelfx.name set-property system-cpu.slice CPUQuota="$CPU_QUOTA"
+	for unit in "${QUOTA_UNITS[@]}"; do
+		IFS=: read host unit <<< "$unit"
+		systemctl_host "root@$host" set-property "$unit" CPUQuota="$CPU_QUOTA"
+	done
 fi
