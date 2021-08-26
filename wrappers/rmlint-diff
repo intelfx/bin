@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec rmlint -T df -Dj -o progressbar -o pretty -o summary -VVV --hidden --xattr "$@"
