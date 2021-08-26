@@ -13,7 +13,7 @@ trap cleanup EXIT
 
 declare -A DIR_TEMPLATES FILE_TEMPLATES
 
-for file; do
+path_compute_acl() {
 	if ! [[ -e "$file" ]]; then
 		die "Bad file: '$file'"
 	fi
@@ -35,9 +35,9 @@ for file; do
 		FILE_TEMPLATES[$parent]="$(getfacl "$sample")"
 		rm -f "$sample"
 	fi
-done
+}
 
-for file; do
+path_apply_acl() {
 	parent="${file%/*}"; if [[ $parent == $file ]]; then parent=.; fi
 
 	if [[ -d "$file" ]]; then
@@ -53,4 +53,12 @@ for file; do
 	if ! setfacl --set-file=- "$file" <<<"$template"; then
 		die "Failed to reset ACLs: '$file'"
 	fi
+}
+
+for file; do
+	path_compute_acl "$file"
+done
+
+for file; do
+	path_apply_acl "$file"
 done
