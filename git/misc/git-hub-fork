@@ -1,0 +1,68 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+remote="${1:-origin}"
+urls=()
+
+if username="$(git config hub.username)"; then
+	:
+else
+	die "GitHub username not configured (git config hub.username), exiting"
+fi
+
+if url="$(git remote get-url "$remote")"; then
+	urls+=( "$url" )
+else
+	die "Bad remote: $remote, exiting"
+fi
+
+if pushUrl="$(git remote get-url --push "$remote")"; then
+	urls+=( "$url" )
+fi
+
+fork=
+for url in "${urls[@]}"; do
+	if [[ "$url" =~ ^https://github.com/([^/]+)/(.+)$ ]]; then
+		upstream="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+		fork="$username/${BASH_REMATCH[2]}"
+	elif [[ "$url" =~ ^git@github.com:([^/]+)/(.+)$ ]]; then
+		upstream="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+		fork="$username/${BASH_REMATCH[2]}"
+	fi
+done
+if ! [[ "$fork" ]]; then
+	die "Cannot determine origin and fork URL, exiting"
+fi
+
+if [[ "$remote" != "upstream" ]]; then
+	if git config remote.upstream.url &>/dev/null; then
+		git remote remove upstream
+	fi
+	git remote rename "$remote" upstream
+fi
+
+if git config remote.fork.url &>/dev/null; then
+	git remote remove fork
+fi
+git remote add fork "https://github.com/$fork"
+
+git config remote.pushdefault fork
+git config hub.upstreamremote upstream
+git config hub.forkremote fork
+git config hub.urltype ssh_url  # FIXME
+git config hub.upstream "$upstream"
