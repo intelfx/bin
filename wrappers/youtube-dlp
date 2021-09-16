@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec youtube-dl --proxy socks5://localhost:1080 -f best "$@"
