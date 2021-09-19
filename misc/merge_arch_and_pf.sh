@@ -51,11 +51,15 @@ release="$(<<<"$tag" sed -nr 's|^v([0-9]+\.[0-9]+)(\.[0-9]+)?$|\1|p')" || true
 git_verify "v$release" || die "Failed to determine major release, exiting"
 log " Major release: $release"
 
+pf_tag="$(git tag --list "v$release-pf*" | grep -E -- '-pf[0-9]+$' | sort -V | tail -n1)" || true
+git_verify "$pf_tag" || die "Failed to determine latest -pf, exiting"
+log " Latest -pf tag: $pf_tag"
+
 eval "$(globaltraps)"
 
 log "Merging -pf"
 git checkout -f "$arch_tag"
-if ! git merge --no-commit --no-rerere "pf/pf-$release"; then
+if ! git merge --no-commit --no-rerere "$pf_tag"; then
 	ltrap 'git merge --abort'
 fi
 
