@@ -1,4 +1,3 @@
 #!/bin/bash
 
-exec rmlint -T df -Dj --progress -o pretty -c sh:handler=reflink --hidden --xattr "$@"
-#exec rmlint -T df -Dj -o progressbar -o pretty -o summary -o sh:rmlint.sh -o json:rmlint.json  -c sh:handler=reflink -VVV --hidden --xattr "$@"
+exec rmlint -T df --progress -o pretty -c sh:handler=reflink --hidden --xattr --hash-unmatched "$@"
