@@ -55,6 +55,13 @@ path_apply_acl() {
 	fi
 }
 
+case "$1" in
+-R|-r)
+	shift
+	exec find "$@" -execdir "$0" {} \+
+	;;
+esac
+
 for file; do
 	path_compute_acl "$file"
 done
