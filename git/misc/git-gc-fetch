@@ -1,0 +1,22 @@
+#!/bin/bash -e
+
+#
+# git-gc-fetch -- `git gc` after fetching many redundant packs
+#
+
+GIT_DIR="$(git rev-parse --git-dir)"
+
+cleanup() {
+	rm -f "$GIT_DIR/objects/pack"/*.keep
+}
+trap cleanup EXIT
+
+find "$GIT_DIR/objects/pack" \
+	-type f \
+	-name '*.pack' \
+	-not -newermt '1 hour ago' \
+| while read pack; do
+	touch "${pack%.pack}.keep"
+done
+
+git gc-now --keep-largest-pack "$@"
