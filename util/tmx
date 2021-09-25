@@ -60,7 +60,13 @@ cd "$HOME"
 
 if ! "${tmux[@]}" has-session -t "$base_session-0"; then
 	# create a session group if the master session is absent
-	systemd-run --user --service-type=forking  -p KillMode=control-group tmux new-session -t "$base_session" -d
+	if [[ "$(systemctl --user show tmux.service -p LoadState)" == "LoadState=loaded" ]]; then
+		# attempt to start tmux via existing systemd unit, if possible
+		systemctl --user restart tmux
+	else
+		# otherwise launch it directly using systemd-run
+		systemd-run --user --service-type=forking -p KillMode=control-group tmux new-session -t "$base_session" -d
+	fi
 fi
 
 # Create a new session (without attaching it) and link to base session to share windows
