@@ -1,0 +1,31 @@
+#!/bin/bash
+
+#
+# wrapper around `s3qlcp` for reflink-like copying of individual files
+#
+
+set -eo pipefail
+
+if (( $# < 2 )); then
+	die "Expected at least 2 arguments, got 1"
+fi
+SRC=( "${@:1:$#-1}" )
+DEST="${@:$#}"
+
+tmpdir="$(mktemp -d "$(dirname "$SRC")/.s3qlcp.tmp.XXX")"
+cleanup() {
+	rm -vrf "$tmpdir"
+}
+trap cleanup EXIT
+
+mkdir "$tmpdir/1"
+ln "${SRC[@]}" -t "$tmpdir/1"
+s3qlcp "$tmpdir/1" "$tmpdir/2"
+
+if (( ${#SRC[@]} == 1 )); then
+	mv -v "$tmpdir/2/$(basename "${SRC[0]}")" "$DEST"
+else
+	mv -v "$tmpdir/2" "$DEST"
+fi
+
+rm -rf "$tmpdir"
