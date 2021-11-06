@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -e
+
+branch="$(git symbolic-ref --short HEAD)"
+exec git merge-base "$branch" "$branch@{u}" "$@"
