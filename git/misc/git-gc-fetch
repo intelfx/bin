@@ -16,6 +16,7 @@ find "$GIT_DIR/objects/pack" \
 	-name '*.pack' \
 	-not -newermt '1 hour ago' \
 | while read pack; do
+	echo "Keeping pack: ${pack##*/} ($(date -d "@$(stat -c '%Y' "$pack")"))"
 	touch "${pack%.pack}.keep"
 done
 
