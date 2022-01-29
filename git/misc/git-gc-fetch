@@ -11,12 +11,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
+now="$(date +%s)"
+
 find "$GIT_DIR/objects/pack" \
 	-type f \
 	-name '*.pack' \
-	-not -newermt '1 hour ago' \
 | while read pack; do
-	echo "Keeping pack: ${pack##*/} ($(date -d "@$(stat -c '%Y' "$pack")"))"
+
+	# HACK: use the older of .pack and .idx mtimes.
+	# Sometimes, `git fetch` touches old packs for no good reason, breaking
+	# this logic.
+	idx="${pack%.pack}.idx"
+	mtime_pack="$(stat -c '%Y' "$pack")"
+	mtime_idx="$(stat -c '%Y' "$idx")"
+	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
+	if (( mtime > now - 3600 )); then
+		continue
+	fi
+
+	echo "Keeping pack: ${pack##*/} ($(date -d "@$mtime"))"
 	touch "${pack%.pack}.keep"
 done
 
