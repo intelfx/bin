@@ -32,16 +32,22 @@ git_verify() {
 
 log "Determining versions"
 
-if (( $# > 1 )); then
-	die "Bad usage"
-elif (( $# == 1 )); then
-	tag="$1"
-	log " Using stable: $tag"
-else
+declare -A PARSE_ARGS=(
+	[-c]="ARG_CONFLICTS"
+	[--conflicts]="ARG_CONFLICTS"
+)
+parse_args PARSE_ARGS "$@"
+
+#if (( $# > 1 )); then
+#	die "Bad usage"
+#elif (( $# == 1 )); then
+#	tag="$1"
+#	log " Using stable: $tag"
+#else
 	tag="$(git_list_versions | tail -n1)"
 	git_verify "$tag" || die "Failed to determine latest stable, exiting" || true
 	log " Latest stable: $tag"
-fi
+#fi
 
 arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
 git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
@@ -100,6 +106,7 @@ merge_makefile() {
 }
 
 log "Handling conflicts"
+conflicts=0
 git_list_conflicts | while read line; do
 	git_list_parse "$line"
 	case "$file" in
@@ -107,10 +114,20 @@ git_list_conflicts | while read line; do
 		merge_makefile
 		;;
 	*)
-		die "Do not know how to handle conflict: $line"
+		err "Conflict: $line"
+		(( ++conflicts ))
 		;;
 	esac
 done
+if (( conflicts )); then
+	if (( ARG_CONFLICTS )); then
+		err "Found conflicts, launching a shell."
+		err "Exit the shell after fixing all conflicts."
+		"$SHELL" -i
+	else
+		die "Found conflicts, exiting."
+	fi
+fi
 
 git_list_conflicts | while read line; do
 	die "Apparently unresolved conflict: $line"
@@ -120,6 +137,7 @@ git_list_unstaged | while read line; do
 	die "Apparently not staged: $line"
 done
 
+log "Committing result"
 GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000" git commit --no-edit
 luntrap
 
