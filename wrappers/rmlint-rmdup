@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec rmlint -T df -Dj --progress -o pretty -c sh:handler=remove --hidden --xattr-read --xattr-write --write-unfinished --must-match-untagged --keep-all-untagged "$@"
