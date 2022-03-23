@@ -23,7 +23,7 @@ if args.modem == '-':
 	mm_objects = mm_busctl_tree.stdout.splitlines()
 	mm_modems = [ o for o in mm_objects if o.startswith('/org/freedesktop/ModemManager1/Modem/') ]
 	if len(mm_modems) != 1:
-		raise RuntimeError('mmcli: {len(mm_modems)} != 1 modems available, cannot auto-pick modem')
+		raise RuntimeError(f'mmcli: {len(mm_modems)} != 1 modems available, cannot auto-pick modem')
 	args.modem = mm_modems[0]
 
 if args.modem:
