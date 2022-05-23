@@ -1,8 +1,11 @@
 #!/bin/bash -e
 
+set -eo pipefail
+shopt -s lastpipe
+
 . lib.sh
 
-tmp=''
+tmpdir=""
 cleanup() {
 	if [[ "$tmp" ]]; then
 		rm -rf "$tmp"
@@ -10,8 +13,15 @@ cleanup() {
 	fi
 }
 trap cleanup EXIT
+tmpdir="$(mktemp -d)"
 
 declare -A DIR_TEMPLATES FILE_TEMPLATES
+
+into_tmpfile() {
+	local tmpfile="$(mktemp --tmpdir="$tmpdir")"
+	cat >"$tmpfile"
+	echo "$tmpfile"
+}
 
 path_compute_acl() {
 	if ! [[ -e "$file" ]]; then
@@ -27,12 +37,12 @@ path_compute_acl() {
 		sample="$parent/.tmp.$$.d"
 		mkdir "$sample"
 
-		DIR_TEMPLATES[$parent]="$(getfacl "$sample")"
+		DIR_TEMPLATES[$parent]="$(getfacl "$sample" | into_tmpfile)"
 		rm -d "$sample"
 
 		sample="$parent/.tmp.$$.f"
 		touch "$sample"
-		FILE_TEMPLATES[$parent]="$(getfacl "$sample")"
+		FILE_TEMPLATES[$parent]="$(getfacl "$sample" | into_tmpfile)"
 		rm -f "$sample"
 	fi
 }
@@ -50,7 +60,7 @@ path_apply_acl() {
 		die "Bad template for '$parent' (file: '$file')"
 	fi
 
-	if ! setfacl --set-file=- "$file" <<<"$template"; then
+	if ! setfacl --set-file="$template" "$file"; then
 		die "Failed to reset ACLs: '$file'"
 	fi
 }
@@ -58,14 +68,30 @@ path_apply_acl() {
 case "$1" in
 -R|-r)
 	shift
-	exec find "$@" -execdir "$0" {} \+
+	target="$(realpath -qe "$1")"
+	cd "$(dirname "$target")"
+	file=.
+	path_compute_acl  # parent == .
+	find "$(basename "$target")" -type d -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
+	find "$(basename "$target")" -not -type d -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
+	;;
+
+-d)
+	shift
+	cd "$1"
+	file=.
+	path_compute_acl  # parent == .
+	find -mindepth 1 -type d -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
+	find -mindepth 1 -not -type d -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
+	;;
+*)
+	for file; do
+		path_compute_acl "$file"
+	done
+
+	for file; do
+		path_apply_acl "$file"
+	done
 	;;
 esac
 
-for file; do
-	path_compute_acl "$file"
-done
-
-for file; do
-	path_apply_acl "$file"
-done
