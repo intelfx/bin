@@ -37,9 +37,9 @@ parse_units() {
 
 	[[ "$in" ]] || die "$name not set"
 
-	if [[ "$in" =~ ^([0-9.]+)\ *([a-z/()]+)$ ]]; then
+	if [[ "$in" =~ ^(-?[0-9.]+)\ *([a-z/()]+)$ ]]; then
 		echo "${BASH_REMATCH[1]} (${BASH_REMATCH[2]})"
-	elif [[ "$in" =~ ^[0-9.]+$ ]]; then
+	elif [[ "$in" =~ ^-?[0-9.]+$ ]]; then
 		if [[ "$default_units" == "<density>" ]]; then
 			if (( $(<<<"$in >= 5" bc -l) )); then
 				default_units="lbs/gal"
@@ -59,7 +59,7 @@ parse_units() {
 
 extract_units() {
 
-	if [[ "$1" =~ ^([0-9.]+)\ *([a-z/()]+)$ ]]; then
+	if [[ "$1" =~ ^(-?[0-9.]+)\ *([a-z/()]+)$ ]]; then
 		echo "${BASH_REMATCH[2]}"
 	else
 		die "$2: bad value: $1"
@@ -95,7 +95,7 @@ fi
 
 FUEL_MASS_UNITS="lbs"
 
-FUEL_VOLUME="$(units -t "($FUEL_OUT - $FUEL_IN) / $FUEL_DENSITY" "$FUEL_VOLUME_UNITS")"
+FUEL_VOLUME="$(units -t -- "($FUEL_OUT - $FUEL_IN) / $FUEL_DENSITY" "$FUEL_VOLUME_UNITS")"
 case "$FUEL_VOLUME_UNITS" in
 gal)
 	FUEL_VOLUME="$(round_up_to "$FUEL_VOLUME" 10)"
@@ -105,7 +105,7 @@ liter)
 	;;
 esac
 
-FUEL_OUT_ACTUAL="$(units -t "$FUEL_IN + $FUEL_VOLUME $FUEL_VOLUME_UNITS * $FUEL_DENSITY" "$FUEL_MASS_UNITS")"
+FUEL_OUT_ACTUAL="$(units -t -- "$FUEL_IN + $FUEL_VOLUME $FUEL_VOLUME_UNITS * $FUEL_DENSITY" "$FUEL_MASS_UNITS")"
 FUEL_OUT_ACTUAL="$(round_down_to "$FUEL_OUT_ACTUAL" 10)"
 
 echo "Request:   $FUEL_VOLUME $FUEL_VOLUME_UNITS"
