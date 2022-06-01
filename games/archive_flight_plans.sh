@@ -43,7 +43,12 @@ archive_dir() {
 	find -L "$dir" -mindepth 1 -maxdepth 1 -type f "${mask_arg[@]}" -not -newermt "$ARCHIVE_TIME" -printf "%P\t%T@\n" \
 	| while IFS=$'\t' read file mtime; do
 		mtime="$(date -Idate -d "@$mtime")"
-		archive_dir="$dir/archive/$mtime"
+		# WSL and Windows symlinks to network drives are mutually incompatible; check if we have an override
+		if [[ -d "$dir/archive.wsl" ]]; then
+			archive_dir="$dir/archive.wsl/$mtime"
+		else
+			archive_dir="$dir/archive/$mtime"
+		fi
 
 		mkdir -pv "$archive_dir"
 		mv -v "$dir/$file" -t "$archive_dir"
