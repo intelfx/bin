@@ -16,6 +16,10 @@ while (( $# )); do
 		FUEL_DENSITY="$2"
 		shift 2
 		;;
+	mass)
+		FUEL_MASS_UNITS="$2"
+		shift 2
+		;;
 	units)
 		FUEL_VOLUME_UNITS="$2"
 		shift 2
@@ -74,8 +78,22 @@ round_down_to() {
 	bc -l <<< "scale=0; $1 / $2 * $2"
 }
 
-FUEL_IN="$(parse_units "$FUEL_IN" "Fuel present" "lbs")"
-FUEL_OUT="$(parse_units "$FUEL_OUT" "Fuel required" "lbs")"
+if ! [[ "$FUEL_MASS_UNITS" ]]; then
+	case "$FUEL_IN" in
+	*kg*)
+		FUEL_MASS_UNITS=kg
+		;;
+	*lbs*)
+		FUEL_MASS_UNITS=lbs
+		;;
+	*)
+		FUEL_MASS_UNITS=lbs
+		;;
+	esac
+fi
+
+FUEL_IN="$(parse_units "$FUEL_IN" "Fuel present" "$FUEL_MASS_UNITS")"
+FUEL_OUT="$(parse_units "$FUEL_OUT" "Fuel required" "$FUEL_MASS_UNITS")"
 FUEL_DENSITY="$(parse_units "$FUEL_DENSITY" "Fuel density" "<density>")"
 FUEL_DENSITY_UNITS="${FUEL_DENSITY##* }"
 
@@ -92,8 +110,6 @@ if ! [[ "$FUEL_VOLUME_UNITS" ]]; then
 		;;
 	esac
 fi
-
-FUEL_MASS_UNITS="lbs"
 
 FUEL_VOLUME="$(units -t -- "($FUEL_OUT - $FUEL_IN) / $FUEL_DENSITY" "$FUEL_VOLUME_UNITS")"
 case "$FUEL_VOLUME_UNITS" in
