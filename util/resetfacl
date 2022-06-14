@@ -23,6 +23,16 @@ into_tmpfile() {
 	echo "$tmpfile"
 }
 
+# $1: parent path
+# $2: command (mkdir or touch)
+path_sample() {
+	local parent="$1" name="$2" cmd="$3" rm="$4"
+	local sample="$parent/$name"
+	"$cmd" "$sample"
+	getfacl "$sample"
+	$rm "$sample"
+}
+
 path_compute_acl() {
 	if ! [[ -e "$file" ]]; then
 		die "Bad file: '$file'"
@@ -34,16 +44,8 @@ path_compute_acl() {
 	fi
 
 	if ! [[ ${DIR_TEMPLATES[$parent]} ]]; then
-		sample="$parent/.tmp.$$.d"
-		mkdir "$sample"
-
-		DIR_TEMPLATES[$parent]="$(getfacl "$sample" | into_tmpfile)"
-		rm -d "$sample"
-
-		sample="$parent/.tmp.$$.f"
-		touch "$sample"
-		FILE_TEMPLATES[$parent]="$(getfacl "$sample" | into_tmpfile)"
-		rm -f "$sample"
+		DIR_TEMPLATES[$parent]="$(path_sample "$parent" ".tmp.$$.d" 'mkdir' 'rm -d' | into_tmpfile)"
+		FILE_TEMPLATES[$parent]="$(path_sample "$parent" ".tmp.$$.f" 'touch' 'rm -f' | into_tmpfile)"
 	fi
 }
 
