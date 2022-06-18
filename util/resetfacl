@@ -27,10 +27,15 @@ into_tmpfile() {
 # $2: command (mkdir or touch)
 path_sample() {
 	local parent="$1" name="$2" cmd="$3" rm="$4"
-	local sample="$parent/$name"
+
+	local tmpdir="$(mktemp -d)"
+	getfacl "$parent" | setfacl --set-file=- "$tmpdir"
+
+	local sample="$tmpdir/$name"
 	"$cmd" "$sample"
 	getfacl "$sample"
 	$rm "$sample"
+	rm -d "$tmpdir"
 }
 
 path_compute_acl() {
