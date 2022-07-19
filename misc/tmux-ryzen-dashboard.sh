@@ -22,7 +22,7 @@ pane_ryzen=$(tmux split-window -P -F '#{pane_id}' -t $pane_shell -h -b \
 pane_liquidctl=$(tmux split-window -P -F '#{pane_id}' -t $pane_shell -h \
   -- sudo watch -n1 "liquidctl status")
 pane_sensors=$(tmux split-window -P -F '#{pane_id}' -t $pane_shell -v -b \
-  -- watch -n1 "sensors 'nct6798-*' 'zenpower-*' 'nvme-*' 'drivetemp-*' | grep -vE '^in[0-9]+|^AUXTIN|^PCH|^SVI2|fan[1-5]|fan7'")
+  -- watch -n1 "sensors 'nct6798-*' 'nvme-*' 'drivetemp-*'")
 
 tmux resize-pane -t $pane_ryzen -x 100  # exact=98
 tmux resize-pane -t $pane_liquidctl -x 55  # exact=52
