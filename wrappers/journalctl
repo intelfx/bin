@@ -1,0 +1,86 @@
+#!/bin/bash
+
+set -eo pipefail
+. lib.sh
+
+# sets parent variables:
+# $value: option value if call succeeded (if rc=0)
+# $shift: amount of positions consumed if call succeeded (if rc=0)
+getopt_try_get_value() {
+	local opt="$1" pos="$2"
+	shift 2
+
+	if [[ ${!pos} == "$opt" ]]; then
+		local next="$(( pos+1 ))"
+		value="${!next}"
+		shift=2
+		return 0
+	fi
+
+	if [[ ${!pos} =~ ^${opt}=(.*)$ ]]; then
+		value="${BASH_REMATCH[1]}"
+		shift=1
+		return 0
+	fi
+
+	if [[ ${!pos} =~ ^${opt}(.+)$ ]]; then
+		value="${BASH_REMATCH[1]}"
+		shift=1
+		return 0
+	fi
+
+	return 1
+}
+
+ARG_UNIT=
+ARG_USER_UNIT=
+ARG_LAST=
+ARGS=()
+for (( i=1; i <= $#; )); do
+	shift=1
+	pass=1
+	if getopt_try_get_value -u "$i" "$@" || getopt_try_get_value --unit "$i" "$@"; then
+		(( ++ARG_UNIT_NR ))
+		ARG_UNIT="$value"
+	elif getopt_try_get_value --user-unit "$i" "$@"; then
+		(( ++ARG_UNIT_NR ))
+		ARG_USER_UNIT="$value"
+	elif [[ ${!i} == "-L" || ${!i} == "--last" ]]; then
+		pass=0
+		ARG_LAST=1
+	fi
+
+	if (( pass )); then
+		ARGS+=( "${@:$i:$shift}" )
+	fi
+	(( i += shift ))
+done
+
+if (( ARG_LAST )); then
+	if (( ARG_UNIT_NR != 1 )); then
+		die "Invalid options: -L/--last is only applicable if exactly one of --unit/--user-unit is specified"
+	fi
+
+	INVOCATION=
+	if [[ "$ARG_UNIT" ]]; then
+		INVOCATION="$(systemctl --system show -p InvocationID --value "$ARG_UNIT")"
+	elif [[ "$ARG_USER_UNIT" ]]; then
+		INVOCATION="$(systemctl --user show -p InvocationID --value "$ARG_USER_UNIT")"
+	else
+		die "Invalid options: -L/--last was set, but no --unit/--user-unit was provided"
+	fi
+
+	if ! [[ "$INVOCATION" ]]; then
+		if [[ "$ARG_UNIT" ]]; then
+			die "Could not get invocation ID for unit '$ARG_UNIT'"
+		elif [[ "$ARG_USER_UNIT" ]]; then
+			die "Could not get invocation ID for user unit '$ARG_USER_UNIT'"
+		else
+			unreachable
+		fi
+	fi
+
+	ARGS+=( _SYSTEMD_INVOCATION_ID="$INVOCATION" )
+fi
+
+exec /usr/bin/journalctl "${ARGS[@]}"
