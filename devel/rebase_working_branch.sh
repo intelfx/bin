@@ -20,22 +20,22 @@ git_find_base_version() {
 }
 
 if ! (( $# == 2 )); then
-	die "Expected 2 arguments, got $# (usage: $0 <branch> <target version>"
+	die "Expected 2 arguments, got $# (usage: $0 <target version> <branch>)"
 fi
 
-BRANCH="$1"
-BASE="$2"
-
-if ! git_verify "$BRANCH"; then
-	die "Invalid branch to rebase: $BRANCH"
-fi
+BASE="$1"
+BRANCH="$2"
 
 if ! git_verify "$BASE"; then
 	die "Invalid base: $BASE"
 fi
 
-log "Branch: $BRANCH"
+if ! git_verify "$BRANCH"; then
+	die "Invalid branch to rebase: $BRANCH"
+fi
+
 log "Target base version: $BASE"
+log "Branch: $BRANCH"
 
 if ! OLD_BASE="$(git_find_base_version "$BRANCH")"; then
 	die "Unable to determine old base"
