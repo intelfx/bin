@@ -4,6 +4,7 @@ set -eo pipefail
 . lib.sh
 
 # sets parent variables:
+# $name: option name if call succeeded (if rc=0)
 # $value: option value if call succeeded (if rc=0)
 # $shift: amount of positions consumed if call succeeded (if rc=0)
 getopt_try_get_value() {
@@ -12,19 +13,22 @@ getopt_try_get_value() {
 
 	if [[ ${!pos} == "$opt" ]]; then
 		local next="$(( pos+1 ))"
+		name="${!pos}"
 		value="${!next}"
 		shift=2
 		return 0
 	fi
 
-	if [[ ${!pos} =~ ^${opt}=(.*)$ ]]; then
-		value="${BASH_REMATCH[1]}"
+	if [[ ${!pos} =~ ^(${opt})=(.*)$ ]]; then
+		name="${BASH_REMATCH[1]}"
+		value="${BASH_REMATCH[2]}"
 		shift=1
 		return 0
 	fi
 
-	if [[ ${!pos} =~ ^${opt}(.+)$ ]]; then
-		value="${BASH_REMATCH[1]}"
+	if [[ ${!pos} =~ ^(${opt})(.+)$ ]]; then
+		name="${BASH_REMATCH[1]}"
+		value="${BASH_REMATCH[2]}"
 		shift=1
 		return 0
 	fi
@@ -39,15 +43,28 @@ ARGS=()
 for (( i=1; i <= $#; )); do
 	shift=1
 	pass=1
-	if getopt_try_get_value -u "$i" "$@" || getopt_try_get_value --unit "$i" "$@"; then
+	if getopt_try_get_value '-u' "$i" "$@" || getopt_try_get_value '--unit' "$i" "$@"; then
 		(( ++ARG_UNIT_NR ))
 		ARG_UNIT="$value"
-	elif getopt_try_get_value --user-unit "$i" "$@"; then
+	elif getopt_try_get_value '--user-unit' "$i" "$@"; then
 		(( ++ARG_UNIT_NR ))
 		ARG_USER_UNIT="$value"
 	elif [[ ${!i} == "-L" || ${!i} == "--last" ]]; then
 		pass=0
 		ARG_LAST=1
+	elif getopt_try_get_value '--since' "$i" "$@" || getopt_try_get_value '--until' "$i" "$@"; then
+		if [[ "$value" =~ ^(([A-Za-z]+ +)?[0-9]+-[0-9]+-[0-9]+ *)?( *[0-9]+:[0-9]+(:[0-9]+)?)( +[A-Za-z/]+)?$ ]] || \
+		   [[ "$value" =~ ^(now|today|yesterday|tomorrow)( +[A-Za-z/]+)?$ ]] ||
+		   [[ "$value" =~ ^[+-].+$ ]] ||
+		   [[ "$value" =~ ^.+\ +ago$ ]] ||
+		   [[ "$value" =~ ^@[0-9]+$ ]]
+		then
+			: # timestamp is in format directly accepted by journalctl
+		else
+			value="$(date -d "$value" '+%Y-%m-%d %H:%M:%S')"
+			ARGS+=( "$name" "$value" )
+			pass=0
+		fi
 	fi
 
 	if (( pass )); then
