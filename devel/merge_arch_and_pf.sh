@@ -35,19 +35,28 @@ log "Determining versions"
 declare -A PARSE_ARGS=(
 	[-c]="ARG_CONFLICTS"
 	[--conflicts]="ARG_CONFLICTS"
+	[-b:]="ARG_MAJOR"
+	[--branch:]="ARG_MAJOR"
+	[--major:]="ARG_MAJOR"
+	[-v:]="ARG_MINOR"
+	[--version:]="ARG_MINOR"
+	[--minor:]="ARG_MINOR"
 )
 parse_args PARSE_ARGS "$@"
 
-#if (( $# > 1 )); then
-#	die "Bad usage"
-#elif (( $# == 1 )); then
-#	tag="$1"
-#	log " Using stable: $tag"
-#else
+if [[ "$ARG_MINOR" ]]; then
+	tag="$(git_list_versions | grep -Fx "$ARG_MINOR" | tail -n1)"
+	git_verify "$tag" || die "Failed to find $ARG_MINOR, exiting" || true
+	log " Requested version: $tag"
+elif [[ "$ARG_MAJOR" ]]; then
+	tag="$(git_list_versions | grep -Ex "$ARG_MAJOR(\.[0-9]+)?" | tail -n1)"
+	git_verify "$tag" || die "Failed to determine latest patch for $ARG_MAJOR, exiting" || true
+	log " Latest patch for $ARG_MAJOR: $tag"
+else
 	tag="$(git_list_versions | tail -n1)"
 	git_verify "$tag" || die "Failed to determine latest stable, exiting" || true
 	log " Latest stable: $tag"
-#fi
+fi
 
 arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
 git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
