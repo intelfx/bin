@@ -14,9 +14,9 @@ git_find_base_version() {
 		--tags \
 		--abbrev=0 \
 		--match 'v*.*' \
-		--exclude 'v*.*.*' \
 		--exclude 'v*.*-*' \
 		"$@"
+		#--exclude 'v*.*.*' \
 }
 
 if ! (( $# == 2 )); then
