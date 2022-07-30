@@ -156,6 +156,10 @@ fi
 final_tag="$tag-$final_extraversion"
 
 if git_verify "$final_tag"; then
+	if [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$final_tag")" ]]; then
+		err "Tag $final_tag already exists, ignoring"
+		exit 0
+	fi
 	die "Tag $final_tag already exists, not overwriting"
 fi
 log "Tagging as $final_tag"
