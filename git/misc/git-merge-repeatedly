@@ -1,0 +1,26 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+say() {
+	echo "${0##*/}: $*" >&2
+}
+
+if ! git merge "$@"; then
+	while ! git diff-files --quiet; do
+		say "launching interactive shell"
+		say "to continue, resolve and stage conflicts and exit 0"
+		say "to abort, exit 1"
+		if ! "$SHELL" -i; then
+			git merge --abort
+			exit 1  # TODO: capture shell $? somehow?
+		fi
+	done
+
+	# if the user not just staged the resolution but committed it, play along
+	# also play along if the index turned out empty
+	if ! git diff-index --quiet HEAD --; then
+		git commit --no-edit
+	fi
+fi
