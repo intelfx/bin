@@ -71,6 +71,8 @@ create() {
     for option in pane-{,active-}border-style; do
         tmux set -p -t "$pane" "$option" "$pane_border_style"
     done
+    # disable the status bar
+    tmux set -p -t "$pane" status off
 
     width_left=$(( (width_all-width-2)/2 ))
     [[ "$width_left" -gt 2 ]] || width_left=2
