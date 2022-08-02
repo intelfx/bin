@@ -36,7 +36,7 @@ find_geometry() {
     [ "$width_left" -gt 0 ] && border=$((border+1))
     [ "$width_right" -gt 0 ] && border=$((border+1))
 
-        width_center="$(tmux display-message -t "$pane" -p '#{pane_width}')"
+    width_center="$(tmux display-message -t "$pane" -p '#{pane_width}')"
     width_all="$((width_center+width_left+width_right+border))"
 
     [ "$((width+5))" -ge "$width_all" ] && width="$width_all"
@@ -59,8 +59,8 @@ create() {
         tmux split-window -hdbl "$width_left" -t "$pane" "$command_left"
     fi
 
-        width_right=$(( width_all-width-width_left-2 ))
-        [ "$width_right" -gt 2 ] || width_right=2
+    width_right=$(( width_all-width-width_left-2 ))
+    [ "$width_right" -gt 2 ] || width_right=2
     if [ -n "$pane_right" ]; then
         tmux resize-pane -t "$pane_right" -x "$width_right"
     else
@@ -69,7 +69,7 @@ create() {
 }
 
 equalize() {
-        width="$width_center"
+    width="$width_center"
     [ "$width" -lt "$width_all" ] && create
 }
 
