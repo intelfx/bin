@@ -61,6 +61,11 @@ destroy() {
     [[ -n "$pane_left" ]] && [[ "$pane_left" != "$TMUX_PANE" ]] && tmux kill-pane -t "$pane_left"
     [[ -n "$pane_right" ]] && [[ "$pane_right" != "$TMUX_PANE" ]] && tmux kill-pane -t "$pane_right"
     [[ "$pane_left" = "$TMUX_PANE" ]] || [[ "$pane_right" = "$TMUX_PANE" ]] && tmux kill-pane -t "$TMUX_PANE"
+    # reenable borders, status bar
+    local option
+    for option in pane-{,active-}border-style status; do
+        tmux set -p -t "$pane" -U "$option" 
+    done
     true
 }
 
