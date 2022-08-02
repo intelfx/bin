@@ -105,10 +105,15 @@ main() {
     find_geometry
     case "$action" in
         sleep )
+            local _todo_cmd _todo_opt
+            if [[ $todo != true ]]; then
+                _todo_cmd="$todo &"
+                _todo_opt="; $todo &"
+            fi
             trap destroy INT
-            trap 'verify; kill "$!" 2>/dev/null; $todo &' WINCH
+            trap "verify; kill \"\$!\" 2>/dev/null $_todo_opt" WINCH
             while true; do
-                $todo &
+                eval $_todo_cmd
                 while sleep 1; do verify; done
             done
         ;;
