@@ -6,6 +6,20 @@
 # Originally released under CC-BY-SA 4.0 by Kamil Maciorowski
 #
 
+maybe_enable() {
+    if [[ $BASH_LOADABLES_PATH ]]; then
+        :
+    elif whence pkg-config &>/dev/null; then
+        BASH_LOADABLES_PATH="$(pkg-config --variable=loadablesdir bash)"
+    elif [[ -d /usr/lib/bash ]]; then
+        BASH_LOADABLES_PATH="/usr/lib/bash"
+    fi
+    if [[ -x "$BASH_LOADABLES_PATH/$1" ]]; then
+        enable -f "$BASH_LOADABLES_PATH/$1" "$1"
+    fi
+}
+maybe_enable sleep
+
 pane="${2:-$TMUX_PANE}"
 [ -n "$pane" ] || exit 1
 tmux has-session -t "$pane" 2>/dev/null || exit 0
