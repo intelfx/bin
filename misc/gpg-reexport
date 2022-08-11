@@ -1,0 +1,25 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+eval "$(globaltraps)"
+
+WORKDIR="$(mktemp -d)"
+ltrap "rm -rf '$WORKDIR'"
+
+install -dm700 "$WORKDIR/gnupg"
+
+log "When prompted, enter the old passphrase"
+gpg --export-secret-keys --export-options backup --armor "$@" >"$WORKDIR/gpg_private"
+gpg --export --export-options backup --armor "$@" >"$WORKDIR/gpg_public"
+
+export GNUPGHOME="$WORKDIR/gnupg"
+gpg --import --import-options restore <"$WORKDIR/gpg_private"
+log "When prompted, enter the old passphrase and then the new passphrase"
+gpg --change-passphrase "$@"
+
+log "When prompted, enter the new passphrase"
+gpg --export-secret-keys --armor "$@" >"gpg_private"
+gpg --export --armor "$@" >"gpg_public"
+log "Wrote private key to: $(pwd)/gpg_private"
+log "Wrote public key to: $(pwd)/gpg_public"
