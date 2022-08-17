@@ -1,0 +1,31 @@
+#!/bin/bash
+
+ALL=(
+  Core
+  CPU
+  Busy%
+  IPC
+  IRQ
+  Totl%C0
+  Any%C0
+  GFX%C0
+  CPUGFX%
+  Pkg%pc2
+  Pkg%pc3
+  Pkg%pc6
+  Pkg%pc7
+  Pkg%pc8
+  Pkg%pc9
+  Pk%pc10
+  SYS%LPI
+  PkgWatt
+  CorWatt
+  GFXWatt
+  RAMWatt
+)
+
+IFS=,
+columns="${ALL[*]}"
+IFS=
+
+exec turbostat -s "$columns" "$@"
