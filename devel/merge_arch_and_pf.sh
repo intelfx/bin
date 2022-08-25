@@ -130,11 +130,12 @@ git_list_conflicts | while read line; do
 done
 if (( conflicts )); then
 	if (( ARG_CONFLICTS )); then
-		err "Found conflicts, launching a shell."
-		err "Exit the shell after fixing all conflicts."
+		err "Found conflicts, launching interactive shell"
+		err "To continue, resolve and stage conflicts and exit 0"
+		err "To abort, exit 1"
 		"$SHELL" -i
 	else
-		die "Found conflicts, exiting."
+		die "Found conflicts, exiting"
 	fi
 fi
 
