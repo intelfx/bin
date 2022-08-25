@@ -12,9 +12,13 @@ if ! git merge "$@"; then
 		say "launching interactive shell"
 		say "to continue, resolve and stage conflicts and exit 0"
 		say "to abort, exit 1"
-		if ! "$SHELL" -i; then
+		if "$SHELL" -i; then
+			# dance to capture exit code of $SHELL (cannot use ! in the condition)
+			:
+		else
+			rc=$?
 			git merge --abort
-			exit 1  # TODO: capture shell $? somehow?
+			exit $rc
 		fi
 	done
 
