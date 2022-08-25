@@ -29,7 +29,7 @@ find "$GIT_DIR/objects/pack" \
 		continue
 	fi
 
-	echo "Keeping pack: ${pack##*/} ($(date -d "@$mtime"))"
+	echo "Keeping pack: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
 	touch "${pack%.pack}.keep"
 done
 
