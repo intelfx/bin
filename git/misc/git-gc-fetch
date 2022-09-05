@@ -22,10 +22,15 @@ find "$GIT_DIR/objects/pack" \
 	# Sometimes, `git fetch` touches old packs for no good reason, breaking
 	# this logic.
 	idx="${pack%.pack}.idx"
+	size="$(stat -c '%s' "$pack")"
 	mtime_pack="$(stat -c '%Y' "$pack")"
 	mtime_idx="$(stat -c '%Y' "$idx")"
 	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
 	if (( mtime > now - 3600 )); then
+		continue
+	fi
+	# do not bother keeping very small packs
+	if (( size < 10*1024*1024 )); then
 		continue
 	fi
 
