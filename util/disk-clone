@@ -6,6 +6,154 @@ shopt -s lastpipe
 
 . lib.sh || exit
 
+#
+# lib.sh logging overrides
+#
+
+export LIBSH_LOG_INDENT=0
+
+function indent() {
+	(( ++LIBSH_LOG_INDENT ))
+}
+function unindent() {
+	if (( LIBSH_LOG_INDENT > 0 )); then
+		(( --LIBSH_LOG_INDENT )) ||:
+	fi
+}
+function unindent_all() {
+	LIBSH_LOG_INDENT=0
+}
+function log() {
+	if (( LIBSH_LOG_INDENT )); then
+		local i
+		local indent=''
+		for (( i = 0; i < LIBSH_LOG_INDENT; ++i )); do
+			indent+='   '
+		done
+		_libsh_log "${indent}->" "$LIBSH_LOG_PREFIX" "$*"
+	else
+		_libsh_log "::" "$LIBSH_LOG_PREFIX" "$*"
+	fi
+}
+
+function lindent() {
+	echo "local LIBSH_LOG_INDENT=\"\$(( LIBSH_LOG_INDENT + 1 ))\""
+}
+
+function lunindent() {
+	echo "unset LIBSH_LOG_INDENT"
+}
+
+
+#
+# functions
+#
+
+function blk_size() {
+	blockdev --getsize64 "$1"
+}
+
+
+function file_size() {
+	stat -c "%s" "$1"
+}
+
+
+function get_size() {
+	local dev="$1"
+	if [[ -b "$dev" ]]; then
+		blk_size "$dev"
+	elif [[ -e "$dev" ]]; then
+		file_size "$dev"
+	else
+		echo 0
+	fi
+}
+
+
+function exists() {
+	[[ -e "$1" ]]
+}
+
+
+function blkid_src() {
+	blkid "$src_part" -o value -s "$*"
+}
+
+
+function cleanup_detach() {
+	unindent_all
+	local dev="$1"
+	if [[ "$dev" == /dev/loop* ]]; then
+		local origin="$(losetup -n -O BACK-FILE "$dev")"
+		log "detaching $dev (loop for $origin)"
+		losetup -d "$dev"
+	fi
+}
+
+
+function cleanup_remove() {
+	unindent_all
+	local dev="$1"
+	if [[ -e "$dev" && ! -b "$dev" ]]; then
+		log "removing $dev"
+		rm -f "$dev"
+	fi
+}
+
+
+function cleanup_close() {
+	unindent_all
+	local dev="$1"
+	if [[ -e "/dev/mapper/$dev" ]]; then
+		log "closing LUKS device $dev"
+		cryptsetup close "$dev"
+	fi
+}
+
+
+function maybe_truncate() {
+	eval "$(lindent)"
+	local dest="$1"
+	local src="$2"
+	local dest_size="$(get_size "$dest")"
+	local src_size="$(get_size "$src")"
+	if [[ -b "$dest" ]]; then
+		if (( dest_size >= src_size )); then
+			log "block device $dest is of size $dest_size >= $src_size, not truncating"
+		else
+			log "block device $dest is of size $dest_size < $src_size, aborting"
+			exit 1
+		fi
+	else
+		log "removing and replacing regular file $dest"
+		ltrap "cleanup_remove '$dest'"
+		rm -f "$dest"
+		truncate --size "$src_size" "$dest"
+	fi
+}
+
+function maybe_loop() {
+	eval "$(lindent)"
+	dev="$1"
+	if [[ -b "$dev" ]]; then
+		echo "$dev"
+	else
+		local loop=$(losetup -Pf --show "$dev")
+		ltrap "cleanup_detach '$loop'"
+		log "$loop for $dev"
+		echo "$loop"
+	fi
+}
+
+
+#
+# main
+#
+
+eval "$(globaltraps)"
+
+SUCCESS=0
 SRC="$1"
 DEST="$2"
 
@@ -20,162 +168,135 @@ fi
 SRC_REAL="$SRC"
 DEST_REAL="$DEST"
 
-function blk_size() {
-	blockdev --getsize64 "$1"
-}
-
-function file_size() {
-	stat -c "%s" "$1"
-}
-
-function maybe_size() {
-	local dev="$1"
-	if [[ -b "$dev" ]]; then
-		blk_size "$dev"
-	elif [[ -e "$dev" ]]; then
-		file_size "$dev"
-	else
-		echo 0
-	fi
-}
-
-function maybe_detach() {
-	local dev="$1"
-	if [[ "$dev" == /dev/loop* ]]; then
-		local origin="$(losetup -n -O BACK-FILE "$dev")"
-		log "  -> $dev (loop for $origin)"
-		losetup -d "$dev"
-	else
-		log "  -> $dev is not a loop device, not detaching"
-	fi
-}
-
-
-function maybe_remove_err() {
-	local dev="$1"
-	if [[ -b "$dev" ]]; then
-		log "  -> $dev, skipping block device"
-	else
-		log "  -> $dev"
-		rm -vf "$dev"
-	fi
-}
-
-function cleanup() {
-	log "detach loop devices"
-
-	maybe_detach "$SRC"
-	maybe_detach "$DEST"
-
-	if ! (( success )); then
-		log "remove incomplete destination file"
-		maybe_remove_err "$DEST_REAL"
-	fi
-}
-
-success=0
-trap cleanup EXIT
-
-
-function maybe_truncate() {
-	local dev="$1"
-	local target="$2"
-	local dev_size="$(maybe_size "$dev")"
-	local target_size="$(maybe_size "$target")"
-	if [[ -b "$dev" ]]; then
-		if (( dev_size >= target_size )); then
-			log "  -> not truncating block device $dev of size $dev_size >= $target_size"
-		else
-			log "  -> block device $dev is of size $dev < $target_size, cannot proceed"
-		fi
-	else
-		rm -f "$dev"
-		truncate --size "$target_size" "$dev"
-	fi
-}
-
-
 log "truncate '$DEST' to size of '$SRC'"
 maybe_truncate "$DEST" "$SRC"
 
 log "copy partition table"
-blkid "$SRC"
+indent
 SRC_PTTYPE="$(blkid -s PTTYPE -o value "$SRC")"
 case "$SRC_PTTYPE" in
 dos)
-	log "  -> MBR detected -- using sfdisk"
+	log "MBR detected -- using sfdisk"
 	sfdisk -d "$SRC" | sfdisk "$DEST"
 	;;
 gpt)
-	log "  -> GPT detected -- using sgdisk"
-	TEMPFILE="$(mktemp)"
-	sgdisk -b "$TEMPFILE" "$SRC"
-	sgdisk -l "$TEMPFILE" "$DEST"
-	rm -f "$TEMPFILE"
+	log "GPT detected -- using sgdisk"
+	sgdisk -R "$DEST" "$SRC"
 	;;
 *)
-	log "  -> unknown partition table type '$SRC_PTTYPE'!"
-	false
+	log "unknown partition table type '$SRC_PTTYPE'!"
+	exit 1
 	;;
 esac
-echo
-
-
-function maybe_loop() {
-	dev="$1"
-	if [[ -b "$dev" ]]; then
-		log "  -> $dev is block device, skipping"
-		echo "$dev"
-	else
-		local loop=$(losetup -Pf --show "$dev")
-		log "  -> $dev ($loop)"
-		echo "$loop"
-	fi
-}
+unindent
 
 log "setup loop devices..."
 SRC="$(maybe_loop "$SRC")"
 DEST="$(maybe_loop "$DEST")"
 
+# FIXME LUKS2 format parameters are hardcoded
+LUKS_FORMAT_CMD=(
+	cryptsetup
+	luksFormat
+	--type luks2
+	#--sector-size <autodetermined>
+	--cipher aes-xts-plain64
+	--key-size 256  # AES-XTS-256 is equivalent to AES-128
+	--hash sha256
+	--pbkdf argon2id
+)
+LUKS_OPEN_CMD=(
+	cryptsetup
+	luksOpen
+	--allow-discards
+)
 
-function arg_exists() { [[ -e "$1" ]]; }
+function luks_open() {
+	local part="$1"
+	local name="${part##*/}"
+	local uuid="$(blkid "$part" -o value -s UUID)"
+
+	declare -n out="$2"
+	out="/dev/mapper/$name"
+
+	ltrap "cleanup_close '$name'"
+	loud "When prompted, unlock LUKS volume $part (UUID $uuid) to be opened as $name"
+	"${LUKS_OPEN_CMD[@]}" "$part" "$name"
+}
+
+function luks_create() {
+	local part="$1"
+	local name="${part##*/}"
+
+	declare -n out="$2"
+	out="/dev/mapper/$name"
+
+	ltrap "cleanup_close '$name'"
+	loud "When prompted, enter a passphrase for a new LUKS volume at $part to be opened as $name"
+	"${LUKS_FORMAT_CMD[@]}" "$part"
+	"${LUKS_OPEN_CMD[@]}" "$part" "$name"
+}
+
+function luks_clone() {
+	eval "$(lindent)"
+
+	local src_part="$1" dest_part="$2"
+	local src_dm dest_dm
+	local src_uuid="$(blkid_src UUID)"
+
+	luks_open "$src_part" src_dm
+	luks_create "$dest_part" src_dm
+
+	# FIXME hardcode
+	clone_partition "$src_dm" "$dest_dm"
+}
+
+# $1: src
+# $2: dest
+function clone_partition() {
+	eval "$(lindent)"
+
+	local src_part="$1" dest_part="$2"
+	local part_type="$(blkid_src TYPE)"
+	local log_msg="cloning '$src_part'"
+
+	log "cloning '$src_part' to '$dest_part'"
+	indent
+
+	if [[ "$part_type" ]]; then
+		log "type '$part_type'"
+	fi
+
+	if [[ "$part_type" ]] && command -v partclone.$part_type &>/dev/null; then
+		log "using 'partclone.$part_type'"
+		"partclone.$part_type" -b -s "$src_part" -O "$dest_part"
+	elif [[ "$part_type" == "swap" ]]; then
+		log "recreating swapspace label '$(blkid_src LABEL)' uuid '$(blkid_src UUID)'"
+		mkswap \
+			-L "$(blkid_src LABEL)" \
+			-U "$(blkid_src UUID)" \
+			"$dest_part"
+	elif  [[ "$part_type" == "crypto_LUKS" ]]; then
+		log "entering LUKS container"
+		luks_clone "$src_part" "$dest_part"
+	else
+		log "using partclone.dd"
+		partclone.dd -s "$src_part" -O "$dest_part"
+	fi
+}
 
 log "clone partitions..."
 for src_part in "$SRC"?*; do
-	# determine source partition number, accounting for two different naming schemas (diskXY and diskXpY)
-	partnr="${src_part##$SRC?(p)}"
-
-	# determine destination naming schema
-	if arg_exists "${DEST}p"*; then
+	# determine source naming convention (diskXY vs diskXpY) and partition number
+	if exists "${DEST}p"[0-9]*; then
+		partnr="${src_part##${SRC}p}"
 		dest_part="${DEST}p${partnr}"
 	else
+		partnr="${src_part##${SRC}}"
 		dest_part="${DEST}${partnr}"
 	fi
 
-	part_type="$(blkid "$src_part" -o value -s TYPE)"
-	echo -n "   -> '$src_part' "
-
-	if [[ "$part_type" ]]; then
-		echo -n "of type '$part_type' "
-	fi
-
-	echo -n "- "
-
-	if [[ "$part_type" ]] && type -t partclone.$part_type &>/dev/null; then
-		echo "using 'partclone.$part_type'"
-		"partclone.$part_type" -b -s "$src_part" -O "$dest_part"
-	elif [[ "$part_type" == "swap" ]]; then
-		echo "recreating swapspace label '$(blkid "$src_part" -o value -s LABEL)' uuid '$(blkid "$src_part" -o value -s UUID)'"
-		mkswap \
-			-L "$(blkid "$src_part" -o value -s LABEL)" \
-			-U "$(blkid "$src_part" -o value -s UUID)" \
-			"$dest_part"
-	else
-		echo "using partclone.dd"
-		partclone.dd -s "$src_part" -O "$dest_part"
-	fi
-
-	echo
+	clone_partition "$src_part" "$dest_part"
 done
 
-success=1
+SUCCESS=1
