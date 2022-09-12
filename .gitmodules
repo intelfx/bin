@@ -10,6 +10,3 @@
 [submodule "git/git-autofixup"]
 	path = git/git-autofixup
 	url = https://github.com/torbiak/git-autofixup
-[submodule "misc/gitlab-cloner"]
-	path = misc/gitlab-cloner
-	url = https://gitlab.com/mtcs.io/gitlab-cloner
