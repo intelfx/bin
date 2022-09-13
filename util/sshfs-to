@@ -64,3 +64,4 @@ systemd-run \
 		-o transform_symlinks \
 		-o dir_cache=yes \
 		-o max_conns=8 \
+		-o allow_root \
