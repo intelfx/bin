@@ -16,3 +16,4 @@ if ! [[ -e "$TAG_PATH" ]]; then
 # This file is a no-backup directory tag created by mknobackuptag.
 EOF
 fi
+chmod a-w "$TAG_PATH"

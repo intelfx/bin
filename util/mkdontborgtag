@@ -16,3 +16,4 @@ if ! [[ -e "$TAG_PATH" ]]; then
 # This file is a negative Borg archival tag created by mkdontborgtag.
 EOF
 fi
+chmod a-w "$TAG_PATH"
