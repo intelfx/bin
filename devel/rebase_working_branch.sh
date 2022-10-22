@@ -19,37 +19,46 @@ git_find_base_version() {
 		#--exclude 'v*.*.*' \
 }
 
-if ! (( $# == 2 )); then
-	die "Expected 2 arguments, got $# (usage: $0 <target version> <branch>)"
+if ! (( $# >= 2 )); then
+	die "Expected 2 or more arguments, got $# (usage: $0 <target version> <branch...>)"
 fi
 
 BASE="$1"
-BRANCH="$2"
+shift
 
 if ! git_verify "$BASE"; then
 	die "Invalid base: $BASE"
 fi
 
-if ! git_verify "$BRANCH"; then
-	die "Invalid branch to rebase: $BRANCH"
-fi
+rc=0
+for BRANCH; do
+	if ! git_verify "$BRANCH"; then
+		die "Invalid branch to rebase: $BRANCH"
+	fi
 
-log "Target base version: $BASE"
-log "Branch: $BRANCH"
+	log "Target base version: $BASE"
+	log "Branch: $BRANCH"
 
-if ! OLD_BASE="$(git_find_base_version "$BRANCH")"; then
-	die "Unable to determine old base"
-fi
+	if ! OLD_BASE="$(git_find_base_version "$BRANCH")"; then
+		err "Unable to determine old base"
+		rc=1
+		continue
+	fi
 
-log "Existing base version: $OLD_BASE"
+	log "Existing base version: $OLD_BASE"
 
-NEW_BRANCH="${BRANCH%-${OLD_BASE#v}}-${BASE#v}"
+	NEW_BRANCH="${BRANCH%-${OLD_BASE#v}}-${BASE#v}"
 
-log "New branch: $NEW_BRANCH"
+	log "New branch: $NEW_BRANCH"
 
-if git_verify "$NEW_BRANCH"; then
-	die "New branch ($NEW_BRANCH) exists, aborting"
-fi
+	if git_verify "$NEW_BRANCH"; then
+		err "New branch ($NEW_BRANCH) exists, aborting"
+		rc=1
+		continue
+	fi
 
-git branch -f "$NEW_BRANCH" "$BRANCH"
-git rebase --onto "$BASE" "$OLD_BASE" "$NEW_BRANCH"
+	git branch -f "$NEW_BRANCH" "$BRANCH"
+	git rebase --onto "$BASE" "$OLD_BASE" "$NEW_BRANCH"
+done
+
+exit $rc
