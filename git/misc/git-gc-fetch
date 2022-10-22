@@ -27,10 +27,12 @@ find "$GIT_DIR/objects/pack" \
 	mtime_idx="$(stat -c '%Y' "$idx")"
 	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
 	if (( mtime > now - 24*3600 )); then
+		echo "Repacking: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
 		continue
 	fi
 	# do not bother keeping very small packs
 	if (( size < 100*1024*1024 )); then
+		echo "Repacking: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
 		continue
 	fi
 
