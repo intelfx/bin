@@ -5,9 +5,6 @@ shopt -s lastpipe
 
 . lib.sh || exit
 
-log "Fetching remotes"
-git fetch -j$(nproc) --multiple stable arch pf
-
 git_list_versions() {
 	# TODO: "rolling back" changes with sed is ugly
 	# separate the tag and the sorting key
@@ -29,54 +26,6 @@ git_list_versions_rc() {
 git_verify() {
 	git rev-parse --verify --quiet "$1" >/dev/null
 }
-
-log "Determining versions"
-
-declare -A PARSE_ARGS=(
-	[-c]="ARG_CONFLICTS"
-	[--conflicts]="ARG_CONFLICTS"
-	[-b:]="ARG_MAJOR"
-	[--branch:]="ARG_MAJOR"
-	[--major:]="ARG_MAJOR"
-	[-v:]="ARG_MINOR"
-	[--version:]="ARG_MINOR"
-	[--minor:]="ARG_MINOR"
-)
-parse_args PARSE_ARGS "$@"
-
-if [[ "$ARG_MINOR" ]]; then
-	tag="$(git_list_versions | grep -Fx "$ARG_MINOR" | tail -n1)"
-	git_verify "$tag" || die "Failed to find $ARG_MINOR, exiting" || true
-	log " Requested version: $tag"
-elif [[ "$ARG_MAJOR" ]]; then
-	tag="$(git_list_versions | grep -Ex "$ARG_MAJOR(\.[0-9]+)?" | tail -n1)"
-	git_verify "$tag" || die "Failed to determine latest patch for $ARG_MAJOR, exiting" || true
-	log " Latest patch for $ARG_MAJOR: $tag"
-else
-	tag="$(git_list_versions | tail -n1)"
-	git_verify "$tag" || die "Failed to determine latest stable, exiting" || true
-	log " Latest stable: $tag"
-fi
-
-arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
-git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
-log " Latest -arch tag: $arch_tag"
-
-release="$(<<<"$tag" sed -nr 's|^v([0-9]+\.[0-9]+)(\.[0-9]+)?$|\1|p')" || true
-git_verify "v$release" || die "Failed to determine major release, exiting"
-log " Major release: $release"
-
-pf_tag="$(git tag --list "v$release-pf*" | grep -E -- '-pf[0-9]+$' | sort -V | tail -n1)" || true
-git_verify "$pf_tag" || die "Failed to determine latest -pf, exiting"
-log " Latest -pf tag: $pf_tag"
-
-eval "$(globaltraps)"
-
-log "Merging -pf"
-git checkout -f "$arch_tag"
-if ! git merge --no-commit --no-rerere "$pf_tag"; then
-	ltrap 'git merge --abort'
-fi
 
 git_list_conflicts() {
 	git status --untracked=no --porcelain | { grep -E '^(AA|DD|.U|U.) ' || true; }
@@ -113,6 +62,56 @@ merge_makefile() {
 	sed -r "s|^(EXTRAVERSION = ).*$|\1-$ours_extraversion$pf_extraversion|" -i Makefile
 	git add Makefile
 }
+
+declare -A PARSE_ARGS=(
+	[-c]="ARG_CONFLICTS"
+	[--conflicts]="ARG_CONFLICTS"
+	[-b:]="ARG_MAJOR"
+	[--branch:]="ARG_MAJOR"
+	[--major:]="ARG_MAJOR"
+	[-v:]="ARG_MINOR"
+	[--version:]="ARG_MINOR"
+	[--minor:]="ARG_MINOR"
+)
+parse_args PARSE_ARGS "$@"
+
+log "Fetching remotes"
+git fetch -j$(nproc) --multiple stable arch pf
+
+log "Determining versions"
+if [[ "$ARG_MINOR" ]]; then
+	tag="$(git_list_versions | grep -Fx "$ARG_MINOR" | tail -n1)"
+	git_verify "$tag" || die "Failed to find $ARG_MINOR, exiting" || true
+	log " Requested version: $tag"
+elif [[ "$ARG_MAJOR" ]]; then
+	tag="$(git_list_versions | grep -Ex "$ARG_MAJOR(\.[0-9]+)?" | tail -n1)"
+	git_verify "$tag" || die "Failed to determine latest patch for $ARG_MAJOR, exiting" || true
+	log " Latest patch for $ARG_MAJOR: $tag"
+else
+	tag="$(git_list_versions | tail -n1)"
+	git_verify "$tag" || die "Failed to determine latest stable, exiting" || true
+	log " Latest stable: $tag"
+fi
+
+arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
+git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
+log " Latest -arch tag: $arch_tag"
+
+release="$(<<<"$tag" sed -nr 's|^v([0-9]+\.[0-9]+)(\.[0-9]+)?$|\1|p')" || true
+git_verify "v$release" || die "Failed to determine major release, exiting"
+log " Major release: $release"
+
+pf_tag="$(git tag --list "v$release-pf*" | grep -E -- '-pf[0-9]+$' | sort -V | tail -n1)" || true
+git_verify "$pf_tag" || die "Failed to determine latest -pf, exiting"
+log " Latest -pf tag: $pf_tag"
+
+eval "$(globaltraps)"
+
+log "Merging -pf"
+git checkout -f "$arch_tag"
+if ! git merge --no-commit --no-rerere "$pf_tag"; then
+	ltrap 'git merge --abort'
+fi
 
 log "Handling conflicts"
 conflicts=0
