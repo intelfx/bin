@@ -5,11 +5,12 @@ function suppress_filter() {
 		"/SYSV"*) return 0 ;;
 		"/memfd:"*) return 0 ;;
 		"/drm mm object") return 0 ;;
-		"/run/user/"*) return 0 ;;
+		"/run/user"/*) return 0 ;;
 		*"/dconf/user") return 0 ;;
 		*"/gvfs-metadata/"*) return 0 ;;
 		"/[aio]") return 0 ;;
 		"/dev/zero") return 0 ;;
+		"/dev/shm"/*) return 0 ;;
 	esac
 
 	return 1
