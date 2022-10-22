@@ -30,7 +30,7 @@ find "$GIT_DIR/objects/pack" \
 		continue
 	fi
 	# do not bother keeping very small packs
-	if (( size < 10*1024*1024 )); then
+	if (( size < 100*1024*1024 )); then
 		continue
 	fi
 
