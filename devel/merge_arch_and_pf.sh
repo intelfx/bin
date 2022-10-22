@@ -109,7 +109,7 @@ eval "$(globaltraps)"
 
 log "Merging -pf"
 git checkout -f "$arch_tag"
-if ! git merge --no-commit --no-rerere "$pf_tag"; then
+if ! git merge --no-commit "$pf_tag"; then
 	ltrap 'git merge --abort'
 fi
 
