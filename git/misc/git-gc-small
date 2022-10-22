@@ -1,0 +1,39 @@
+#!/bin/bash -e
+
+#
+# git-gc-fetch -- `git gc` after fetching many redundant packs
+#
+
+GIT_DIR="$(git rev-parse --git-dir)"
+
+cleanup() {
+	rm -f "$GIT_DIR/objects/pack"/*.keep
+}
+trap cleanup EXIT
+
+now="$(date +%s)"
+
+find "$GIT_DIR/objects/pack" \
+	-type f \
+	-name '*.pack' \
+| while read pack; do
+
+	# HACK: use the older of .pack and .idx mtimes.
+	# Sometimes, `git fetch` touches old packs for no good reason, breaking
+	# this logic.
+	idx="${pack%.pack}.idx"
+	size="$(stat -c '%s' "$pack")"
+	mtime_pack="$(stat -c '%Y' "$pack")"
+	mtime_idx="$(stat -c '%Y' "$idx")"
+	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
+	# do not bother keeping very small packs
+	if (( size < 100*1024*1024 )); then
+		echo "Repacking: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
+		continue
+	fi
+
+	echo "Keeping pack: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
+	touch "${pack%.pack}.keep"
+done
+
+git gc-now --keep-largest-pack "$@"
