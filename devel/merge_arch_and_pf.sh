@@ -72,6 +72,7 @@ declare -A PARSE_ARGS=(
 	[-v:]="ARG_MINOR"
 	[--version:]="ARG_MINOR"
 	[--minor:]="ARG_MINOR"
+	[--pf:]="ARG_PF"
 )
 parse_args PARSE_ARGS "$@"
 
@@ -93,17 +94,23 @@ else
 	log " Latest stable: $tag"
 fi
 
-arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
-git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
-log " Latest -arch tag: $arch_tag"
-
 release="$(<<<"$tag" sed -nr 's|^v([0-9]+\.[0-9]+)(\.[0-9]+)?$|\1|p')" || true
 git_verify "v$release" || die "Failed to determine major release, exiting"
 log " Major release: $release"
 
-pf_tag="$(git tag --list "v$release-pf*" | grep -E -- '-pf[0-9]+$' | sort -V | tail -n1)" || true
-git_verify "$pf_tag" || die "Failed to determine latest -pf, exiting"
-log " Latest -pf tag: $pf_tag"
+if [[ "$ARG_PF" ]]; then
+	pf_tag="$ARG_PF"
+	git_verify "$pf_tag" || die "Failed to find $pf_tag, exiting" || true
+	log " Requested -pf tag: $pf_tag"
+else
+	pf_tag="$(git tag --list "v$release-pf*" | grep -E -- '-pf[0-9]+$' | sort -V | tail -n1)" || true
+	git_verify "$pf_tag" || die "Failed to determine latest -pf, exiting"
+	log " Latest -pf tag: $pf_tag"
+fi
+
+arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
+git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
+log " Latest -arch tag: $arch_tag"
 
 eval "$(globaltraps)"
 
