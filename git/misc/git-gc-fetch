@@ -26,7 +26,7 @@ find "$GIT_DIR/objects/pack" \
 	mtime_pack="$(stat -c '%Y' "$pack")"
 	mtime_idx="$(stat -c '%Y' "$idx")"
 	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
-	if (( mtime > now - 3600 )); then
+	if (( mtime > now - 24*3600 )); then
 		continue
 	fi
 	# do not bother keeping very small packs
