@@ -4,6 +4,8 @@ ALL=(
   Core
   CPU
   Busy%
+  Avg_MHz
+  Bzy_MHz
   IPC
   IRQ
   Totl%C0
