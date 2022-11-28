@@ -1,0 +1,11 @@
+#!/bin/bash
+
+set -eo pipefail
+
+TOPLEVEL="$(git rev-parse --show-toplevel)"
+cd "$TOPLEVEL"
+
+comm -z -13 \
+	<(git ls-files -z | sort -z) \
+	<(find . \( -path ./.git -prune \) -or \( -type f -printf '%P\0' \) | sort -z) \
+| tr '\0' '\n'
