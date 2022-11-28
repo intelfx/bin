@@ -1,0 +1,46 @@
+#!/bin/bash -e
+
+OPTIONS=(
+	/size:2560x1440
+	/dynamic-resolution
+	/scale:140
+	/sound:sys:pulse
+	/floatbar:show:fullscreen
+	/auto-reconnect
+)
+
+OPTIONS_BEST=(
+	+aero
+	# TODO: investigate effects of these options
+	/network:auto
+	/gfx:avc444
+)
+
+OPTIONS_FASTEST=(
+	-aero
+	-themes
+	-wallpaper
+	/bpp:8
+	+compression
+	/compression-level:2
+	# TODO: investigate effects of these options
+	/network:modem
+	/rfx
+	/gfx:rfx
+	+gfx-progressive
+)
+
+ARGS=()
+for arg; do
+	case "$arg" in
+	/best)
+		ARGS+=( "${OPTIONS_BEST[@]}" ) ;;
+	/fast|/fastest|/worst)
+		ARGS+=( "${OPTIONS_FASTEST[@]}" ) ;;
+	*)
+		ARGS+=( "$arg" ) ;;
+	esac
+	shift
+done
+
+exec /usr/bin/xfreerdp "${OPTIONS[@]}" "${ARGS[@]}"
