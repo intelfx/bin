@@ -5,6 +5,22 @@
 TARGET="$1"
 ARGS=( "${@:2}" )
 
+SSH_ARGS=(
+	"${ARGS[@]}"
+	-o BatchMode=yes
+	-o ServerAliveInterval=15
+)
+
+SSHFS_ARGS=(
+	"${SSH_ARGS[@]}"
+	-o reconnect
+	-o idmap=user
+	-o transform_symlinks
+	-o dir_cache=yes
+	-o max_conns=8
+	-o allow_root
+)
+
 declare -p TARGET
 declare -p ARGS
 
@@ -17,7 +33,7 @@ else
 fi
 
 USERHOST="${USER:+$USER@}${HOST}"
-SYMBOLIC_USER="$(ssh "${ARGS[@]}" "$USERHOST" 'whoami')"
+SYMBOLIC_USER="$(ssh "${SSH_ARGS[@]}" "$USERHOST" 'whoami')"
 SYMBOLIC_USERHOST="${SYMBOLIC_USER}@${HOST}"
 
 if [[ -z "$DIR" ]]; then
@@ -55,13 +71,5 @@ systemd-run \
 	sshfs \
 		"$USERHOST:$DIR" \
 		"$MOUNTPOINT" \
-		"${ARGS[@]}" \
-		-f \
-		-o BatchMode=yes \
-		-o ServerAliveInterval=15 \
-		-o reconnect \
-		-o idmap=user \
-		-o transform_symlinks \
-		-o dir_cache=yes \
-		-o max_conns=8 \
-		-o allow_root \
+		"${SSHFS_ARGS[@]}" \
+
