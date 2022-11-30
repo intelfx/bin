@@ -97,7 +97,7 @@ if (( ARG_LAST )); then
 		fi
 	fi
 
-	ARGS+=( _SYSTEMD_INVOCATION_ID="$INVOCATION" )
+	ARGS+=( _SYSTEMD_INVOCATION_ID="$INVOCATION" + INVOCATION_ID="$INVOCATION" )
 fi
 
 exec /usr/bin/journalctl "${ARGS[@]}"
