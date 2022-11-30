@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec systemd-nspawn --settings=false -U --resolv-conf=replace-host --bind /var/cache/pacman/pkg:/var/cache/pacman/pkg:idmap --bind /etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist:idmap "$@"
