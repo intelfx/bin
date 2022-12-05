@@ -56,7 +56,7 @@ class FindSubvolumeArgs:
 	list_root_subvolume: bool = attr.ib()
 	filter: Filter = attr.ib()
 	output: Output = attr.ib()
-	search_root: str = attr.ib()
+	paths: List[str] = attr.ib()
 
 
 def parse_args() -> FindSubvolumeArgs:
@@ -66,7 +66,7 @@ btrfs-sub-find -- a _sane_ alternative to `btrfs subvolume list`, designed for s
 '''.strip(),
 	)
 
-	parser.add_argument('path', default='.',
+	parser.add_argument('path', default=['.'], nargs='*', type=str,
 		help='Path to the filesystem and/or to the search root',
 	)
 
@@ -110,7 +110,7 @@ btrfs-sub-find -- a _sane_ alternative to `btrfs subvolume list`, designed for s
 	raw = parser.parse_args()
 	# noinspection PyArgumentList
 	args = FindSubvolumeArgs(
-		search_root=raw.path,
+		paths=raw.path,
 		filter=raw.filter or FindSubvolumeArgs.Filter.Path,
 		output=raw.output or FindSubvolumeArgs.Output.Find,
 		list_root_subvolume=raw.root_subvolume,
@@ -257,11 +257,11 @@ def path_vfs_to_physical(path: str) -> str:
 	return physpath
 
 
-def find_subvolumes(fs: btrfs.ctree.FileSystem, args: FindSubvolumeArgs):
+def find_subvolumes(fs: btrfs.ctree.FileSystem, args: FindSubvolumeArgs, search_root: str):
 	if args.filter == FindSubvolumeArgs.Filter.Path:
-		search_root = path_vfs_to_physical(args.search_root)
+		search_root = path_vfs_to_physical(search_root)
 	elif args.filter == FindSubvolumeArgs.Filter.Mountpoint:
-		search_root = path_vfs_to_mountpoint(args.search_root)[0].root
+		search_root = path_vfs_to_mountpoint(search_root)[0].root
 	elif args.filter == FindSubvolumeArgs.Filter.All:
 		search_root = '/'
 	else:
@@ -279,18 +279,24 @@ def main():
 	args = parse_args()
 	read_mountinfo()
 
-	with btrfs.ctree.FileSystem(args.search_root) as fs:
-		logging.debug(f'btrfs.ctree.FileSystem(path={args.search_root}): {fs}')
+	last_fs_root = None
+	fs = None
 
-		search_root_physical = path_vfs_to_physical(args.search_root)
-		search_fs, search_subpath = path_vfs_to_mountpoint(args.search_root)
+	for search_root in args.paths:
+		search_fs, search_subpath = path_vfs_to_mountpoint(search_root)
+		search_root_physical = path_vfs_to_physical(search_root)
 
-		for s in find_subvolumes(fs=fs, args=args):
+		if last_fs_root != search_fs.root:
+			last_fs_root = search_fs.root
+			fs = btrfs.ctree.FileSystem(search_root)
+			logging.debug(f'btrfs.ctree.FileSystem(path={search_root}): {fs}')
+
+		for s in find_subvolumes(fs=fs, args=args, search_root=search_root):
 			path = s.path.decode('utf-8')
 			if args.output == FindSubvolumeArgs.Output.Physical:
 				pass
 			elif args.output == FindSubvolumeArgs.Output.Find:
-				path = p_join_norm(args.search_root, p.relpath(path, start=search_root_physical))
+				path = p_join_norm(search_root, p.relpath(path, start=search_root_physical))
 			elif args.output == FindSubvolumeArgs.Output.FindRelative:
 				path = p.relpath(path, start=search_root_physical)
 			elif args.output == FindSubvolumeArgs.Output.MountpointRelative:
