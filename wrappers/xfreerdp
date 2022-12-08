@@ -13,6 +13,7 @@ OPTIONS_BEST=(
 	+aero
 	# TODO: investigate effects of these options
 	/network:auto
+	/rfx
 	/gfx:avc444
 )
 
@@ -26,8 +27,15 @@ OPTIONS_FASTEST=(
 	# TODO: investigate effects of these options
 	/network:modem
 	/rfx
-	/gfx:rfx
-	+gfx-progressive
+	/gfx:avc444
+
+	# TODO: pick the best codec
+	# see https://github.com/FreeRDP/FreeRDP/issues/5771
+	# see https://wiki.openthinclient.org/omd20191/knowledge-base/freerdp-performance-optimieren
+	# see https://wiki.openthinclient.org/omd20221/knowledge-base/freerdp-performance-optimieren
+	#/gfx:rfx /rfx -gfx-thin-client +gfx-progressive # rfx progressive
+	#/gfx:avc420 /rfx +gfx-thin-client -gfx-progressive # rfx non-progressive
+	#/gfx:avc444  # avc444
 )
 
 ARGS=()
