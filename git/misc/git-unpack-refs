@@ -1,18 +1,18 @@
 #!/bin/bash
 
-export IFS='
-'
+set -eo pipefail
+shopt -s lastpipe
 
-git_root="$(git rev-parse --show-toplevel)/.git"
-if [ ! -d "$git_root" ] ; then
-  echo "submodules are not supported yet. mail me if you need it" > /dev/stderr
-  exit 1
-else
-  for f in $(git show-ref); do
-    HASH="$(echo $f | cut -c1-40)"
-    REF_PATH="${GIT_DIR:-${git_root}}/$(echo $f | cut -c42-)"
-    echo "echo $HASH > \"$REF_PATH\""
-    mkdir -p "${REF_PATH%/*}"
-    echo "$HASH" > "$REF_PATH"
-  done
-fi
+git_dir="$(git rev-parse --git-dir)"
+cd "$git_dir"
+git show-ref | while read hash ref; do
+  if ! [[ -e $ref ]]; then
+    echo "echo $hash > \"$ref\""
+    if ! [[ -d ${ref%/*} ]]; then
+      mkdir -p "${ref%/*}"
+    fi
+    echo "$hash" > "$ref"
+  fi
+done
+echo "rm -f packed-refs"
+rm -f packed-refs
