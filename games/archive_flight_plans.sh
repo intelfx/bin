@@ -29,6 +29,17 @@ ARCHIVE_DEST=(
 	archive
 )
 
+# override paths if running from stratofortress
+if [[ $(hostname --short) == stratofortress ]]; then
+	ARCHIVE_DIRS=(
+		"/media/windows/Games/Steam/steamapps/common/X-Plane 11/Output:*.png"
+	)
+	ARCHIVE_DEST=(
+		"/mnt/data/Files/intelfx/Pictures/X-Plane"
+	)
+fi
+
+
 archive_dir() {
 	if [[ "$1" == *:* ]]; then
 		local dir="${1%:*}"
