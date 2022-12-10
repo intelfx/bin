@@ -63,7 +63,7 @@ archive_dir() {
 		mtime="$(date -Idate -d "@$mtime")"
 		archive_dir="$dest/$mtime"
 		mkdir -pv "$archive_dir"
-		mv -v "$dir/$file" -t "$archive_dir"
+		rsync -r -ltDH --chmod=ugo=rw "$dir/$file" "$archive_dir/" --itemize-changes --remove-source-files
 	done
 }
 
