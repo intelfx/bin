@@ -45,6 +45,8 @@ for arg; do
 		ARGS+=( "${OPTIONS_BEST[@]}" ) ;;
 	/fast|/fastest|/worst)
 		ARGS+=( "${OPTIONS_FASTEST[@]}" ) ;;
+	/u:intelfx|/u:intelfx@intelfx.name)
+		ARGS+=( /admin -sec-nla ) ;&
 	*)
 		ARGS+=( "$arg" ) ;;
 	esac
