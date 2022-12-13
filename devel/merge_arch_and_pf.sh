@@ -157,10 +157,10 @@ log "Committing result"
 GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000" git commit --no-edit
 luntrap
 
-if ! final_extraversion="$(makefile_get_extraversion)"; then
-	die "Could not determine final extraversion"
-fi
-final_tag="$tag-$final_extraversion"
+#if ! final_extraversion="$(makefile_get_extraversion)"; then
+#	die "Could not determine final extraversion"
+#fi
+final_tag="$tag-${arch_tag##*-}${pf_tag##*-}"
 
 if git_verify "$final_tag"; then
 	if [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$final_tag")" ]]; then
