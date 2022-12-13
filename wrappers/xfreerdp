@@ -21,7 +21,6 @@ OPTIONS_FASTEST=(
 	-aero
 	-themes
 	-wallpaper
-	/bpp:8
 	+compression
 	/compression-level:2
 	# TODO: investigate effects of these options
@@ -33,8 +32,8 @@ OPTIONS_FASTEST=(
 	# see https://github.com/FreeRDP/FreeRDP/issues/5771
 	# see https://wiki.openthinclient.org/omd20191/knowledge-base/freerdp-performance-optimieren
 	# see https://wiki.openthinclient.org/omd20221/knowledge-base/freerdp-performance-optimieren
-	#/gfx:rfx /rfx -gfx-thin-client +gfx-progressive # rfx progressive
-	#/gfx:avc420 /rfx +gfx-thin-client -gfx-progressive # rfx non-progressive
+	#/gfx:rfx -gfx-thin-client +gfx-progressive # rfx progressive
+	#/gfx:avc420 +gfx-thin-client -gfx-progressive # rfx non-progressive
 	#/gfx:avc444  # avc444
 )
 
