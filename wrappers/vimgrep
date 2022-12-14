@@ -1,0 +1,22 @@
+#!/bin/bash
+
+GREP_CMD=()
+
+if [[ "${1##*/}" == rg ]]; then
+	GREP_CMD=( "$1" --vimgrep "${@:2}" )
+elif [[ "${1##*/}" == git ]]; then
+	# we need to pass `--line-number --column` to `git grep`, however:
+	# - `grep` may not necessarily happen immediately after `git`, so we can't prepend the flags
+ 	# - `grep` may end with `--` and paths, so we can't append the flags either
+	# - the only way is to pass them as git-config options on the command line,
+	#   which we can do immediately after `git`
+	GREP_CMD=( "$1" -c grep.lineNumber=true -c grep.column=true "${@:2}" )
+else
+	if [[ "${1##*/}" != grep ]]; then
+		set -- grep "$@"
+	fi
+		
+	GREP_CMD=( "$1" --with-filename --line-number --column "${@:2}" )
+fi
+
+exec vim -c copen -q <("${GREP_CMD[@]}")
