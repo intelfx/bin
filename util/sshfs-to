@@ -68,6 +68,7 @@ esac
 systemd-run \
 	--user \
 	--unit "$UNIT" \
+	-p Type=forking \
 	sshfs \
 		"$USERHOST:$DIR" \
 		"$MOUNTPOINT" \
