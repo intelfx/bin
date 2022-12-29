@@ -1,0 +1,97 @@
+#!/bin/bash
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+# progressive fstrim
+STEPS=(
+	1M
+	512k
+	256k
+	128k
+	64k
+	32k
+	16k
+	8k
+	4k
+)
+
+MAX_TIME_TOTAL=60
+MAX_TIME_STEP=60
+
+declare -A SIZE_ORDER=(
+	[K]=1
+	[M]=2
+	[G]=3
+	[T]=4
+	[P]=5
+	[E]=6
+	[Z]=7
+	[Y]=8
+)
+
+parse_size() {
+	local arg="${1^^}"
+	if [[ $arg =~ ^([0-9]+)([KMGTPEZY])(IB)?$ ]]; then
+		echo $(( BASH_REMATCH[1] * 1024**SIZE_ORDER[${BASH_REMATCH[2]}] ))
+	elif [[ $arg =~ ^([0-9]+)([KMGTPEZY])B$ ]]; then 
+		echo $(( BASH_REMATCH[1] * 1000**SIZE_ORDER[${BASH_REMATCH[2]}] ))
+	elif [[ $arg =~ ^[0-9]+$ ]]; then
+		echo $arg
+	else
+		die "$arg: bad size argument"
+	fi
+}
+
+ARGS_FULL=( "$@" )
+ARGS=()
+MINIMUM=0
+while (( $# )); do
+	if [[ $1 == --minimum || $1 == -m ]]; then
+		MINIMUM="$2"
+		shift 2
+	elif [[ $1 == --minimum=* ]]; then
+		MINIMUM="${2#--minimum=}"
+		shift 1
+	elif [[ $1 == -m* ]]; then
+		MINIMUM="${1#-m}"
+		shift 1
+	else
+		ARGS+=( "$1" )
+		shift 1
+	fi
+done
+
+printf -v time_start "%(%s)T"
+
+for step in "${STEPS[@]}"; do
+	if [[ "$MINIMUM" ]] && (( $(parse_size "$step") < $(parse_size "$MINIMUM") )); then
+		exec fstrim "${ARGS_FULL[@]}"
+	fi
+
+	printf -v time_now "%(%s)T"
+	set -x
+	fstrim "${ARGS[@]}" --minimum "$step" || { exit $?; } 2>/dev/null
+	{ set +x; } 2>/dev/null
+	printf -v time_end "%(%s)T"
+
+	if (( time_end - time_now > MAX_TIME_STEP )); then
+		log "step time exceeded @ $step ($((time_end - time_now))s > ${MAX_TIME_STEP}s), exiting"
+		break
+	fi
+	if (( time_end - time_start > MAX_TIME_TOTAL )); then
+		log "total time exceeded ($((time_end - time_start))s > ${MAX_TIME_TOTAL}s), exiting"
+		break
+	fi
+done
+exit 0
