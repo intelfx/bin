@@ -61,7 +61,7 @@ while (( $# )); do
 		MINIMUM="$2"
 		shift 2
 	elif [[ $1 == --minimum=* ]]; then
-		MINIMUM="${2#--minimum=}"
+		MINIMUM="${1#--minimum=}"
 		shift 1
 	elif [[ $1 == -m* ]]; then
 		MINIMUM="${1#-m}"
