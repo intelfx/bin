@@ -1,5 +1,9 @@
 #!/bin/bash
 
+#
+# `fstrimp` -- progressive fstrim
+#
+
 log() {
 	echo ":: $*" >&2
 }
@@ -13,7 +17,6 @@ die() {
 	exit 1
 }
 
-# progressive fstrim
 STEPS=(
 	1M
 	512k
@@ -25,9 +28,6 @@ STEPS=(
 	8k
 	4k
 )
-
-MAX_TIME_TOTAL=60
-MAX_TIME_STEP=60
 
 declare -A SIZE_ORDER=(
 	[K]=1
@@ -53,6 +53,8 @@ parse_size() {
 	fi
 }
 
+MAX_TIME_TOTAL=60
+MAX_TIME_STEP=60
 ARGS_FULL=( "$@" )
 ARGS=()
 MINIMUM=0
@@ -66,6 +68,21 @@ while (( $# )); do
 	elif [[ $1 == -m* ]]; then
 		MINIMUM="${1#-m}"
 		shift 1
+
+	elif [[ $1 == --step-time ]]; then
+		MAX_TIME_STEP="$2"
+		shift 2
+	elif [[ $1 == --step-time=* ]]; then
+		MAX_TIME_STEP="${1#--step-time=}"
+		shift 1
+
+	elif [[ $1 == --total-time ]]; then
+		MAX_TIME_TOTAL="$2"
+		shift 2
+	elif [[ $1 == --total-time=* ]]; then
+		MAX_TIME_TOTAL="${1#--total-time=}"
+		shift 1
+
 	else
 		ARGS+=( "$1" )
 		shift 1
