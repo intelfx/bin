@@ -1,0 +1,17 @@
+#!/bin/bash -e
+
+#
+# disable cache autodetection and only rely on $PATH
+#
+
+function try() {
+	for arg; do
+		command -v "$arg" 2>/dev/null && return
+	done
+	return 1
+}
+
+[[ $CC ]] || export CC="$(try cc gcc clang)"
+[[ $CXX ]] || export CXX="$(try c++ g++ clang++)"
+
+exec /usr/bin/meson "$@"
