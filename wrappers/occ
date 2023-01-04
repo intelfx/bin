@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec sudo -u nextcloud -- /usr/share/webapps/nextcloud/occ "$@"
