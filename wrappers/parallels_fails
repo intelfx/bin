@@ -1,0 +1,12 @@
+#!/bin/bash
+
+joblog="$(mktemp)"
+trap "rm -f '$joblog'" EXIT
+
+parallel --joblog "$joblog" --halt-on-error never "$@" >&2; rc=$?
+
+if (( rc )); then
+	awk -F $'\t' 'NR > 1 && $7 != 0 { print }' "$joblog"
+fi
+
+exit $rc
