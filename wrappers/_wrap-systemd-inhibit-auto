@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if systemd-inhibit-auto true; then
+if systemd-inhibit-auto true &>/dev/null; then
 	exec systemd-inhibit-auto "/usr/bin/${0##*/}" "$@"
 else
 	exec "/usr/bin/${0##*/}" "$@"
