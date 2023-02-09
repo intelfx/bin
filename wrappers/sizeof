@@ -1,0 +1,3 @@
+#!/bin/sh
+
+du -bcs "$@" | tail -n1 | cut -d$'\t' -f1
