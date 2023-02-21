@@ -1,0 +1,8 @@
+#!/bin/sh
+#
+# Script version of my very useful alias `r-cput` that rsyncs files into the destination
+# preserving only times (i. e. applying correct perms/ACLs for the destination).
+# 
+# TODO: figure out why cp(1) mangles permissions even without --preserve, and use cp(1).
+#
+exec rsync -r --partial --no-i-r -ltDH --chmod=ugo=rwX "$@"
