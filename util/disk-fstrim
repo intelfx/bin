@@ -74,6 +74,7 @@ for disk in "${DISKS[@]}"; do
 			ltrap "umount -l '$mount_dir'"
 
 			if ! run mount "$part" "$mount_dir" -o discard; then
+				luntrap
 				err "$part: could not mount at $mount_dir, skipping"
 				(( ++errs ))
 				continue
