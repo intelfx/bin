@@ -114,3 +114,4 @@ for disk in "${DISKS[@]}"; do
 		log "$disk: trimmed $(bscalc -H "$free")"
 	fi
 done
+exit $(( errs ? 1 : 0 ))
