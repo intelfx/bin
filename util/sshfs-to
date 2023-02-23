@@ -21,9 +21,6 @@ SSHFS_ARGS=(
 	-o allow_root
 )
 
-declare -p TARGET
-declare -p ARGS
-
 if [[ "$TARGET" =~ ([^@]+@)?([^:]*)(:.+)? ]]; then
 	USER="${BASH_REMATCH[1]%'@'}"
 	HOST="${BASH_REMATCH[2]}"
