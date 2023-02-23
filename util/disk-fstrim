@@ -94,7 +94,7 @@ for disk in "${DISKS[@]}"; do
 		sync
 	fi
 
-	if (( ARG_TRIM_FREE_SPACE )); then
+	if (( ARG_TRIM_FREE_SPACE )) && [[ "$pttype" ]]; then
 		log "$disk: trimming unallocated free space"
 		cmds=()
 		free=0
