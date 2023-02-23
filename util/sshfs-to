@@ -62,10 +62,16 @@ active)
 	;;
 esac
 
+SYSTEMD_RUN_ARGS=()
+if [[ ${SSH_AUTH_SOCK+set} ]]; then
+	SYSTEMD_RUN_ARGS+=( -E SSH_AUTH_SOCK )
+fi
+
 systemd-run \
 	--user \
 	--unit "$UNIT" \
 	-p Type=forking \
+	"${SYSTEMD_RUN_ARGS[@]}" \
 	sshfs \
 		"$USERHOST:$DIR" \
 		"$MOUNTPOINT" \
