@@ -1,10 +1,9 @@
 #!/bin/bash
 
-set -eo pipefail
-shopt -s extglob
-shopt -s lastpipe
-
 . lib.sh || exit
+
+shopt -s extglob
+shopt -s nullglob
 
 _usage() {
 	cat <<EOF
