@@ -125,18 +125,15 @@ function maybe_truncate() {
 	local src="$2"
 	local dest_size="$(get_size "$dest")"
 	local src_size="$(get_size "$src")"
-	if [[ -b "$dest" ]]; then
-		if (( dest_size >= src_size )); then
-			log "block device $dest is of size $dest_size >= $src_size, not truncating"
-		else
-			log "block device $dest is of size $dest_size < $src_size, aborting"
-			exit 1
+	if ! [[ -b "$dest" ]]; then
+		log "truncating regular file $dest"
+		if ! exists "$dest"; then
+			ltrap "cleanup_remove_fail '$dest'"
 		fi
-	else
-		log "removing and replacing regular file $dest"
-		ltrap "cleanup_remove_fail '$dest'"
-		rm -f "$dest"
+		truncate --size 0 "$dest"
 		truncate --size "$src_size" "$dest"
+	elif (( dest_size < src_size )); then
+		die "block device $dest is of size $dest_size < $src_size, aborting"
 	fi
 }
 
