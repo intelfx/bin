@@ -17,6 +17,143 @@ run() {
 	fi
 }
 
+run_always() {
+	if (( ARG_DRY_RUN || ARG_VERBOSE )); then
+		echo "+ $*" >&2
+	fi
+	eval "$*"
+}
+
+disk_fstrim() {
+	eval "$(ltraps)"
+
+	if ! [[ -f "$disk" || -b "$disk" ]]; then
+		err "$disk: invalid disk, expected a file or a block device"
+		(( ++errs ))
+		return
+	fi
+
+	local rdisk="$disk"
+	if ! [[ -b "$disk" ]]; then
+		if ! local loop="$(run_always losetup -Pf --show "$disk")" || ! [[ $loop ]]; then
+			err "$disk: failed to set up a loop device"
+			(( ++errs ))
+			return
+		fi
+		ltrap "run_always losetup -d '$loop'"
+		log "$disk: configured a loopback device at $loop"
+		local disk="$loop"
+	fi
+
+	local pttype="$(blkid -o value -s PTTYPE "$disk")"
+	local fstype="$(blkid -o value -s TYPE "$disk")"
+	local partitions=()
+
+	if [[ "$pttype" ]]; then
+		find "$disk"p[0-9]* | readarray -t partitions
+		log "$rdisk: whole disk detected ($pttype), discovered ${#partitions[@]} partitions"
+	elif [[ "$fstype" ]]; then
+		partitions=( "$disk" )
+		log "$rdisk: filesystem detected ($fstype), treating as a partition"
+	else
+		err "$rdisk: could not find a partition table or a filesystem signature, skipping"
+		(( ++errs ))
+		return
+	fi
+
+	if (( ARG_TRIM_FILESYSTEMS )); then
+		log "$rdisk: trimming free space on ${#partitions[@]} filesystems"
+		for part in "${partitions[@]}"; do
+			local rpart="$part"
+			if [[ $rdisk != $disk ]]; then
+				rpart="$rdisk(${part#$disk})"
+			fi
+			part_fstrim || (( ++errs ))
+		done
+		sync
+	fi
+
+	if (( ARG_TRIM_FREE_SPACE )); then
+		disk_pttrim || (( ++errs ))
+		sync
+	fi
+}
+
+part_fstrim() {
+	eval "$(ltraps)"
+
+	local fstype="$(blkid -o value -s TYPE "$part")"
+	if ! [[ "$fstype" ]]; then
+		warn "$rpart: could not find a filesystem signature, skipping"
+		return
+	fi
+
+	if [[ $fstype == crypto_LUKS ]]; then
+		uuid="$(blkid -o value -s UUID "$part")"
+		if ! [[ $uuid ]]; then
+			err "$rpart: could not read LUKS container UUID, skipping"
+			(( ++errs ))
+			return
+		fi
+		luks="luks-$uuid"
+		if ! run cryptsetup open "$part" "$luks" --allow-discards; then
+			err "$rpart: could not open LUKS container as $luks, skipping"
+			(( ++errs ))
+			return
+		fi
+		ltrap "run cryptsetup close '$luks'"
+		part="/dev/mapper/$luks"
+	fi
+
+	mount_dir="$work_dir/${part##*/}"
+	ltrap "rm -d '$mount_dir'"
+	mkdir -p "$mount_dir"
+
+	ltrap "run umount '$mount_dir' || run umount -l '$mount_dir'"
+	if ! run mount "$part" "$mount_dir" -o discard; then
+		err "$rpart: could not mount at $mount_dir, skipping"
+		(( ++errs ))
+		return
+	fi
+
+	if ! run fstrim -v "$mount_dir"; then
+		err "$rpart: could not run fstrim at $mount_dir"
+		(( ++errs ))
+	fi
+	sync
+}
+
+disk_pttrim() {
+	eval "$(ltraps)"
+
+	if ! [[ "$pttype" ]]; then
+		warn "$rdisk: not a whole disk, not trimming unallocated space"
+		return
+	fi
+
+	log "$rdisk: trimming unallocated free space"
+
+	local free cmds=() FREE=()
+	parted -m "$disk" unit b print free | grep -E ':free;$' | while IFS=: read -ra FREE; do
+		cmds+=( "blkdiscard --force --offset '${FREE[1]%%B}' --length '${FREE[3]%%B}' '$disk'" )
+		(( free += ${FREE[3]%%B} )) ||:
+	done
+
+	for c in "${cmds[@]}"; do
+		if ! run "$c"; then
+			err "$rdisk: could not run blkdiscard, skipping"
+			(( ++errs ))
+			return
+		fi
+	done
+
+	log "$rdisk: trimmed $(bscalc -H "$free")"
+}
+
+#
+# main
+#
+
 declare -A ARGS=(
 	[-f|--fs|--filesystem|--filesystems]=ARG_TRIM_FILESYSTEMS
 	[-F|--free-space]=ARG_TRIM_FREE_SPACE
@@ -35,83 +172,6 @@ ltrap "rm -d '$work_dir'"
 
 errs=0
 for disk in "${DISKS[@]}"; do
-	[[ -f "$disk" || -b "$disk" ]] || die "Invalid disk: $disk, expected a file or a block device"
-
-	if ! [[ -b "$disk" ]]; then
-		loop="$(losetup -Pf --show "$disk")"
-		ltrap "losetup -d '$loop'"
-		log "$disk: configured a loopback device at $loop"
-		disk_true="$disk"; disk="$loop"
-	fi
-
-	pttype="$(blkid -o value -s PTTYPE "$disk")"
-	fstype="$(blkid -o value -s TYPE "$disk")"
-
-	if [[ "$pttype" ]]; then
-		find "$disk"p[0-9]* | readarray -t partitions
-		log "$disk: whole disk detected ($pttype), discovered ${#partitions[@]} partitions"
-	elif [[ "$fstype" ]]; then
-		partitions=( "$disk" )
-		log "$disk: filesystem detected ($fstype), treating as a partition"
-	else
-		err "$disk: could not find a partition table or a filesystem signature, skipping"
-		(( ++errs ))
-		continue
-	fi
-
-	if (( ARG_TRIM_FILESYSTEMS )); then
-		log "$disk: trimming free space on ${#partitions[@]} filesystems"
-		for part in "${partitions[@]}"; do
-			fstype="$(blkid -o value -s TYPE "$part")"
-			if ! [[ "$fstype" ]]; then
-				warn "$part: could not find a filesystem signature, skipping"
-				continue
-			fi
-
-			mount_dir="$work_dir/${part##*/}"
-			mkdir -p "$mount_dir"
-			ltrap "rm -d '$mount_dir'"
-			ltrap "umount -l '$mount_dir'"
-
-			if ! run mount "$part" "$mount_dir" -o discard; then
-				luntrap
-				err "$part: could not mount at $mount_dir, skipping"
-				(( ++errs ))
-				continue
-			fi
-			if ! run fstrim -v "$mount_dir"; then
-				err "$part: could not run fstrim at $mount_dir"
-				(( ++errs ))
-			fi
-			sync
-			if ! { run umount "$mount_dir" || run umount -l "$mount_dir"; }; then
-				luntrap
-				err "$part: could not umount $mount_dir, exiting"
-				exit 1
-			fi; luntrap
-			rm -d "$mount_dir"; luntrap
-		done
-		sync
-	fi
-
-	if (( ARG_TRIM_FREE_SPACE )) && [[ "$pttype" ]]; then
-		log "$disk: trimming unallocated free space"
-		cmds=()
-		free=0
-		parted -m "$disk" unit b print free | grep -E ':free;$' | while IFS=: read -ra FREE; do
-			cmds+=( "blkdiscard --force --offset '${FREE[1]%%B}' --length '${FREE[3]%%B}' '$disk'" )
-			(( free += ${FREE[3]%%B} ))
-		done
-
-		for c in "${cmds[@]}"; do
-			if ! run "$c"; then
-				err "$part: could not run blkdiscard, skipping"
-				(( ++errs ))
-				continue 2
-			fi
-		done
-		sync
-		log "$disk: trimmed $(bscalc -H "$free")"
-	fi
+	disk_fstrim || (( ++errs ))
 done
 exit $(( errs ? 1 : 0 ))
