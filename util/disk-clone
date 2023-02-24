@@ -168,10 +168,10 @@ fi
 SRC_REAL="$SRC"
 DEST_REAL="$DEST"
 
-log "truncate '$DEST' to size of '$SRC'"
+log "Preparing to clone $SRC to $DEST"
 maybe_truncate "$DEST" "$SRC"
 
-log "copy partition table"
+log "Cloning partition table from $SRC to $DEST"
 indent
 SRC_PTTYPE="$(blkid -s PTTYPE -o value "$SRC")"
 case "$SRC_PTTYPE" in
@@ -184,8 +184,7 @@ gpt)
 	sgdisk -R "$DEST" "$SRC"
 	;;
 *)
-	log "unknown partition table type '$SRC_PTTYPE'!"
-	exit 1
+	die "unknown partition table type '$SRC_PTTYPE'!"
 	;;
 esac
 unindent
