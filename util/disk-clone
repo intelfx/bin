@@ -6,6 +6,12 @@ shopt -s lastpipe
 
 . lib.sh || exit
 
+_usage() {
+	cat <<EOF
+Usage: $0 [--luks=<dd|clone|recreate>] <source> <destination>
+EOF
+}
+
 #
 # lib.sh logging overrides
 #
@@ -151,11 +157,23 @@ function maybe_loop() {
 # main
 #
 
-eval "$(globaltraps)"
+declare -A ARGS=(
+	[--luks:]=ARG_LUKS
+	[--]=DISKS
+)
+parse_args ARGS "$@" || usage "Invalid options"
+(( ${#DISKS[@]} == 2 )) || usage "Expected 2 positional arguments, got ${#DISKS[@]}"
+case "$ARG_LUKS" in
+dd|recreate|clone) ;;
+"") ARG_LUKS=dd ;;
+*) usage "Invalid option: --luks=$ARG_LUKS (expected one of \"dd\" (or empty), \"recreate\" or \"clone\")" ;;
+esac
 
+SRC="${DISKS[0]}"
+DEST="${DISKS[1]}"
 SUCCESS=0
-SRC="$1"
-DEST="$2"
+
+eval "$(globaltraps)"
 
 if ! [[ -b "$SRC" || -f "$SRC" ]]; then
 	die "Bad source: $SRC"
@@ -237,14 +255,33 @@ function luks_create() {
 }
 
 function luks_clone() {
+	eval "$(ltraps)"
 	eval "$(lindent)"
 
 	local src_part="$1" dest_part="$2"
 	local src_dm dest_dm
 	local src_uuid="$(blkid_src UUID)"
 
-	luks_open "$src_part" src_dm
-	luks_create "$dest_part" src_dm
+	if [[ "$ARG_LUKS" == "recreate" ]]; then
+		luks_open "$src_part" src_dm
+		luks_create "$dest_part" dest_dm
+
+		# FIXME hardcode
+		clone_partition "$src_dm" "$dest_dm"
+	elif [[ "$ARG_LUKS" == "clone" ]]; then
+		# `mktemp -u` is unsafe, but cryptsetup won't accept a backup file
+		# that already exists.
+		local header="$(mktemp -u)"
+		ltrap "cleanup_remove '$header'"
+		cryptsetup luksHeaderBackup "$src_part" --header-backup-file "$header"
+		cryptsetup luksHeaderRestore "$dest_part" --header-backup-file "$header"
+		lruntrap
+
+		luks_open "$src_part" src_dm
+		luks_open "$dest_part" dest_dm
+	else
+		die "Internal error: bad \$ARG_LUKS=$ARG_LUKS"
+	fi
 
 	# FIXME hardcode
 	clone_partition "$src_dm" "$dest_dm"
@@ -275,7 +312,7 @@ function clone_partition() {
 			-L "$(blkid_src LABEL)" \
 			-U "$(blkid_src UUID)" \
 			"$dest_part"
-	elif  [[ "$part_type" == "crypto_LUKS" ]]; then
+	elif  [[ "$part_type" == "crypto_LUKS" && "$ARG_LUKS" != "dd" ]]; then
 		log "entering LUKS container"
 		luks_clone "$src_part" "$dest_part"
 	else
