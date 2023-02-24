@@ -321,7 +321,7 @@ function clone_partition() {
 }
 
 log "clone partitions..."
-for src_part in "$SRC"?*; do
+for src_part in "$SRC"?(p)+([0-9]); do
 	partnr="${src_part##${SRC}?(p)}"
 
 	dest_part=( ${DEST}?(p)${partnr} )
