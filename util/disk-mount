@@ -1,0 +1,158 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+shopt -s extglob
+
+_usage() {
+  cat <<EOF
+Usage: $0 [-n|--dry-run] [-v|--verbose] <block device...>
+EOF
+}
+
+run() {
+	if (( ARG_DRY_RUN || ARG_VERBOSE )); then
+		echo "+ $*" >&2
+	fi
+	if ! (( ARG_DRY_RUN )); then
+		eval "$*"
+	fi
+}
+
+run_always() {
+	if (( ARG_DRY_RUN || ARG_VERBOSE )); then
+		echo "+ $*" >&2
+	fi
+	eval "$*"
+}
+
+ltraps_to_undo() {
+	# get rid of `run` and `run_always` helpers and dump the undo commands into the file
+	printf "%s\n" "${__traps[@]}" | sed -r 's/^(run|run_always) //' >>"$undo_file"
+	__traps=()
+}
+
+disk_mount() {
+	eval "$(ltraps)"
+
+	if ! [[ -f "$disk" || -b "$disk" ]]; then
+		err "$disk: invalid disk, expected a file or a block device"
+		(( ++errs ))
+		return
+	fi
+
+	local undo_file="$(pwd)/$(basename "$disk").umount.sh"
+	ltrap "rm -f '$undo_file'"
+	cat >"$undo_file" <<EOF
+#!/bin/bash -ex
+
+EOF
+	chmod +x "$undo_file"
+
+	local work_dir="$(pwd)/$(basename "$disk").d"
+	ltrap "rm -d '$work_dir'"
+	mkdir -p "$work_dir"
+
+	local rdisk="$disk"
+	if ! [[ -b "$disk" ]]; then
+		if ! local loop="$(run_always losetup -Pf --show "$disk")" || ! [[ $loop ]]; then
+			err "$disk: failed to set up a loop device"
+			(( ++errs ))
+			return
+		fi
+		ltrap "run_always losetup -d '$loop'"
+		log "$disk: configured a loopback device at $loop"
+		local disk="$loop"
+	fi
+
+	local pttype="$(blkid -o value -s PTTYPE "$disk")"
+	local fstype="$(blkid -o value -s TYPE "$disk")"
+	local partitions=()
+
+	if [[ "$pttype" ]]; then
+		find "$disk"p[0-9]* | readarray -t partitions
+		log "$rdisk: whole disk detected ($pttype), discovered ${#partitions[@]} partitions"
+	elif [[ "$fstype" ]]; then
+		partitions=( "$disk" )
+		log "$rdisk: filesystem detected ($fstype), treating as a partition"
+	else
+		err "$rdisk: could not find a partition table or a filesystem signature, skipping"
+		(( ++errs ))
+		return
+	fi
+
+	log "$rdisk: attemting to mount ${#partitions[@]} filesystems"
+	for part in "${partitions[@]}"; do
+		local rpart="$part"
+		if [[ $rdisk != $disk ]]; then
+			rpart="$rdisk(${part#$disk})"
+		fi
+		part_mount || (( ++errs ))
+	done
+
+	ltraps_to_undo
+}
+
+part_mount() {
+	# use the global scope because it is going to be used as an undo file
+	#eval "$(ltraps)"
+
+	local fstype="$(blkid -o value -s TYPE "$part")"
+	if ! [[ "$fstype" ]]; then
+		warn "$rpart: could not find a filesystem signature, skipping"
+		return
+	elif [[ $fstype == swap ]]; then
+		warn "$rpart: not a mountable filesystem ($fstype), skipping"
+		return
+	fi
+
+	local mount_dir="$work_dir"
+	if [[ $part != $disk ]]; then
+		local partnr="${part##$disk?(p)}"
+		mount_dir+="/part$partnr"
+	fi
+	ltrap "rm -d '$mount_dir'"
+	mkdir -p "$mount_dir"
+
+	if [[ $fstype == crypto_LUKS ]]; then
+		uuid="$(blkid -o value -s UUID "$part")"
+		if ! [[ $uuid ]]; then
+			err "$rpart: could not read LUKS container UUID, skipping"
+			(( ++errs ))
+			return
+		fi
+		luks="luks-$uuid"
+		if ! run cryptsetup open "$part" "$luks" --allow-discards; then
+			err "$rpart: could not open LUKS container as $luks, skipping"
+			(( ++errs ))
+			return
+		fi
+		ltrap "run cryptsetup close '$luks'"
+		part="/dev/mapper/$luks"
+	fi
+
+	ltrap "run umount '$mount_dir' || run umount -l '$mount_dir'"
+	if ! run mount "$part" "$mount_dir" -o discard; then
+		err "$rpart: could not mount $fstype at $mount_dir, skipping"
+		(( ++errs ))
+		return
+	fi
+}
+
+#
+# main
+#
+
+declare -A ARGS=(
+	[-n|--dry-run]=ARG_DRY_RUN
+	[-v|--verbose]=ARG_VERBOSE
+	[--]=DISKS
+)
+parse_args ARGS "$@" || usage "Invalid options"
+(( ${#DISKS[@]} )) || usage "At least one disk is required"
+
+errs=0
+for disk in "${DISKS[@]}"; do
+	disk_mount || (( ++errs ))
+done
+exit $(( errs ? 1 : 0 ))
