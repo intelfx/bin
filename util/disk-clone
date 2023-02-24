@@ -101,6 +101,13 @@ function cleanup_remove() {
 	fi
 }
 
+function cleanup_remove_fail() {
+	if (( SUCCESS )); then
+		return
+	fi
+
+	cleanup_remove "$@"
+}
 
 function cleanup_close() {
 	unindent_all
@@ -127,7 +134,7 @@ function maybe_truncate() {
 		fi
 	else
 		log "removing and replacing regular file $dest"
-		ltrap "cleanup_remove '$dest'"
+		ltrap "cleanup_remove_fail '$dest'"
 		rm -f "$dest"
 		truncate --size "$src_size" "$dest"
 	fi
