@@ -137,14 +137,12 @@ function maybe_truncate() {
 
 function maybe_loop() {
 	eval "$(lindent)"
-	dev="$1"
-	if [[ -b "$dev" ]]; then
-		echo "$dev"
-	else
+	declare -n dev="$1"
+	if ! [[ -b "$dev" ]]; then
 		local loop=$(losetup -Pf --show "$dev")
 		ltrap "cleanup_detach '$loop'"
 		log "$loop for $dev"
-		echo "$loop"
+		dev="$loop"
 	fi
 }
 
@@ -193,8 +191,8 @@ esac
 unindent
 
 log "setup loop devices..."
-SRC="$(maybe_loop "$SRC")"
-DEST="$(maybe_loop "$DEST")"
+maybe_loop SRC
+maybe_loop DEST
 
 # FIXME LUKS2 format parameters are hardcoded
 LUKS_FORMAT_CMD=(
