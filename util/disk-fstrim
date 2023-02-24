@@ -4,7 +4,7 @@
 
 _usage() {
   cat <<EOF
-Usage: $0 [-n|--dry-run] [-f|--fs|--filesystem|--filesystems] [-F|-free-space] <block device...>
+Usage: $0 [-n|--dry-run] [-v|--verbose] [-f|--fs|--filesystem|--filesystems] [-F|-free-space] <block device...>
 EOF
 }
 
