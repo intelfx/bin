@@ -1,0 +1,43 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+Usage: mkwiniso <path to source directory> [path to output ISO]
+EOF
+}
+
+if (( $# == 2 )); then
+	SOURCE_DIR="$1"
+	DEST_FILE="$2"
+elif (( $# == 1 )); then
+	SOURCE_DIR="$1"
+	DEST_FILE="${1%%/}.iso"
+else
+	usage "Expected 1 or 2 arguments, $# given"
+fi
+
+DEST_FILE_DIR="$(dirname "$DEST_FILE")"
+
+[[ -d "$SOURCE_DIR" ]] || usage "Bad source directory: $SOURCE_DIR"
+[[ ! -d "$DEST_FILE" ]] || usage "Bad destination file: $DEST_FILE"
+[[ -d "$DEST_FILE_DIR" && -w "$DEST_FILE_DIR" ]] || usage "Destination file directory is not a writable directory: $DEST_FILE"
+
+log "Source dir: $SOURCE_DIR"
+log "Target ISO: $DEST_FILE"
+
+exec mkisofs \
+	-no-emul-boot \
+	-eltorito-boot "boot/etfsboot.com" \
+	-boot-load-seg 0 \
+	-boot-load-size 8 \
+	-eltorito-alt-boot \
+	-eltorito-platform efi \
+	-no-emul-boot \
+	-eltorito-boot "efi/microsoft/boot/efisys.bin" \
+	-boot-load-size 1 \
+	-iso-level 4 \
+	-udf \
+	-output "$DEST_FILE" \
+	"${SOURCE_DIR%%/}/"
