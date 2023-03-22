@@ -290,9 +290,6 @@ function luks_clone() {
 	if [[ "$ARG_LUKS" == "recreate" ]]; then
 		luks_open "$src_part" src_dm
 		luks_create "$dest_part" dest_dm
-
-		# FIXME hardcode
-		clone_partition "$src_dm" "$dest_dm"
 	elif [[ "$ARG_LUKS" == "clone" ]]; then
 		# `mktemp -u` is unsafe, but cryptsetup won't accept a backup file
 		# that already exists.
@@ -308,7 +305,6 @@ function luks_clone() {
 		die "Internal error: bad \$ARG_LUKS=$ARG_LUKS"
 	fi
 
-	# FIXME hardcode
 	clone_partition "$src_dm" "$dest_dm"
 }
 
