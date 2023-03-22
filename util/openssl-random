@@ -1,9 +1,38 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
+CIPHER=-aes-128-ctr
+ARGS=()
+
 if (( $# )); then
-	exec < <(pv --quiet "$@" /dev/zero)
+	openssl enc -list | tail -n+2 | tr -s ' ' '\n' | readarray -t CIPHERS
+	for arg; do
+		if [[ $arg == -list || $arg == -ciphers ]]; then
+			# mimic `openssl enc -list|-ciphers` output, just do not invoke it again
+			if [[ -t 1 ]]; then
+				echo "Supported ciphers:"
+				printf "%s\n" "${CIPHERS[@]}" | column -x
+			else
+				printf "%s\n" "${CIPHERS[@]}"
+			fi
+			exit
+		fi
+		for c in "${CIPHERS[@]}"; do
+			if [[ $arg == $c ]]; then
+				CIPHER="$arg"
+				continue 2
+			fi
+		done
+		ARGS+=( "$arg" )
+	done
+fi
+
+if (( ${#ARGS[@]} )); then
+	exec < <(pv --quiet "${ARGS[@]}" /dev/zero)
 else
 	exec < /dev/zero
 fi
 
-exec openssl enc -aes-128-ctr -pass file:<(dd if=/dev/urandom bs=128 count=1 status=none) -nosalt 2>/dev/null
+exec openssl enc "$CIPHER" -pass file:<(dd if=/dev/urandom bs=128 count=1 status=none) -nosalt 2>/dev/null
