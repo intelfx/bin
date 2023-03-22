@@ -6,4 +6,4 @@ else
 	exec < /dev/zero
 fi
 
-exec openssl enc -aes-128-ctr -pass file:<(dd if=/dev/urandom bs=128 count=1 status=none) -nosalt </dev/zero 2>/dev/null
+exec openssl enc -aes-128-ctr -pass file:<(dd if=/dev/urandom bs=128 count=1 status=none) -nosalt 2>/dev/null
