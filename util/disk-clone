@@ -206,7 +206,7 @@ gpt)
 esac
 unindent
 
-log "setup loop devices..."
+log "Setting up loop devices"
 maybe_loop SRC
 maybe_loop DEST
 
@@ -320,7 +320,7 @@ function clone_partition() {
 	fi
 }
 
-log "clone partitions..."
+log "Cloning partitions"
 for src_part in "$SRC"?(p)+([0-9]); do
 	partnr="${src_part##${SRC}?(p)}"
 
