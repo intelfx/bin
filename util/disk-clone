@@ -210,6 +210,24 @@ log "Setting up loop devices"
 maybe_loop SRC
 maybe_loop DEST
 
+log "Discovering partitions"
+SRC_PART=( "$SRC"?(p)+([0-9]) )
+DEST_PART=( "$DEST"?(p)+([0-9]) )
+for p in "${SRC_PART[@]}"; do
+	if ! [[ -b "$p" ]]; then
+		die "Failed to discover partitions: $SRC: $p is not a block device"
+	fi
+done
+for p in "${DEST_PART[@]}"; do
+	if ! [[ -b "$p" ]]; then
+		die "Failed to discover partitions: $DEST: $p is not a block device"
+	fi
+done
+if [[ "${SRC_PART[*]##$SRC?(p)}" != "${DEST_PART[*]##$DEST?(p)}" ]]; then
+	IFS=,
+	die "Failed to copy partition table: partition tables do not match: src=${SRC}{${SRC_PART[*]##$SRC?(p)}}, dest=${DEST}{${DEST_PART[*]##$DEST?(p)}}"
+fi
+
 # FIXME LUKS2 format parameters are hardcoded
 LUKS_FORMAT_CMD=(
 	cryptsetup
@@ -321,15 +339,9 @@ function clone_partition() {
 }
 
 log "Cloning partitions"
-for src_part in "$SRC"?(p)+([0-9]); do
-	partnr="${src_part##${SRC}?(p)}"
-
-	dest_part=( ${DEST}?(p)${partnr} )
-
-	if (( ${#dest_part[@]} != 1 )) || ! exists $dest_part; then
-		die "${DEST}: partition ${partnr} does not exist in destination"
-	fi
-
+for (( i = 0; i < ${#SRC_PART[@]}; ++i )); do
+	src_part="${SRC_PART[i]}"
+	dest_part="${DEST_PART[i]}"
 	clone_partition "$src_part" "$dest_part"
 done
 
