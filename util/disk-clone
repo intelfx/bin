@@ -295,8 +295,8 @@ function luks_clone() {
 		# that already exists.
 		local header="$(mktemp -u)"
 		ltrap "cleanup_remove '$header'"
-		cryptsetup luksHeaderBackup "$src_part" --header-backup-file "$header"
-		cryptsetup luksHeaderRestore "$dest_part" --header-backup-file "$header"
+		cryptsetup luksHeaderBackup "$src_part" --batch-mode --header-backup-file "$header"
+		cryptsetup luksHeaderRestore "$dest_part" --batch-mode --header-backup-file "$header"
 		lruntrap
 
 		luks_open "$src_part" src_dm
