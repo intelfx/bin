@@ -200,6 +200,9 @@ gpt)
 	log "GPT detected -- using sgdisk"
 	sgdisk -R "$DEST" "$SRC"
 	;;
+'')
+	log "No partition table -- assuming single partition"
+	;;
 *)
 	die "unknown partition table type '$SRC_PTTYPE'!"
 	;;
@@ -211,8 +214,13 @@ maybe_loop SRC
 maybe_loop DEST
 
 log "Discovering partitions"
-SRC_PART=( "$SRC"?(p)+([0-9]) )
-DEST_PART=( "$DEST"?(p)+([0-9]) )
+if [[ "$SRC_PTTYPE" ]]; then
+	SRC_PART=( "$SRC"?(p)+([0-9]) )
+	DEST_PART=( "$DEST"?(p)+([0-9]) )
+else
+	SRC_PART=( "$SRC" )
+	DEST_PART=( "$DEST" )
+fi
 for p in "${SRC_PART[@]}"; do
 	if ! [[ -b "$p" ]]; then
 		die "Failed to discover partitions: $SRC: $p is not a block device"
