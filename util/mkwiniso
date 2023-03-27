@@ -8,17 +8,31 @@ Usage: mkwiniso <path to source directory> [path to output ISO]
 EOF
 }
 
-if (( $# == 2 )); then
+if (( $# == 3 )); then
 	SOURCE_DIR="$1"
 	DEST_FILE="$2"
+	ISO_LABEL="$3"
+elif (( $# == 2 )); then
+	SOURCE_DIR="$1"
+	DEST_FILE="$2"
+	ISO_LABEL=""
 elif (( $# == 1 )); then
 	SOURCE_DIR="$1"
-	DEST_FILE="${1%%/}.iso"
+	ISO_LABEL=""
 else
 	usage "Expected 1 or 2 arguments, $# given"
 fi
 
-DEST_FILE_DIR="$(dirname "$DEST_FILE")"
+SOURCE_DIR_ABS="$(realpath --strip "$SOURCE_DIR")"
+if ! [[ $DEST_FILE ]]; then
+	DEST_FILE="$SOURCE_DIR_ABS.iso"
+fi
+if ! [[ $ISO_LABEL ]]; then
+	ISO_LABEL="${SOURCE_DIR_ABS##*/}"
+fi
+
+DEST_FILE_ABS="$(realpath --strip "$DEST_FILE")"
+DEST_FILE_DIR="${DEST_FILE_ABS%/*}"
 
 [[ -d "$SOURCE_DIR" ]] || usage "Bad source directory: $SOURCE_DIR"
 [[ ! -d "$DEST_FILE" ]] || usage "Bad destination file: $DEST_FILE"
@@ -26,8 +40,22 @@ DEST_FILE_DIR="$(dirname "$DEST_FILE")"
 
 log "Source dir: $SOURCE_DIR"
 log "Target ISO: $DEST_FILE"
+log "Target ISO label: $ISO_LABEL"
+
+mkisofs_args=(
+	-sysid ''
+	-volset-size 1
+	-volset-seqno 1
+)
+if [[ $ISO_LABEL ]]; then
+	mkisofs_args+=(
+		-V "$ISO_LABEL"
+		-volset "$ISO_LABEL"
+	)
+fi
 
 exec mkisofs \
+	"${mkisofs_args[@]}" \
 	-no-emul-boot \
 	-eltorito-boot "boot/etfsboot.com" \
 	-boot-load-seg 0 \
@@ -39,5 +67,5 @@ exec mkisofs \
 	-boot-load-size 1 \
 	-iso-level 4 \
 	-udf \
-	-output "$DEST_FILE" \
-	"${SOURCE_DIR%%/}/"
+	-output "$DEST_FILE_ABS" \
+	"${SOURCE_DIR_ABS}/"
