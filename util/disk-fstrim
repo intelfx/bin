@@ -109,9 +109,16 @@ part_fstrim() {
 	ltrap "rm -d '$mount_dir'"
 	mkdir -p "$mount_dir"
 
+	local mount_opts
+	case "$fstype" in
+	btrfs) mount_opts="ro,discard=async" ;;
+	ntfs) mount_opts="discard" ;;
+	*) mount_opts="ro,discard" ;;
+	esac
+
 	ltrap "run umount '$mount_dir' || run umount -l '$mount_dir'"
-	if ! run mount "$part" "$mount_dir" -o discard; then
-		err "$rpart: could not mount at $mount_dir, skipping"
+	if ! run mount "$part" "$mount_dir" -o "$mount_opts"; then
+		err "$rpart: could not mount at $mount_dir ($mount_opts), skipping"
 		(( ++errs ))
 		return
 	fi
