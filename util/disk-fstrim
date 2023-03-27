@@ -105,7 +105,7 @@ part_fstrim() {
 		part="/dev/mapper/$luks"
 	fi
 
-	mount_dir="$work_dir/${part##*/}"
+	local mount_dir="$work_dir/${part##*/}"
 	ltrap "rm -d '$mount_dir'"
 	mkdir -p "$mount_dir"
 
