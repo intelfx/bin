@@ -86,11 +86,11 @@ process_iso() {
 	7zz x -o"$work_dir" "$1" || return
 	process_dir "$work_dir" || return
 
-	local out_tmp="$out.$$.new"
+	local out_tmp="$(dn "$out")/.$(bn "$out").$$.new"
 	ltrap "rm -f '$out_tmp'"
 
 	mkwiniso "$work_dir" "$out_tmp" "$label" || return
-	mv -T "$out_tmp" "$out" || return
+	mv -fT "$out_tmp" "$out" || return
 	luntrap
 }
 
