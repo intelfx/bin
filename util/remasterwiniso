@@ -1,6 +1,7 @@
 #!/bin/bash
 
 . lib.sh || exit
+shopt -s extglob
 
 declare -A ARGS=(
 	[--solid|--esd::]=ARG_COMPRESS_SOLID
@@ -74,9 +75,9 @@ process_iso() {
 	if [[ $ARG_REPLACE ]]; then
 		out="$1"
 	elif [[ $COMPRESS != none ]]; then
-		out="${1%.iso}.$EXTENSION.iso"
+		out="${1%%?(.orig).iso}.$EXTENSION.iso"
 	else
-		out="${1%.iso}.none.iso"
+		out="${1%%?(.orig).iso}.none.iso"
 	fi
 
 	log "Remastering ISO file: $1 -> $out"
