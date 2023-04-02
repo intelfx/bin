@@ -72,26 +72,7 @@ path_apply_acl() {
 	fi
 }
 
-case "$1" in
--R|-r)
-	shift
-	target="$(realpath -qe "$1")"
-	cd "$(dirname "$target")"
-	file=.
-	path_compute_acl  # parent == .
-	find "$(basename "$target")" -type d                        -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
-	find "$(basename "$target")" -not \( -type d -or -type l \) -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
-	;;
-
--d)
-	shift
-	cd "$1"
-	file=.
-	path_compute_acl  # parent == .
-	find -mindepth 1 -type d                        -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
-	find -mindepth 1 -not \( -type d -or -type l \) -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
-	;;
-*)
+resetfacl_normal() {
 	for file; do
 		path_compute_acl "$file"
 	done
@@ -99,6 +80,74 @@ case "$1" in
 	for file; do
 		path_apply_acl "$file"
 	done
+}
+
+resetfacl_recursive() (
+	target="$(realpath -qe "$1")"
+	cd "$(dirname "$target")"
+	file=.
+	path_compute_acl  # parent == .
+	find "$(basename "$target")" -type d                        -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
+	find "$(basename "$target")" -not \( -type d -or -type l \) -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
+)
+
+resetfacl_recursive_inside() (
+	cd "$1"
+	file=.
+	path_compute_acl  # parent == .
+	find -mindepth 1 -type d                        -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
+	find -mindepth 1 -not \( -type d -or -type l \) -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
+)
+
+ARG_RECURSIVE=0
+ARG_RECURSIVE_INSIDE=0
+
+case "$1" in
+-R|-r)
+	ARG_RECURSIVE=1
+	shift
+	;;
+
+-d)
+	ARG_RECURSIVE_INSIDE=1
+	shift
+	;;
+*)
 	;;
 esac
 
+if (( ARG_RECURSIVE && ARG_RECURSIVE_INSIDE )); then
+	die "Flags -R/-r and -d are mutually exclusive"
+fi
+
+#
+# Simple case: non-recursive
+#
+
+if ! (( ARG_RECURSIVE || ARG_RECURSIVE_INSIDE )); then
+	log "Processing $# files"
+	resetfacl_normal "$@"
+	exit
+fi
+
+#
+# Complex case: apply recursive treatment to directory arguments,
+# then apply normal treatment to all remaining non-directory arguments
+#
+
+ARGS_NORMAL=()
+for arg; do
+	if (( ARG_RECURSIVE )) && [[ -d "$arg" ]]; then
+		log "Processing directory (recursively): $arg"
+		resetfacl_recursive "$arg"
+	elif (( ARG_RECURSIVE_INSIDE )) && [[ -d "$arg" ]]; then
+		log "Processing directory contents (recursively): $arg"
+		resetfacl_recursive_inside "$arg"
+	else
+		ARGS_NORMAL+=( "$arg" )
+	fi
+done
+if (( "${#ARGS_NORMAL[@]}" )); then
+	warn "Processing ${#ARGS_NORMAL[@]} files non-recursively"
+	resetfacl_normal "${ARGS_NORMAL[@]}"
+fi
