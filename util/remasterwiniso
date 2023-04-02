@@ -72,7 +72,7 @@ process_iso() {
 	label="$(isoinfo -j UTF-8 -d -i "$1" | sed -nr 's/^Volume (set )?id: (.+)$//')" || return
 
 	local out
-	if [[ $ARG_OVERWRITE ]]; then
+	if [[ $ARG_REPLACE ]]; then
 		out="$1"
 	elif [[ $COMPRESS != none ]]; then
 		out="${1%.iso}.$EXTENSION.iso"
