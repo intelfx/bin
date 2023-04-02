@@ -91,7 +91,8 @@ process_iso() {
 	7zz x -o"$work_dir" "$1" || return
 	process_dir "$work_dir" || return
 
-	local out_tmp="$(dn "$out")/.$(bn "$out").$$.new"
+	local out_tmp="$(dn_slash "$out").$(bn "$out").XXXXXXXXXX.tmp"
+	out_tmp="$(mktemp -u "$out_tmp")" || return
 	ltrap "rm -f '$out_tmp'"
 
 	mkwiniso "$work_dir" "$out_tmp" "$label" || return
