@@ -35,9 +35,9 @@ function log() {
 		for (( i = 0; i < LIBSH_LOG_INDENT; ++i )); do
 			indent+='   '
 		done
-		_libsh_log "${indent}->" "$LIBSH_LOG_PREFIX" "$*"
+		_libsh_log "${_LIBSH_PRIO[log]}" "${indent}->" "$LIBSH_LOG_PREFIX" "$*"
 	else
-		_libsh_log "::" "$LIBSH_LOG_PREFIX" "$*"
+		_libsh_log "${_LIBSH_PRIO[log]}" "::" "$LIBSH_LOG_PREFIX" "$*"
 	fi
 }
 
