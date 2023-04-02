@@ -14,10 +14,10 @@ parse_args ARGS "$@"
 if [[ ${ARG_COMPRESS_SOLID+set} ]]; then
 	COMPRESS="${ARG_COMPRESS_SOLID:-LZMS:100}"
 	EXTENSION=esd
-elif [[ "${ARG_COMPRESS+set}" ]]; then
+elif [[ ${ARG_COMPRESS+set} ]]; then
 	COMPRESS="${ARG_COMPRESS:-LZX:100}"
 	EXTENSION=wim
-elif [[ "${ARG_COMPRESS_NONE+set}" ]]; then
+elif [[ ${ARG_COMPRESS_NONE+set} ]]; then
 	COMPRESS=none
 	EXTENSION=wim
 else
@@ -61,10 +61,7 @@ process_iso() {
 	eval "$(ltraps)"
 
 	local label
-	if ! label="$(isoinfo -d -i "$1" | sed -nr 's/^Volume (set )?id: (.+)$//')"; then
-		err "Failed to parse ISO header"
-		return 1
-	fi
+	label="$(isoinfo -j UTF-8 -d -i "$1" | sed -nr 's/^Volume (set )?id: (.+)$//')" || return
 
 	local out
 	if [[ $ARG_OVERWRITE ]]; then
