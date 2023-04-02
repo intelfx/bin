@@ -15,19 +15,20 @@ if (( $# == 3 )); then
 elif (( $# == 2 )); then
 	SOURCE_DIR="$1"
 	DEST_FILE="$2"
-	ISO_LABEL=""
+	unset ISO_LABEL
 elif (( $# == 1 )); then
 	SOURCE_DIR="$1"
-	ISO_LABEL=""
+	unset DEST_FILE
+	unset ISO_LABEL
 else
 	usage "Expected 1 or 2 arguments, $# given"
 fi
 
 SOURCE_DIR_ABS="$(realpath --strip "$SOURCE_DIR")"
-if ! [[ $DEST_FILE ]]; then
+if ! [[ ${DEST_FILE+set} ]]; then
 	DEST_FILE="$SOURCE_DIR_ABS.iso"
 fi
-if ! [[ $ISO_LABEL ]]; then
+if ! [[ ${ISO_LABEL+set} ]]; then
 	ISO_LABEL="${SOURCE_DIR_ABS##*/}"
 fi
 
