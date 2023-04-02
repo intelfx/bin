@@ -57,6 +57,8 @@ if ! (( ${#ARG_FILES[@]} )); then
 fi
 
 process_dir() {
+	log "Recompressing directory: $1"
+
 	# force editable (WIM) compression for boot.{esd,wim}
 	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) -name 'boot.*' \
 		| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS_WIM[@]@Q} {} && if [[ {} != {.}.wim ]]; then mv -v {} {.}.wim; fi"
@@ -68,9 +70,6 @@ process_dir() {
 process_iso() {
 	eval "$(ltraps)"
 
-	local label
-	label="$(isoinfo -j UTF-8 -d -i "$1" | sed -nr 's/^Volume (set )?id: (.+)$//')" || return
-
 	local out
 	if [[ $ARG_REPLACE ]]; then
 		out="$1"
@@ -79,6 +78,11 @@ process_iso() {
 	else
 		out="${1%.iso}.none.iso"
 	fi
+
+	log "Remastering ISO file: $1 -> $out"
+
+	local label
+	label="$(isoinfo -j UTF-8 -d -i "$1" | sed -nr 's/^Volume (set )?id: (.+)$//')" || return
 
 	work_dir="$(mktemp -d)" || return
 	ltrap "rm -rf '$work_dir'"
@@ -97,13 +101,11 @@ process_iso() {
 errs=0
 for file in "${ARG_FILES[@]}"; do
 	if [[ -d "$file" ]]; then
-		log "Recompressing directory: $file"
 		if ! process_dir "$file"; then
 			err "Failed to process directory: $file"
 			(( ++errs ))
 		fi
 	else
-		log "Remastering ISO file: $file"
 		if ! process_iso "$file"; then
 			err "Failed to process ISO file: $file"
 			(( ++errs ))
