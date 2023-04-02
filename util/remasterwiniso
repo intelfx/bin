@@ -11,11 +11,13 @@ declare -A ARGS=(
 )
 parse_args ARGS "$@"
 
+COMPRESS=LZX:100
+COMPRESS_SOLID=LZMS:100
 if [[ ${ARG_COMPRESS_SOLID+set} ]]; then
-	COMPRESS="${ARG_COMPRESS_SOLID:-LZMS:100}"
+	COMPRESS_SOLID="${ARG_COMPRESS_SOLID:-$COMPRESS_SOLID}"
 	EXTENSION=esd
 elif [[ ${ARG_COMPRESS+set} ]]; then
-	COMPRESS="${ARG_COMPRESS:-LZX:100}"
+	COMPRESS="${ARG_COMPRESS:-$COMPRESS}"
 	EXTENSION=wim
 elif [[ ${ARG_COMPRESS_NONE+set} ]]; then
 	COMPRESS=none
@@ -25,26 +27,28 @@ else
 	EXTENSION=wim
 fi
 
-WIMOPTIMIZE_ARGS=(
+WIMOPTIMIZE_ARGS_WIM=(
 	--check
 	--recompress
+	--compress "$COMPRESS"
+)
+WIMOPTIMIZE_ARGS_ESD=(
+	--check
+	--recompress
+	--solid
+	--solid-compress "$COMPRESS_SOLID"
 )
 
 if [[ $EXTENSION == esd ]]; then
-	log "Applying solid compression (ESD) with $COMPRESS"
-	WIMOPTIMIZE_ARGS+=(
-		--solid
-		--solid-compress "$COMPRESS"
-	)
+	log "Applying solid compression (ESD) with $COMPRESS_SOLID"
+	WIMOPTIMIZE_ARGS=( "${WIMOPTIMIZE_ARGS_ESD[@]}" )
 elif [[ $EXTENSION == wim ]]; then
 	if [[ $COMPRESS != none ]]; then
 		log "Applying editable compression (WIM) with $COMPRESS"
 	else
 		log "Applying editable format (WIM) without compression"
 	fi
-	WIMOPTIMIZE_ARGS+=(
-		--compress "$COMPRESS"
-	)
+	WIMOPTIMIZE_ARGS=( "${WIMOPTIMIZE_ARGS_WIM[@]}" )
 fi
 
 if ! (( ${#ARG_FILES[@]} )); then
@@ -53,8 +57,12 @@ if ! (( ${#ARG_FILES[@]} )); then
 fi
 
 process_dir() {
-	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) \
-		| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS[*]} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
+	# force editable (WIM) compression for boot.{esd,wim}
+	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) -name 'boot.*' \
+		| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS_WIM[@]@Q} {} && if [[ {} != {.}.wim ]]; then mv -v {} {.}.wim; fi"
+
+	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) -not -name 'boot.*' \
+		| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS[@]@Q} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
 }
 
 process_iso() {
