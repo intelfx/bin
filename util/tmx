@@ -71,9 +71,19 @@ fi
 
 # Create a new session (without attaching it) and link to base session to share windows
 # Attach to the new session & kill it once orphaned
-exec "${tmux[@]}" \
+# NOTE: instead of doing everything in one tmux call, only leave as little
+#       as possible in the final command to avoid leaking them into the /proc/$$/cmdline
+#exec "${tmux[@]}" \
+#	new-session -d -t "$base_session" -s "$new_session" \; \
+#	"${ENVIRONMENT_COMMAND[@]}" \
+#	attach-session -t "$new_session" \; \
+#	"${NEW_WINDOW_COMMAND[@]}" \
+#	set-option destroy-unattached
+"${tmux[@]}" \
 	new-session -d -t "$base_session" -s "$new_session" \; \
 	"${ENVIRONMENT_COMMAND[@]}" \
-	attach-session -t "$new_session" \; \
 	"${NEW_WINDOW_COMMAND[@]}" \
+
+exec "${tmux[@]}" \
+	attach-session -t "$new_session" \; \
 	set-option destroy-unattached
