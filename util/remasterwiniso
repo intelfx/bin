@@ -1,0 +1,115 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+declare -A ARGS=(
+	[--solid|--esd::]=ARG_COMPRESS_SOLID
+	[--compress|--wim::]=ARG_COMPRESS
+	[--nocompress|--none]=ARG_COMPRESS_NONE
+	[--replace|--overwrite]=ARG_REPLACE
+	[--]=ARG_FILES
+)
+parse_args ARGS "$@"
+
+if [[ ${ARG_COMPRESS_SOLID+set} ]]; then
+	COMPRESS="${ARG_COMPRESS_SOLID:-LZMS:100}"
+	EXTENSION=esd
+elif [[ "${ARG_COMPRESS+set}" ]]; then
+	COMPRESS="${ARG_COMPRESS:-LZX:100}"
+	EXTENSION=wim
+elif [[ "${ARG_COMPRESS_NONE+set}" ]]; then
+	COMPRESS=none
+	EXTENSION=wim
+else
+	COMPRESS=LZX:100
+	EXTENSION=wim
+fi
+
+WIMOPTIMIZE_ARGS=(
+	--check
+	--recompress
+)
+
+if [[ $EXTENSION == esd ]]; then
+	log "Applying solid compression (ESD) with $COMPRESS"
+	WIMOPTIMIZE_ARGS+=(
+		--solid
+		--solid-compress "$COMPRESS"
+	)
+elif [[ $EXTENSION == wim ]]; then
+	if [[ $COMPRESS != none ]]; then
+		log "Applying editable compression (WIM) with $COMPRESS"
+	else
+		log "Applying editable format (WIM) without compression"
+	fi
+	WIMOPTIMIZE_ARGS+=(
+		--compress "$COMPRESS"
+	)
+fi
+
+if ! (( ${#ARG_FILES[@]} )); then
+	log "No files provided -- assuming current directory ($(realpath --strip .))"
+	ARG_FILES=(.)
+fi
+
+process_dir() {
+	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) \
+		| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS[*]} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
+}
+
+process_iso() {
+	eval "$(ltraps)"
+
+	local label
+	if ! label="$(isoinfo -d -i "$1" | sed -nr 's/^Volume (set )?id: (.+)$//')"; then
+		err "Failed to parse ISO header"
+		return 1
+	fi
+
+	local out
+	if [[ $ARG_OVERWRITE ]]; then
+		out="$1"
+	elif [[ $COMPRESS != none ]]; then
+		out="${1%.iso}.$EXTENSION.iso"
+	else
+		out="${1%.iso}.none.iso"
+	fi
+
+	work_dir="$(mktemp -d)" || return
+	ltrap "rm -rf '$work_dir'"
+
+	7zz x -o"$work_dir" "$1" || return
+	process_dir "$work_dir" || return
+
+	local out_tmp="$out.$$.new"
+	ltrap "rm -f '$out_tmp'"
+
+	mkwiniso "$work_dir" "$out_tmp" "$label" || return
+	mv -T "$out_tmp" "$out" || return
+	luntrap
+}
+
+errs=0
+for file in "${ARG_FILES[@]}"; do
+	if [[ -d "$file" ]]; then
+		log "Recompressing directory: $file"
+		if ! process_dir "$file"; then
+			err "Failed to process directory: $file"
+			(( ++errs ))
+		fi
+	else
+		log "Remastering ISO file: $file"
+		if ! process_iso "$file"; then
+			err "Failed to process ISO file: $file"
+			(( ++errs ))
+		fi
+	fi
+done
+
+if (( errs )); then
+	err "Total $errs errors"
+	exit 1
+fi
+exit 0
+
+
