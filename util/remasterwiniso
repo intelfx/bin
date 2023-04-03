@@ -32,12 +32,20 @@ WIMOPTIMIZE_ARGS_WIM=(
 	--check
 	--recompress
 	--compress "$COMPRESS"
+	# we have to specify non-solid chunk because wimoptimize inherits it otherwise, breaking ESD->WIM conversion
+	# (Microsoft tooling chokes on LZX/128K)
+	--chunk-size 32K
 )
 WIMOPTIMIZE_ARGS_ESD=(
 	--check
 	--recompress
 	--solid
 	--solid-compress "$COMPRESS_SOLID"
+	--solid-chunk-size 64M
+	# we have to specify non-solid algo/chunk because wimoptimize inherits them otherwise, yielding counterintuitive results
+	# (producing ESD files that report LZX/32K compression)
+	--compress "$COMPRESS_SOLID"
+	--chunk-size 128K
 )
 
 if [[ $EXTENSION == esd ]]; then
