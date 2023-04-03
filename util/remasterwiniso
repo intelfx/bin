@@ -91,7 +91,7 @@ process_iso() {
 	log "Remastering ISO file: $1 -> $out"
 
 	local label
-	label="$(isoinfo -j UTF-8 -d -i "$1" | sed -nr 's/^Volume (set )?id: (.+)$//')" || return
+	label="$(isoinfo -j UTF-8 -d -i "$1" | sed -nr 's/^Volume (set )?id: (.+)$/\2/p' | head -n1)" || return
 
 	work_dir="$(mktemp -d)" || return
 	ltrap "rm -rf '$work_dir'"
