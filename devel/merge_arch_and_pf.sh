@@ -73,6 +73,8 @@ declare -A PARSE_ARGS=(
 	[--version:]="ARG_MINOR"
 	[--minor:]="ARG_MINOR"
 	[--pf:]="ARG_PF"
+	[-k]="ARG_KEEP"
+	[--keep]="ARG_KEEP"
 )
 parse_args PARSE_ARGS "$@"
 
@@ -111,6 +113,16 @@ fi
 arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
 git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
 log " Latest -arch tag: $arch_tag"
+
+#if ! final_extraversion="$(makefile_get_extraversion)"; then
+#	die "Could not determine final extraversion"
+#fi
+final_tag="$tag-${arch_tag##*-}${pf_tag##*-}"
+
+if [[ "$ARG_KEEP" ]] && git_verify "$final_tag"; then
+	log "Tag $final_tag already exists and -k/--keep specified, not overwriting"
+	exit 0
+fi
 
 eval "$(globaltraps)"
 
@@ -156,11 +168,6 @@ done
 log "Committing result"
 GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000" git commit --no-edit
 luntrap
-
-#if ! final_extraversion="$(makefile_get_extraversion)"; then
-#	die "Could not determine final extraversion"
-#fi
-final_tag="$tag-${arch_tag##*-}${pf_tag##*-}"
 
 if git_verify "$final_tag"; then
 	if [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$final_tag")" ]]; then
