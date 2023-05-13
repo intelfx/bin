@@ -77,7 +77,7 @@ while read -r line; do
 		f) parse_file; CURRENT_FILE=( [type]="$VALUE" ) ;;
 		*) echo "E: unknown field type '$TYPE' value '$VALUE' in lsof output" >&2 ;;
 	esac
-done < <(lsof -F pfn)
+done < <(lsof -n -F pfn)
 
 parse_file # last one
 
