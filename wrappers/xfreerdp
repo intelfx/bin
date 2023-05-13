@@ -1,5 +1,13 @@
 #!/bin/bash -e
 
+SCRIPT_NAME="$(basename "$0")"
+case "$SCRIPT_NAME" in
+xfreerdp|wlfreerdp)
+	APP_NAME="$SCRIPT_NAME" ;;
+*)
+	APP_NAME="xfreerdp" ;;
+esac
+
 OPTIONS=(
 	/size:2560x1440
 	/dynamic-resolution
@@ -52,4 +60,4 @@ for arg; do
 	shift
 done
 
-exec /usr/bin/xfreerdp "${OPTIONS[@]}" "${ARGS[@]}"
+exec "/usr/bin/$APP_NAME" "${OPTIONS[@]}" "${ARGS[@]}"
