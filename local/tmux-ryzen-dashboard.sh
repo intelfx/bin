@@ -29,3 +29,4 @@ pane_sensors=$(tmux split-window -P -F '#{pane_id}' -t $pane_shell -v -b \
 tmux resize-pane -t $pane_ryzen -x 100  # exact=98
 tmux resize-pane -t $pane_liquidctl -x 55  # exact=52
 tmux resize-pane -t $pane_shell -y '25%'
+tmux select-pane -t $pane_shell
