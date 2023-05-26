@@ -15,6 +15,8 @@
 # ---------------------------------------
 #
 
+cd "$HOME"
+
 pane_shell=$(tmux new-window -P -F '#{pane_id}' -d -n "(dashboard)" \
   )
 pane_ryzen=$(tmux split-window -P -F '#{pane_id}' -t $pane_shell -h -b \
