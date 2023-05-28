@@ -56,7 +56,7 @@ for (( i=1; i <= $#; )); do
 		if [[ "$value" =~ ^(([A-Za-z]+ +)?[0-9]+-[0-9]+-[0-9]+ *)?( *[0-9]+:[0-9]+(:[0-9]+)?)( +[A-Za-z/]+)?$ ]] || \
 		   [[ "$value" =~ ^(now|today|yesterday|tomorrow)( +[A-Za-z/]+)?$ ]] ||
 		   [[ "$value" =~ ^[+-].+$ ]] ||
-		   [[ "$value" =~ ^.+\ +ago$ ]] ||
+		   [[ "$value" =~ ^[0-9]+.+\ +ago$ ]] ||
 		   [[ "$value" =~ ^@[0-9]+$ ]]
 		then
 			: # timestamp is in format directly accepted by journalctl
