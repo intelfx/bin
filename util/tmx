@@ -3,7 +3,7 @@
 # Check whether a per-session tmux is running for session $1
 # (implemented as a predefined root session name under a predefined custom socket).
 function check_session() {
-	"${tmux[@]}" -L "session-$1" list-sessions -F "#S" 2>/dev/null | grep -q "$base_session-$1"
+	"${tmux[@]}" -L "session-$1" list-sessions -F "#S" 2>/dev/null | grep -q --line-regexp --fixed-strings "$base_session-$1"
 }
 
 tmux=( "tmux" )
