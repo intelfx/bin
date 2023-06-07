@@ -79,6 +79,23 @@ fi
 #	attach-session -t "$new_session" \; \
 #	"${NEW_WINDOW_COMMAND[@]}" \
 #	set-option destroy-unattached
+
+# HACK: we can set $TMX_USE_EXISTING_WINDOW on PAM session leader level (e. g. getty)
+#       to avoid creating a new window. This is used by the autologin getty on anystation
+#       to show the bench/stress dashboard on boot.
+if [[ ${TMX_USE_EXISTING_WINDOW+set} ]]; then
+	# do not leak the variable into any nested sessions and tmx instances the user might run
+	unset TMX_USE_EXISTING_WINDOW
+
+	"${tmux[@]}" \
+		new-session -d -t "$base_session" -s "$new_session" \; \
+		"${ENVIRONMENT_COMMAND[@]}" \
+
+	exec "${tmux[@]}" \
+		attach-session -t "$new_session" \; \
+		set-option destroy-unattached
+fi
+
 "${tmux[@]}" \
 	new-session -d -t "$base_session" -s "$new_session" \; \
 	"${ENVIRONMENT_COMMAND[@]}" \
