@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+# idea from: https://github.com/DanielFGray/fzf-scripts/blob/master/fzrepl
+import argparse
+import os
+import re
+import sys
+from functools import reduce
+from pathlib import Path
+from subprocess import PIPE, run
+from tempfile import NamedTemporaryFile
+
+xdg = Path(os.getenv('XDG_CONFIG_HOME', Path('~/.config').expanduser()))
+CONFIG_DIR = xdg / 'fzr'
+HISTORY_DIR = CONFIG_DIR / 'history'
+
+SPECIAL_CASES = [
+    (r'^jq(?!\s+(?:-C|--color-output))', 'jq -C'),  # auto-color jq
+    (r'^rg(?!\s+(?:--color=always))', 'rg --color=always'),  # auto-color rg
+]
+
+
+def get_fzf_cmd(cmd, temp_path, history_path):
+    cmd = cmd.replace('{}', '{q}') if '{}' in cmd else cmd + ' {q}'
+    return [
+        'fzf',
+        '--sync',
+        '--ansi',
+        '--read0',
+        '--no-info',
+        '--disabled',
+        '--height=100%',
+        '--print-query',
+        '--header', cmd,
+        '--history', history_path,
+        '--preview', f"{cmd} <{temp_path}",
+        '--preview-window=down,99%',
+        '--bind=ctrl-r:refresh-preview',
+        '--bind=up:previous-history,down:next-history',
+        '--bind=alt-left:backward-word,alt-right:forward-word',
+        f'--bind=ctrl-t:execute-silent({cmd} <{temp_path} | code -)',
+        f'--bind=ctrl-c:execute-silent({cmd} <{temp_path} | cb)',
+    ]
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Interactive fzf repl")
+    parser.add_argument('command', type=lambda x: x or 'echo')  # prevent empty
+    args = parser.parse_args()
+
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+    cmd = reduce(lambda s, r: re.sub(*r, s), SPECIAL_CASES, args.command)
+    history_path = HISTORY_DIR / re.sub(r'[^\w-]+', '_', cmd.strip(), re.ASCII)
+    with NamedTemporaryFile('w') as tmp:
+        tmp.write(sys.stdin.read())
+        tmp.seek(0)
+        fzf_cmd = get_fzf_cmd(cmd, tmp.name, history_path)
+        result = run(fzf_cmd, stdin=tmp, stdout=PIPE, text=True)
+        if i := result.returncode:
+            sys.exit((i ^ 130) and i)  # 130 from fzf means "cancelled"
+
+        # print command & query (fzf --print-query)
+        print(args.command, repr(result.stdout.splitlines()[0]))
+
+        # remove adjacent duplicates in the history file
+        run(f'echo "$(uniq {history_path})" > {history_path}', shell=True)
