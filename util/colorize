@@ -51,7 +51,7 @@ function adjust_terminal() {
 
 	# reconfigure existing windows
 	local o objects=()
-	read -a objects < <(busctl --auto-start=false --list --user tree org.gnome.Terminal | grep '^/org/gnome/Terminal/window/') || return 0
+	readarray -t objects < <(busctl --auto-start=false --list --user tree org.gnome.Terminal | grep '^/org/gnome/Terminal/window/') || return 0
 	for o in "${objects[@]}"; do
 		busctl --auto-start=false -j --user call org.gnome.Terminal "$o" org.gtk.Actions Activate "sava{sv}" "profile" "1" "s" "${profiles_default[$1]}" "0" || true
 	done
