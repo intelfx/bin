@@ -1,0 +1,55 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+ARGS=$(getopt -o '-P:b:' --long 'prefix:,branch:' -n "${0##*/}" -- "$@") || exit
+eval set -- "$ARGS"
+unset ARGS
+
+ARG_PREFIX=
+ARG_BRANCH=
+ARGS=()
+
+while (( $# )); do
+	case "$1" in
+	-P|--prefix)
+		ARG_PREFIX="$2"
+		shift 2
+		;;
+	-b|--branch)
+		ARG_BRANCH="$2"
+		shift 2
+		;;
+	*)
+		ARGS+=( "$1" )
+		shift
+		;;
+	esac
+done
+
+set -- "${ARGS[@]}"
+
+[[ "$ARG_BRANCH" ]] || die "missing required option: -b/--branch"
+[[ "$ARG_PREFIX" ]] || die "missing required option: -P/--prefix"
+
+cleanup() {
+	git for-each-ref --format '%(refname)' 'refs/exported/*' \
+		| xargs -r -n1 git update-ref -d
+}
+trap cleanup EXIT
+
+if git for-each-ref --format '%(refname)' 'refs/exported/*' | grep -q .; then
+	die "internal error: refs/exported/* namespace is not empty"
+fi
+
+#trace git branch -f "$ARG_BRANCH" "$(git rev-list -1 "${ARGS[@]}")"
+git fast-export --refspec 'refs/heads/*:refs/exported/*' "${ARGS[@]}" \
+	| sed -r "s|^(M) ([^ ]+) ([^ ]+) ${ARG_PREFIX}/(.+)$|\\1 \\2 \\3 \\4|" \
+	| git fast-import
+git for-each-ref --format '%(refname)' 'refs/exported/*' \
+	| readarray -t EXPORTED_REFS
+if (( ${#EXPORTED_REFS[@]} != 1 )); then
+	die "internal error: exported ${#EXPORTED_REFS[@]} != 1 refs: $(join ", " "${EXPORTED_REFS[@]}")"
+fi
+
+git branch -f "$ARG_BRANCH" "$EXPORTED_REFS"
