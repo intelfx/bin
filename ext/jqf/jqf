@@ -9,13 +9,27 @@ panic() {
 tmp_dir="$(mktemp --directory -t jqf.XXXXXXXXXX)"
 trap 'command rm -rf $tmp_dir' EXIT
 
-jq --help | grep -Po '\-\-?[\w\-\=]+' | sed 's/=$/=.*/' >"$tmp_dir/tmp_jq_args"
+jq=jq
+
+update_jq_args() {
+  { jq --help; $jq --help; } | grep -Po '\-\-?[\w\-\=]+' | sed 's/=$/=.*/' | sort -u >"$tmp_dir/tmp_jq_args"
+}
 
 inputs=()
 jq_args=()
 eval=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
+  --jq=*)
+      jq="${1#--jq=}"
+      update_jq_args
+    shift
+    ;;
+  --jq|--jq=*)
+      jq="$2"
+      update_jq_args
+    shift 2
+    ;;
   --arg|--argjson|--slurpfile|--rawfile)
       jq_args+=("$1" "$2" "$3")
     shift
@@ -95,7 +109,7 @@ done < <(
   cat "$preview_cmd_args_file"
 )
 
-command jq "\${jq_args[@]}" "\$query" "${inputs[@]}" >"$tmp_dir/out.tmp" 2>&1
+command $jq "\${jq_args[@]}" "\$query" "${inputs[@]}" >"$tmp_dir/out.tmp" 2>&1
 rc=\$?
 
 headers="\$(sed 's/\x1B\[\([0-9]\{1,2\}\(;[0-9]\{1,2\}\)\?\)\?[mGK]//g' $header_file | grep -vE '^(err|null|OK)$')"
@@ -153,7 +167,7 @@ query="$(
       --sync \
       --ansi \
       --tabstop=4 \
-      --prompt='jq> ' \
+      --prompt="$jq> " \
       --history="$history_file" \
       --info=hidden \
       --header-lines=1 \
@@ -178,6 +192,6 @@ printf "%s\n" "$query"
 if [[ -n "$eval" ]]; then
   while read -r arg; do jq_args+=("$arg"); done <"$preview_cmd_args_file"
   printf "\n"
-  jq "${jq_args[@]}" "$query" "${inputs[@]}"
+  $jq "${jq_args[@]}" "$query" "${inputs[@]}"
   exit $?
 fi
