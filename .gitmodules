@@ -10,3 +10,6 @@
 [submodule "git/git-autofixup"]
 	path = git/git-autofixup
 	url = https://github.com/torbiak/git-autofixup
+[submodule "ext/sysz"]
+	path = ext/sysz
+	url = https://github.com/joehillen/sysz
