@@ -1,8 +1,5 @@
 #!/bin/bash
 
-set -eo pipefail
-shopt -s lastpipe
-
 . lib.sh || exit
 
 git_verify() {
