@@ -1,8 +1,14 @@
-#!/bin/bash -e
+#!/bin/bash
 
 #
 # git-gc-fetch -- `git gc` after fetching many redundant packs
 #
+
+set -eo pipefail
+shopt -s lastpipe
+
+RECENT_PACK_SEC="$(( 24*3600 ))"
+SMALL_PACK_BYTES="$(( 50*1024*1024 ))"
 
 GIT_DIR="$(git rev-parse --git-dir)"
 
@@ -26,17 +32,20 @@ find "$GIT_DIR/objects/pack" \
 	mtime_pack="$(stat -c '%Y' "$pack")"
 	mtime_idx="$(stat -c '%Y' "$idx")"
 	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
-	if (( mtime > now - 24*3600 )); then
-		echo "Repacking: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
+
+	human_size="$(du --human-readable --apparent-size "$pack")"
+	human_mtime="$(date -d "@$mtime")"
+	if (( mtime > now - RECENT_PACK_SEC )); then
+		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
 		continue
 	fi
 	# do not bother keeping very small packs
-	if (( size < 50*1024*1024 )); then
-		echo "Repacking: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
+	if (( size < SMALL_PACK_BYTES )); then
+		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
 		continue
 	fi
 
-	echo "Keeping pack: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
+	echo "Keeping pack: ${pack##*/} @ $human_size ($human_mtime)"
 	touch "${pack%.pack}.keep"
 done
 
