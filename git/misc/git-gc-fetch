@@ -33,7 +33,7 @@ find "$GIT_DIR/objects/pack" \
 	mtime_idx="$(stat -c '%Y' "$idx")"
 	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
 
-	human_size="$(du --human-readable --apparent-size "$pack")"
+	human_size="$(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1)"
 	human_mtime="$(date -d "@$mtime")"
 	if (( mtime > now - RECENT_PACK_SEC )); then
 		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
