@@ -14,7 +14,7 @@ OPTIONS=(
 	/scale:140
 	/sound:sys:pulse
 	/floatbar:show:fullscreen
-	/auto-reconnect
+	+auto-reconnect
 )
 
 OPTIONS_BEST=(
