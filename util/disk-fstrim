@@ -4,7 +4,21 @@
 
 _usage() {
   cat <<EOF
-Usage: $0 [-n|--dry-run] [-v|--verbose] [-f|--fs|--filesystem|--filesystems] [-F|-free-space] <block device...>
+Usage: ${0##*/} [-n|--dry-run] [-v|--verbose] [-f|--fs|--filesystem|--filesystems] [-F|--free-space] <block device...>
+
+Attempt to discard all unused space within a disk or a disk image.
+
+Free space within (recognized) filesystems will be discarded by way of mounting
+the filesystem with \`-o discard\` and running \`fstrim\` on it.
+
+Unpartitioned space will be discarded by parsing the partition table and issuing
+\`blkdiscard\` commands for all contiguous regions not allocated to a partition.
+
+	-f, --filesystems	Discard free space within recognized filesystems
+	-F, --free-space	Discard unpartitioned space
+	-n, --dry-run		Do not actually perform any modifications
+				(implies --verbose)
+	-v, --verbose		Print commands that are executed
 EOF
 }
 
@@ -168,7 +182,7 @@ declare -A ARGS=(
 	[-v|--verbose]=ARG_VERBOSE
 	[--]=DISKS
 )
-parse_args ARGS "$@" || usage "Invalid options"
+parse_args ARGS "$@" || usage
 (( ${#DISKS[@]} )) || usage "At least one disk is required"
 (( ARG_TRIM_FREE_SPACE || ARG_TRIM_FILESYSTEM )) || usage "At least one of -f/--filesystems and -F/--free-space is required"
 
