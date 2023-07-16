@@ -156,7 +156,7 @@ disk_pttrim() {
 
 	local free cmds=() FREE=()
 	parted -m "$disk" unit b print free | grep -E ':free;$' | while IFS=: read -ra FREE; do
-		cmds+=( "blkdiscard --force --offset '${FREE[1]%%B}' --length '${FREE[3]%%B}' '$disk'" )
+		cmds+=( "blkdiscard --force --verbose --offset '${FREE[1]%%B}' --length '${FREE[3]%%B}' '$disk'" )
 		(( free += ${FREE[3]%%B} )) ||:
 	done
 
