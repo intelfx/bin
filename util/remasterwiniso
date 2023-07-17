@@ -36,6 +36,12 @@ WIMOPTIMIZE_ARGS_WIM=(
 	# (Microsoft tooling chokes on LZX/128K)
 	--chunk-size 32K
 )
+# HACK: if --compress=none, wimlib does not recognize a --chunk-size, so drop it
+if [[ $COMPRESS == none ]]; then
+	unset WIMOPTIMIZE_ARGS_WIM[-1]
+	unset WIMOPTIMIZE_ARGS_WIM[-1]
+fi
+
 WIMOPTIMIZE_ARGS_ESD=(
 	--check
 	--recompress
