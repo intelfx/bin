@@ -5,6 +5,7 @@ shopt -s extglob
 
 declare -A ARGS=(
 	[--solid|--esd::]=ARG_COMPRESS_SOLID
+	[--solid-all|--esd-all::]=ARG_COMPRESS_SOLID_FORCE
 	[--compress|--wim::]=ARG_COMPRESS
 	[--nocompress|--none]=ARG_COMPRESS_NONE
 	[--replace|--overwrite]=ARG_REPLACE
@@ -14,7 +15,11 @@ parse_args ARGS "$@"
 
 COMPRESS=LZX:100
 COMPRESS_SOLID=LZMS:100
-if [[ ${ARG_COMPRESS_SOLID+set} ]]; then
+if [[ ${ARG_COMPRESS_SOLID_FORCE+set} ]]; then
+	COMPRESS_SOLID="${ARG_COMPRESS_SOLID_FORCE:-$COMPRESS_SOLID}"
+	EXTENSION=esd
+	SKIP_WIMBOOT=1
+elif [[ ${ARG_COMPRESS_SOLID+set} ]]; then
 	COMPRESS_SOLID="${ARG_COMPRESS_SOLID:-$COMPRESS_SOLID}"
 	EXTENSION=esd
 elif [[ ${ARG_COMPRESS+set} ]]; then
@@ -36,6 +41,12 @@ WIMOPTIMIZE_ARGS_WIM=(
 	# (Microsoft tooling chokes on LZX/128K)
 	--chunk-size 32K
 )
+# HACK: if --compress=none, wimlib does not recognize a --chunk-size, so drop it
+if [[ $COMPRESS == none ]]; then
+	unset WIMOPTIMIZE_ARGS_WIM[-1]
+	unset WIMOPTIMIZE_ARGS_WIM[-1]
+fi
+
 WIMOPTIMIZE_ARGS_ESD=(
 	--check
 	--recompress
@@ -67,6 +78,13 @@ fi
 
 process_dir() {
 	log "Recompressing directory: $1"
+
+	if [[ $SKIP_WIMBOOT ]]; then
+		# skip special handling of boot.{esd,wim}
+		find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) \
+			| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS[@]@Q} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
+		return
+	fi
 
 	# force editable (WIM) compression for boot.{esd,wim}
 	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) -name 'boot.*' \

@@ -14,35 +14,48 @@ OPTIONS=(
 	/scale:140
 	/sound:sys:pulse
 	/floatbar:show:fullscreen
-	/auto-reconnect
+	+auto-reconnect
 )
 
 OPTIONS_BEST=(
-	+aero
-	# TODO: investigate effects of these options
 	/network:auto
-	/rfx
-	/gfx:avc444
+
+	# XXX: for some reason Win10 prefers progressive to avc, so do not advertise it
+	# XXX: order matters with freerdp 2.10 (not in master)
+	/gfx:rfx,avc420,avc444
+	/rfx-mode:video
+	/gdi:hw
 )
 
 OPTIONS_FASTEST=(
 	-aero
 	-themes
 	-wallpaper
+	-fonts
+	-window-drag
+	-menu-anims
+	/bpp:8
 	+compression
 	/compression-level:2
-	# TODO: investigate effects of these options
+	+bitmap-cache
+	+glyph-cache
+	+offscreen-cache
 	/network:modem
-	/rfx
-	/gfx:avc444
 
-	# TODO: pick the best codec
-	# see https://github.com/FreeRDP/FreeRDP/issues/5771
-	# see https://wiki.openthinclient.org/omd20191/knowledge-base/freerdp-performance-optimieren
-	# see https://wiki.openthinclient.org/omd20221/knowledge-base/freerdp-performance-optimieren
-	#/gfx:rfx -gfx-thin-client +gfx-progressive # rfx progressive
-	#/gfx:avc420 +gfx-thin-client -gfx-progressive # rfx non-progressive
-	#/gfx:avc444  # avc444
+	# XXX: for some reason Win10 prefers progressive to avc, so do not advertise it
+	# XXX: order matters with freerdp 2.10 (not in master)
+	/gfx:rfx,avc420,avc444
+	/rfx-mode:video
+	/gdi:hw
+
+	#/rfx # RemoteFxCodec
+	#/gfx:rfx # RemoteFxCodec
+	#/gfx:progressive # GfxProgressive
+	#/gfx:avc420 # GfxH264
+	#/gfx:avc444 # GfxAVC444
+	#+gfx-progressive # == /gfx:progressive
+	#-gfx-thin-client # == /gfx:thin-client, implies /gfx:small-cache
+	#-gfx-small-cache # == /gfx:small-cache
 )
 
 ARGS=()

@@ -4,7 +4,27 @@
 
 _usage() {
   cat <<EOF
-Usage: $0 [-n|--dry-run] [-v|--verbose] [-f|--fs|--filesystem|--filesystems] [-F|-free-space] <block device...>
+Usage: ${0##*/} [-n|--dry-run] [-v|--verbose] [-f|--fs|--filesystem|--filesystems] [-F|--free-space] <block device...>
+
+Attempt to discard all unused space within a disk or a disk image.
+
+Free space within (recognized) filesystems will be discarded by way of mounting
+the filesystem with \`-o discard\` and running \`fstrim\` on it.
+
+Unpartitioned space will be discarded by parsing the partition table and issuing
+\`blkdiscard\` commands for all contiguous regions not allocated to a partition.
+
+Additionally, this command may run \`blkdiscard\` against all partitions that
+do not contain a (recognized) filesystem. WARNING -- THIS WILL DESTROY ALL DATA
+ON SUCH PARTITIONS.
+
+	-f, --filesystems	Discard free space within recognized filesystems
+	-F, --free-space	Discard unpartitioned space
+	--destroy-unknown	(DANGEROUS) Discard partitions without a
+				recognized filesystem
+	-n, --dry-run		Do not actually perform any modifications
+				(implies --verbose)
+	-v, --verbose		Print commands that are executed
 EOF
 }
 
@@ -84,7 +104,17 @@ part_fstrim() {
 
 	local fstype="$(blkid -o value -s TYPE "$part")"
 	if ! [[ "$fstype" ]]; then
-		warn "$rpart: could not find a filesystem signature, skipping"
+		if ! (( ARG_TRIM_UNKNOWN )); then
+			warn "$rpart: could not find a filesystem signature, skipping"
+			return
+		fi
+
+		warn "$rpart: could not find a filesystem signature, discarding!"
+		# not using `blkdiscard --force` on purpose
+		if ! run blkdiscard --verbose "$part"; then
+			err "$rpart: could not run blkdiscard, skipping"
+			(( ++errs ))
+		fi
 		return
 	fi
 
@@ -142,7 +172,7 @@ disk_pttrim() {
 
 	local free cmds=() FREE=()
 	parted -m "$disk" unit b print free | grep -E ':free;$' | while IFS=: read -ra FREE; do
-		cmds+=( "blkdiscard --force --offset '${FREE[1]%%B}' --length '${FREE[3]%%B}' '$disk'" )
+		cmds+=( "blkdiscard --force --verbose --offset '${FREE[1]%%B}' --length '${FREE[3]%%B}' '$disk'" )
 		(( free += ${FREE[3]%%B} )) ||:
 	done
 
@@ -166,11 +196,13 @@ declare -A ARGS=(
 	[-F|--free-space]=ARG_TRIM_FREE_SPACE
 	[-n|--dry-run]=ARG_DRY_RUN
 	[-v|--verbose]=ARG_VERBOSE
+	[--destroy-unknown]=ARG_TRIM_UNKNOWN
 	[--]=DISKS
 )
-parse_args ARGS "$@" || usage "Invalid options"
+parse_args ARGS "$@" || usage
 (( ${#DISKS[@]} )) || usage "At least one disk is required"
 (( ARG_TRIM_FREE_SPACE || ARG_TRIM_FILESYSTEM )) || usage "At least one of -f/--filesystems and -F/--free-space is required"
+(( ARG_TRIM_UNKNOWN )) && loud "WARNING!" "disk-fstrim will DESTROY ALL DATA on partitions it does not understand!"
 
 eval "$(globaltraps)"
 

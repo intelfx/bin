@@ -91,7 +91,7 @@ if (( ARG_WATCH )); then
 	if (( ARG_WATCH_ARG )); then
 		WATCH+=( --interval "$ARG_WATCH_ARG" )
 	fi
-	SYSTEMD_COLORS=true exec "${WATCH[@]}" /usr/bin/systemctl "${ARGS[@]}"
+	SYSTEMD_COLORS=true SYSTEMD_URLIFY=false exec "${WATCH[@]}" /usr/bin/systemctl "${ARGS[@]}"
 fi
 
 exec /usr/bin/systemctl "${ARGS[@]}"
