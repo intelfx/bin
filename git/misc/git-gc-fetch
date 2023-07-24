@@ -18,6 +18,7 @@ cleanup() {
 trap cleanup EXIT
 
 now="$(date +%s)"
+candidate_packs=0
 
 find "$GIT_DIR/objects/pack" \
 	-type f \
@@ -37,16 +38,23 @@ find "$GIT_DIR/objects/pack" \
 	human_mtime="$(date -d "@$mtime")"
 	if (( mtime > now - RECENT_PACK_SEC )); then
 		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
+		(( ++candidate_packs ))
 		continue
 	fi
 	# do not bother keeping very small packs
 	if (( size < SMALL_PACK_BYTES )); then
 		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
+		(( ++candidate_packs ))
 		continue
 	fi
 
 	echo "Keeping pack: ${pack##*/} @ $human_size ($human_mtime)"
 	touch "${pack%.pack}.keep"
 done
+
+if (( candidate_packs < 2 )); then
+	echo "Nothing to repack"
+	exit
+fi
 
 git gc-now --keep-largest-pack "$@"
