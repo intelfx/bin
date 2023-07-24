@@ -1,9 +1,0 @@
-#!/bin/bash -e
-
-#
-# git-gc-min -- remove as much junk as possible while modifying as few packs as possible
-#
-
-git \
-	-c gc.bigPackThreshold=100M \
-	gc-now "$@"
