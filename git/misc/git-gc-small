@@ -4,6 +4,11 @@
 # git-gc-fetch -- `git gc` after fetching many redundant packs
 #
 
+set -eo pipefail
+shopt -s lastpipe
+
+SMALL_PACK_BYTES="$(( 50*1024*1024 ))"
+
 GIT_DIR="$(git rev-parse --git-dir)"
 
 cleanup() {
@@ -12,6 +17,7 @@ cleanup() {
 trap cleanup EXIT
 
 now="$(date +%s)"
+candidate_packs=0
 
 find "$GIT_DIR/objects/pack" \
 	-type f \
@@ -26,14 +32,23 @@ find "$GIT_DIR/objects/pack" \
 	mtime_pack="$(stat -c '%Y' "$pack")"
 	mtime_idx="$(stat -c '%Y' "$idx")"
 	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
+
+	human_size="$(du --human-readable --apparent-size "$pack")"
+	human_mtime="$(date -d "@$mtime")"
 	# do not bother keeping very small packs
-	if (( size < 100*1024*1024 )); then
-		echo "Repacking: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
+	if (( size < SMALL_PACK_BYTES )); then
+		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
+		(( ++candidate_packs ))
 		continue
 	fi
 
-	echo "Keeping pack: ${pack##*/} @ $(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1) ($(date -d "@$mtime"))"
+	echo "Keeping pack: ${pack##*/} @ $human_size ($human_mtime)"
 	touch "${pack%.pack}.keep"
 done
+
+if (( candidate_packs < 2 )); then
+	echo "Nothing to repack"
+	exit
+fi
 
 git gc-now --keep-largest-pack "$@"
