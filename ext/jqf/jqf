@@ -9,11 +9,12 @@ panic() {
 tmp_dir="$(mktemp --directory -t jqf.XXXXXXXXXX)"
 trap 'command rm -rf $tmp_dir' EXIT
 
-jq=jq
-
 update_jq_args() {
   { jq --help; $jq --help; } | grep -Po '\-\-?[\w\-\=]+' | sed 's/=$/=.*/' | sort -u >"$tmp_dir/tmp_jq_args"
 }
+
+jq=jq
+update_jq_args
 
 inputs=()
 jq_args=()
