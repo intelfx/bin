@@ -9,7 +9,7 @@
 	url = https://github.com/intelfx/lib
 [submodule "git/git-autofixup"]
 	path = git/git-autofixup
-	url = https://github.com/torbiak/git-autofixup
+	url = https://github.com/intelfx/git-autofixup
 [submodule "ext/sysz"]
 	path = ext/sysz
 	url = https://github.com/joehillen/sysz
