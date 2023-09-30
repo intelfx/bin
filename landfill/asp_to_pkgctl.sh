@@ -8,14 +8,25 @@ PKGBUILD_ROOT="$HOME/pkgbuild"
 PKGBUILD_NEW_ROOT="$HOME/pkgbuild.new"
 PKGBUILD_OLD_ROOT="$HOME/pkgbuild.old"
 
+eval "$(globaltraps)"
+
 declare -A CONVERT_FAIL
 fail() {
 	CONVERT_FAIL[$dir]="$*"
 }
 
-#git() {
-#	/usr/bin/git -C "$dir" "$@"
-#}
+report() {
+	if (( ${#CONVERT_FAIL[@]} )); then
+		err "Failed to process ${#CONVERT_FAIL[@]} repositories:"
+		for arg in "${!CONVERT_FAIL[@]}"; do
+			say " * $arg: ${CONVERT_FAIL[$arg]}"
+		done
+		exit 1
+	else
+		log "All repositories processed"
+	fi
+}
+ltrap report
 
 map_commit() {
 	local old_dir="$1" old_tip="$2" old_subdir="$3"
@@ -89,10 +100,59 @@ rollback_files() (
 	fi
 )
 
-eval "$(globaltraps)"
+function parse_remote() {
+	local dir="$1" predicate="$2"
+	declare -n n_remote="$3" 
+
+	# find suitable remote or skip repo
+	n_remote=
+	git -C "$dir" config --get-regexp '^remote\..*\.url$' | while read key value; do
+		if eval "$predicate"; then
+			key="${key#remote.}"
+			key="${key%.url}"
+			n_remote="$key"
+		fi
+	done
+	[[ $n_remote ]] || return 1
+	return 0
+}
+
+function parse_remote_branches() {
+	local dir="$1" remote="$2"
+	declare -n n_remote_branches="$3" n_main_remote="$4" n_main_local="$5"
+
+	# load remote branches
+	n_remote_branches=()
+	git -C "$dir" for-each-ref --format='%(refname:lstrip=2)' "refs/remotes/$remote/**" \
+		| grep -vE '/HEAD$' \
+		| sort -u \
+		| readarray -t n_remote_branches
+	(( ${#n_remote_branches[@]} == 1 )) || return 1
+
+	# derive "main" branch and pkgbase
+	n_main_remote="${n_remote_branches[0]}"
+	n_main_local="${n_remote_branches[0]#$remote/}"
+	return 0
+}
+
+function pkgctl_clone_into() {
+	local pkgbase="$1" destdir="$2"
+
+	local basedir="$(dirname "$destdir")"
+	local tmpdir="$basedir/.tmp.$$"
+
+	if ! [[ -d "$destdir" ]]; then
+		mkdir -p "$tmpdir"
+		cd "$tmpdir"
+		pkgctl repo clone "$pkgbase"
+		mv "$pkgbase" -T "$destdir"
+		rm -d "$tmpdir"
+	fi
+}
+export -f pkgctl_clone_into
 
 mkdir -p "$PKGBUILD_NEW_ROOT" "$PKGBUILD_OLD_ROOT"
-ltrap "rm -df '$PKGBUILD_NEW_ROOT.tmp'"
+ltrap "rm -rf '$PKGBUILD_NEW_ROOT'/.tmp.*"
 
 # pre: clone repos
 find "$PKGBUILD_ROOT" -type d -name .git -printf '%h\n' | while read dir; do
@@ -101,40 +161,20 @@ find "$PKGBUILD_ROOT" -type d -name .git -printf '%h\n' | while read dir; do
 	dirname="${dir##*/}"
 	cd "$dir"
 
-	# find suitable remote and check if this is a candidate repo
-	remote=
-	{ git config --get-regexp '^remote\..*\.url$' || :; } | while read key value; do
-		if [[ $value == $ASP_URL ]]; then
-			key="${key#remote.}"
-			key="${key%.url}"
-			remote="$key"
-		fi
-	done
-	[[ $remote ]] || continue
+	# find suitable remote or skip repo
+	parse_remote "$dir" '[[ $value == $ASP_URL ]]' remote \
+		|| continue
+	# load remote branches and find "main" branch
+	parse_remote_branches "$dir" "$remote" remote_branches main_remote main_local \
+		|| { fail "${#remote_branches[@]} != 1 remote branches"; continue; }
 
-	# XXX: assume PKGBUILD directory
-	pkgbuild_dir="trunk"
-	pkgbuild="$pkgbuild_dir/PKGBUILD"
-	# check that we guessed $pkgbuild_dir correctly
-	git ls-files --error-unmatch "$pkgbuild" &>/dev/null || { fail "could not find $pkgbuild"; continue; }
-
-	# load remote_branches
-	remote_branches=()
-	{
-		git for-each-ref --format='%(refname:lstrip=2)' "refs/remotes/$remote/**"
-	} | sort -u | readarray -t remote_branches
-	(( ${#remote_branches[@]} == 1 )) || { fail "${#remote_branches[@]} != 1 remote branches"; continue; }
-
-	# derive "main" branch and pkgbase
-	main_remote="${remote_branches[0]}"
-	main_local="${remote_branches[0]#$remote/}"
+	# derive pkgbase
 	pkgbase="${main_remote##*/}"
 
 	# clone replacement repo
-	echo "$PKGBUILD_NEW_ROOT"
 	echo "$pkgbase"
-	echo "$dirname"
-done | parallel -N3 --bar 'root={1}; pkgbase={2}; dirname={3}; if ! [[ -d "$root/$dirname" ]]; then mkdir -p "$root.tmp"; cd "$root.tmp"; pkgctl repo clone "$pkgbase"; mv "$pkgbase" "$root/$dirname"; fi'
+	echo "$PKGBUILD_NEW_ROOT/$dirname"
+done | parallel -N2 --bar pkgctl_clone_into
 
 find "$PKGBUILD_ROOT" -type d -name .git -printf '%h\n' | while read dir; do
 	[[ $dir != *.old ]] || { fail "skipping *.old"; continue; }
@@ -142,16 +182,15 @@ find "$PKGBUILD_ROOT" -type d -name .git -printf '%h\n' | while read dir; do
 	dirname="${dir##*/}"
 	cd "$dir"
 
-	# find suitable remote and check if this is a candidate repo
-	remote=
-	{ git config --get-regexp '^remote\..*\.url$' || :; } | while read key value; do
-		if [[ $value == $ASP_URL ]]; then
-			key="${key#remote.}"
-			key="${key%.url}"
-			remote="$key"
-		fi
-	done
-	[[ $remote ]] || continue
+	# find suitable remote or skip repo
+	parse_remote "$dir" '[[ $value == $ASP_URL ]]' remote \
+		|| continue
+	# load remote branches and find "main" branch
+	parse_remote_branches "$dir" "$remote" remote_branches main_remote main_local \
+		|| { fail "${#remote_branches[@]} != 1 remote branches"; continue; }
+
+	# derive pkgbase
+	pkgbase="${main_remote##*/}"
 
 	# XXX: assume PKGBUILD directory
 	pkgbuild_dir="trunk"
@@ -159,34 +198,20 @@ find "$PKGBUILD_ROOT" -type d -name .git -printf '%h\n' | while read dir; do
 	# check that we guessed $pkgbuild_dir correctly
 	git ls-files --error-unmatch "$pkgbuild" &>/dev/null || { fail "could not find $pkgbuild"; continue; }
 
-	# load remote branches
-	remote_branches=()
-	{
-		git for-each-ref --format='%(refname:lstrip=2)' "refs/remotes/$remote/**"
-	} | sort -u | readarray -t remote_branches
-	(( ${#remote_branches[@]} == 1 )) || { fail "${#remote_branches[@]} != 1 remote branches"; continue; }
-
-	# derive package name and "main" branch
-	main_remote="${remote_branches[0]}"
-	main_local="${remote_branches[0]#$remote/}"
-	pkgbase="${main_remote##*/}"
-
 	# if HEAD is detached, turn it into a branch
 	if ! git symbolic-ref -q HEAD &>/dev/null; then
-		#branches[HEAD]="$(git rev-parse --verify --quiet HEAD)"
 		git checkout -b _head_
 	fi
-	# get active branch (always exists)
-	HEAD="$(git symbolic-ref -q --short HEAD)"
 	# load all branches
-	declare -A branches
-	branches=()
+	declare -a branches=()
 	git for-each-ref --format '%(objectname) %(refname:lstrip=2)' 'refs/heads/**' | while read sha ref; do
-		branches[$ref]="$sha"
+		branches+=( "$ref" )
 	done
+	# load HEAD (always exists)
+	HEAD="$(git symbolic-ref -q --short HEAD)"
 
 	# verify whether we know how to process this repo
-	for ref in "${!branches[@]}"; do
+	for ref in "${branches[@]}"; do
 		git log --format='%P' "$main_remote..$ref" | while read parents; do
 			echo "$parents" | wc -w | read parents_nr
 			if (( $parents_nr != 1 )); then
@@ -197,10 +222,13 @@ find "$PKGBUILD_ROOT" -type d -name .git -printf '%h\n' | while read dir; do
 	done 
 
 	# verify that there are no changes outside guessed prefix
-	for ref in "${!branches[@]}"; do
-		git log --format='' --name-only "$main_remote..$ref" | sort -u | { grep -vE "^$pkgbuild_dir/" ||:; } | readarray -t changed_files
+	for ref in "${branches[@]}"; do
+		git log --format='' --name-only "$main_remote..$ref" \
+			| { grep -vE "^$pkgbuild_dir/" ||:; } \
+			| sort -u \
+			| readarray -t changed_files
 		if (( ${#changed_files[@]} )); then
-			fail "unimplemented - branch $ref has changes outside of $pkgbuild_dir ($(join ',' "${changed_files[@]}"))"
+			fail "unimplemented - branch $ref has changes outside of $pkgbuild_dir ($(join ', ' "${changed_files[@]}"))"
 			continue 2
 		fi
 	done
@@ -228,46 +256,28 @@ find "$PKGBUILD_ROOT" -type d -name .git -printf '%h\n' | while read dir; do
 	! git ls-files --others --exclude-standard | grep -q . || { fail "untracked files left in worktree"; continue; }
 
 	# clone replacement repo
+	( pkgctl_clone_into "$pkgbase" "$PKGBUILD_NEW_ROOT/$dirname" )
 	new_dir="$PKGBUILD_NEW_ROOT/$dirname"
-	if ! [[ -d "$new_dir" ]]; then (
-		mkdir -p "$PKGBUILD_NEW_ROOT.tmp"
-		cd "$PKGBUILD_NEW_ROOT.tmp"
-		pkgctl repo clone "$pkgbase"
-		mv "$pkgbase" "$new_dir"
-	) fi
 
 	# in the replacement repo, find suitable remote
-	new_remote=
-	{ git -C "$new_dir" config --get-regexp '^remote\..*\.url$' || :; } | while read key value; do
-		if [[ $value == $GITLAB_URL* ]]; then
-			key="${key#remote.}"
-			key="${key%.url}"
-			new_remote="$key"
-		fi
-	done
-	[[ $new_remote ]] || { fail "new: could not find remote"; continue; }
-
-	# in the replacement repo, load remote branches
-	new_remote_branches=()
-	{
-		git -C "$new_dir" for-each-ref --format='%(refname:lstrip=2)' "refs/remotes/$remote/**"
-	} | grep -v '/HEAD$' | sort -u | readarray -t new_remote_branches
-	(( ${#new_remote_branches[@]} == 1 )) || { fail "new: ${#new_remote_branches[@]} != 1 remote branches"; continue; }
-
-	# derive "main" branch
-	new_main_remote="${new_remote_branches[0]}"
-	new_main_local="${new_remote_branches[0]#$new_remote/}"
+	parse_remote "$new_dir" '[[ $value == $GITLAB_URL* ]]' new_remote \
+		|| { fail "new: could not find remote"; continue; }
+	# in the replacement repo, load remote branches and find "main" branch
+	parse_remote_branches "$new_dir" "$new_remote" new_remote_branches new_main_remote new_main_local \
+		|| { fail "new: ${#new_remote_branches[@]} != 1 remote branches"; continue; }
 
 	# now the hard part -- map old->new commits
-	for ref in "${!branches[@]}"; do
-		sha="$(git rev-parse --verify --quiet "$ref")"
-		base="$(git merge-base "$sha" "$main_remote")"
-		new_base="$(map_commit "$dir" "$(git rev-parse --short "$base")" "$pkgbuild_dir" "$new_dir" main)" || continue 2
+	for ref in "${branches[@]}"; do
+		sha="$(git rev-parse --short --quiet "$ref")"
+		base="$(git rev-parse --short --quiet "$(git merge-base "$sha" "$main_remote")")"
+		new_base="$(map_commit "$dir" "$base" "$pkgbuild_dir" "$new_dir" "$new_main_remote")" || continue 2
 
-		new_ref=$ref
-		if [[ $ref == $main_local ]]; then
-			new_ref=$new_main_local
-		fi
+		# map old->new ref
+		case "$ref" in
+		"$main_local") new_ref="$new_main_local" ;;
+		*)             new_ref="$ref" ;;
+		esac
+		# map old->new HEAD
 		if [[ $ref == $HEAD ]]; then
 			new_HEAD="$new_ref"
 		fi
@@ -305,13 +315,7 @@ find "$PKGBUILD_ROOT" -type d -name .git -printf '%h\n' | while read dir; do
 	git -C "$new_dir" update-ref -d FETCH_HEAD ||:
 	git -C "$new_dir" gc-now
 
-	log "$dirname: moving old repo: $dir -> $PKGBUILD_OLD_ROOT/$dirname"
+	log "$dirname: moving new/old repo: $new_dir -> $dir -> $PKGBUILD_OLD_ROOT/$dirname"
 	mv "$dir" -T "$PKGBUILD_OLD_ROOT/$dirname"
-	log "$dirname: moving new repo: $new_dir -> $dir"
 	mv "$new_dir" -T "$dir"
-done
-
-log "fails:"
-for arg in "${!CONVERT_FAIL[@]}"; do
-	say " * $arg: ${CONVERT_FAIL[$arg]}"
 done
