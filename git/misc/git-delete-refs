@@ -1,0 +1,9 @@
+#!/bin/bash
+
+if (( $# > 1 )) || [[ $1 == -* ]]; then
+	# test run, maybe we have --help passed or something
+	git for-each-ref --format 'delete %(refname)' "$@" >/dev/null || exit
+fi
+
+# actual run
+git for-each-ref --format 'delete %(refname)' "$@" | git update-ref --stdin
