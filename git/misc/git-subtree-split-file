@@ -2,11 +2,12 @@
 
 . lib.sh || exit
 
-ARGS=$(getopt -o '-P:b:' --long 'prefix:,branch:' -n "${0##*/}" -- "$@") || exit
+ARGS=$(getopt -o '-P:b:' --long 'prefix:,branch:,prefix-any' -n "${0##*/}" -- "$@") || exit
 eval set -- "$ARGS"
 unset ARGS
 
 ARG_PREFIX=
+ARG_PREIX_ANY=
 ARG_BRANCH=
 ARGS=()
 
@@ -15,6 +16,10 @@ while (( $# )); do
 	-P|--prefix)
 		ARG_PREFIX="$2"
 		shift 2
+		;;
+	--prefix-any)
+		ARG_PREFIX_ANY=1
+		shift
 		;;
 	-b|--branch)
 		ARG_BRANCH="$2"
@@ -30,11 +35,15 @@ done
 set -- "${ARGS[@]}"
 
 [[ "$ARG_BRANCH" ]] || die "missing required option: -b/--branch"
-[[ "$ARG_PREFIX" ]] || die "missing required option: -P/--prefix"
+if [[ "$ARG_PREFIX" && "$ARG_PREFIX_ANY" ]]; then
+	die "invalid options: -P/--prefix and --prefix-any cannot be used together"
+elif ! [[ "$ARG_PREFIX" || "$ARG_PREFIX_ANY" ]]; then
+	die "invalid options: one of -P/--prefix or --prefix-any is required"
+fi
 
 cleanup() {
-	git for-each-ref --format '%(refname)' 'refs/exported/*' \
-		| xargs -r -n1 git update-ref -d
+	git for-each-ref --format 'delete %(refname)' 'refs/exported/*' \
+		| git update-ref --stdin
 }
 trap cleanup EXIT
 
@@ -42,9 +51,21 @@ if git for-each-ref --format '%(refname)' 'refs/exported/*' | grep -q .; then
 	die "internal error: refs/exported/* namespace is not empty"
 fi
 
+mangle_filenames() {
+	if [[ "$ARG_PREFIX" ]]; then
+		sed -r \
+			-e "s|^(M) ([^ ]+) ([^ ]+) ${ARG_PREFIX}/(.+)$|\\1 \\2 \\3 \\4|" \
+
+	else
+		sed -r \
+			-e "s|^(M) ([^ ]+) ([^ ]+) (([^/]+)/)*([^/]+)$|\\1 \\2 \\3 \\6|" \
+
+	fi
+}
+
 #trace git branch -f "$ARG_BRANCH" "$(git rev-list -1 "${ARGS[@]}")"
 git fast-export --refspec 'refs/heads/*:refs/exported/*' "${ARGS[@]}" \
-	| sed -r "s|^(M) ([^ ]+) ([^ ]+) ${ARG_PREFIX}/(.+)$|\\1 \\2 \\3 \\4|" \
+	| mangle_filenames \
 	| git fast-import
 git for-each-ref --format '%(refname)' 'refs/exported/*' \
 	| readarray -t EXPORTED_REFS
