@@ -55,10 +55,12 @@ mangle_filenames() {
 	if [[ "$ARG_PREFIX" ]]; then
 		sed -r \
 			-e "s|^(M) ([^ ]+) ([^ ]+) ${ARG_PREFIX}/(.+)$|\\1 \\2 \\3 \\4|" \
+			-e "s|^(D) ${ARG_PREFIX}/(.+)$|\\1 \\2|" \
 
 	else
 		sed -r \
 			-e "s|^(M) ([^ ]+) ([^ ]+) (([^/]+)/)*([^/]+)$|\\1 \\2 \\3 \\6|" \
+			-e "s|^(D) (([^/]+)/)*([^/]+)$|\\1 \\4|" \
 
 	fi
 }
@@ -66,6 +68,7 @@ mangle_filenames() {
 #trace git branch -f "$ARG_BRANCH" "$(git rev-list -1 "${ARGS[@]}")"
 git fast-export --refspec 'refs/heads/*:refs/exported/*' "${ARGS[@]}" \
 	| mangle_filenames \
+	| tee git-fast-export-stream \
 	| git fast-import
 git for-each-ref --format '%(refname)' 'refs/exported/*' \
 	| readarray -t EXPORTED_REFS
