@@ -13,3 +13,6 @@
 [submodule "ext/sysz"]
 	path = ext/sysz
 	url = https://github.com/joehillen/sysz
+[submodule "ext/btrfs-tools"]
+	path = ext/btrfs-tools
+	url = https://github.com/intelfx/btrfs-tools
