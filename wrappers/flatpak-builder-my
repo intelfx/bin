@@ -1,0 +1,16 @@
+#!/bin/bash
+
+BASE_DIR=~/tmp/big/flatpak-builder
+mkdir -p "$BASE_DIR"/{state,repo,app}
+
+APP_DIR="$(mktemp -d -p ~/tmp/big/flatpak-builder/app)"
+cleanup() {
+	rm -rf "$app_dir"
+}
+trap cleanup EXIT
+
+/usr/bin/flatpak-builder \
+	--state-dir "$BASE_DIR/state" \
+	--repo "$BASE_DIR/repo" \
+	"$APP_DIR" \
+	"$@"
