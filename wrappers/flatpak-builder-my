@@ -10,6 +10,8 @@ cleanup() {
 trap cleanup EXIT
 
 /usr/bin/flatpak-builder \
+	--gpg-sign='31EFDDC98A18FA610D389A3D281015BE2CAC2CBC' \
+	--ccache \
 	--state-dir "$BASE_DIR/state" \
 	--repo "$BASE_DIR/repo" \
 	"$APP_DIR" \
