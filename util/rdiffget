@@ -40,6 +40,33 @@ parse_file_path() {
 	parsed[uri]="$uri"
 }
 
+# ltrap "vector"; accepts command in $@ and eval-escapes it
+ltrapv() {
+	ltrap "${*@Q}"
+}
+
+run_on() {
+	declare -n arg="$1"
+	shift
+
+	if [[ ${arg[host]+set} ]]; then
+		ssh "${arg[host]}" "${*@Q}"
+	else
+		"$@"
+	fi
+}
+
+rm_on() {
+	declare -n arg="$1"
+
+	if [[ ${arg[host]+set} ]]; then
+		log "Removing ${arg[host]}:$2"
+	else
+		log "Removing $2"
+	fi
+	run_on "$1" rm -rf "$2"
+}
+
 get_signature() {
 	declare -n from="$1"
 
@@ -114,26 +141,18 @@ SRC_URI="${@: -2:1}"
 DEST_URI="${@: -1:1}"
 RDIFF_ARGS=( "${@:1:$#-2}" )
 
+declare -A _host  # dummy
 declare -A SRC
 declare -A DEST
 parse_file_path SRC "$SRC_URI"
 parse_file_path DEST "$DEST_URI"
-if [[ ${SRC[host]+set} ]]; then TEMPDIR_HOSTS+=( "${SRC[host]}" ); fi
-if [[ ${DEST[host]+set} ]]; then TEMPDIR_HOSTS+=( "${DEST[host]}" ); fi
 
 # This is completely unsafe, but we will use the same temporary directory path
 # on all hosts we talk to
 TEMPDIR="$(mktemp -d -p /tmp)"
-declare -A TEMPDIR_HOSTS=()
-cleanup() {
-	log "Removing $TEMPDIR"
-	rm -rf "$TEMPDIR"
-	for h in "${!TEMPDIR_HOSTS[@]}"; do
-		log "Removing $h:$TEMPDIR"
-		ssh "$h" "rm -rf ${TEMPDIR@Q}"
-	done
-}
-ltrap cleanup
+if [[ ${DEST[host]+set} ]]; then ltrapv rm_on DEST "$TEMPDIR"; fi
+if [[ ${SRC[host]+set} ]]; then ltrapv rm_on SRC "$TEMPDIR"; fi
+ltrapv rm_on _host "$TEMPDIR"
 
 log "Computing signature for ${DEST[uri]} -> ${SRC[host]-local machine}"
 get_signature DEST | put_signature SRC
