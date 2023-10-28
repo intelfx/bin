@@ -102,12 +102,12 @@ put_delta() {
 apply_delta() {
 	declare -n from="$1"
 	declare -n to="$2"
-	local from_basename to_dirname newpath
+	local from_basename to_dirname
 	from_basename="$(basename "${from[path]}")"
 	to_dirname="$(dirname "${to[path]}")"
-	newpath="$(joinpath "$to_dirname" "$from_basename")"
+	to[newpath]="$(joinpath "$to_dirname" "$from_basename")"
 
-	run_on "$2" rdiff patch "${RDIFF_ARGS[@]}" "${to[path]}" "$TEMPDIR/rdiff-delta" "$newpath"
+	run_on "$2" rdiff patch "${RDIFF_ARGS[@]}" "${to[path]}" "$TEMPDIR/rdiff-delta" "${to[newpath]}"
 }
 
 maybe_extract() {
