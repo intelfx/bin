@@ -126,6 +126,27 @@ apply_delta() {
 	fi
 }
 
+maybe_extract() {
+	declare -n arg="$1"
+
+	local extract=()
+	local suffix
+
+	case "${arg[path]}" in
+	*.zst) suffix=.zst; extract=( zstd -d -f ) ;;
+	*.gz)  suffix=.gz; extract=( gzip -d -k -f ) ;;
+	*.bz2) suffix=.bz2; extract=( bzip2 -d -k -f ) ;;
+	*.xz)  suffix=.xz; extract=( xz -d -k -f ) ;;
+	esac
+	if [[ ${extract+set} ]]; then
+		log "Extracting ${arg[uri]} -> ${arg[path]%$suffix}"
+		run_on "$1" "${extract[@]}" "${arg[path]}"
+		ltrapv rm_on "$1" "${arg[path]%$suffix}"
+		arg[path]="${arg[path]%$suffix}"
+		arg[uri]="${arg[uri]%$suffix}"
+	fi
+}
+
 
 #
 # main
@@ -153,6 +174,9 @@ TEMPDIR="$(mktemp -d -p /tmp)"
 if [[ ${DEST[host]+set} ]]; then ltrapv rm_on DEST "$TEMPDIR"; fi
 if [[ ${SRC[host]+set} ]]; then ltrapv rm_on SRC "$TEMPDIR"; fi
 ltrapv rm_on _host "$TEMPDIR"
+
+maybe_extract SRC
+maybe_extract DEST
 
 log "Computing signature for ${DEST[uri]} -> ${SRC[host]-local machine}"
 get_signature DEST | put_signature SRC
