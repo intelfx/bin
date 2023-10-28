@@ -37,6 +37,7 @@ parse_file_path() {
 		unset parsed[host]
 		parsed[path]="$uri"
 	fi
+	parsed[uri]="$uri"
 }
 
 get_signature() {
@@ -134,9 +135,9 @@ cleanup() {
 }
 ltrap cleanup
 
-log "Computing signature for ${DEST_URI} -> ${SRC[host]-local machine}"
+log "Computing signature for ${DEST[uri]} -> ${SRC[host]-local machine}"
 get_signature DEST | put_signature SRC
-log "Computing delta from ${SRC_URI} -> ${DEST[host]-local machine}"
+log "Computing delta from ${SRC[uri]} -> ${DEST[host]-local machine}"
 get_delta SRC | put_delta DEST
-log "Applying delta to ${DEST_URI}"
+log "Applying delta to ${DEST[uri]}"
 apply_delta SRC DEST
