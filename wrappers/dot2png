@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+
+find "$@" -mindepth 1 -maxdepth 1 -type f -name '*.dot' -print0 | \
+	parallel -0 --bar 'dot -Tpng {} -o {.}.png && rm -f {}'
