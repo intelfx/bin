@@ -2,6 +2,11 @@
 
 . lib.sh || exit
 
+
+#
+# args and usage
+#
+
 _usage() {
 	cat <<EOF
 Usage: $0 [RDIFF-OPTIONS...] <SRC> <DEST>
@@ -15,25 +20,10 @@ Options:
 EOF
 }
 
-if ! (( $# >= 2 )); then
-	usage "Not enough parameters (got $#, expected at least 2)"
-fi
 
-eval "$(globaltraps)"
-
-# This is completely unsafe, but we will use the same temporary directory path
-# on all hosts we talk to
-TEMPDIR="$(mktemp -d -p /tmp)"
-declare -A TEMPDIR_HOSTS=()
-cleanup() {
-	log "Removing $TEMPDIR"
-	rm -rf "$TEMPDIR"
-	for h in "${!TEMPDIR_HOSTS[@]}"; do
-		log "Removing $h:$TEMPDIR"
-		ssh "$h" "rm -rf ${TEMPDIR@Q}"
-	done
-}
-ltrap cleanup
+#
+# functions
+#
 
 # $1: input
 # $host, $path, $is_remote: output
@@ -48,17 +38,6 @@ parse_file_path() {
 		parsed[path]="$uri"
 	fi
 }
-
-SRC_URI="${@: -2:1}"
-DEST_URI="${@: -1:1}"
-RDIFF_ARGS=( "${@:1:$#-2}" )
-
-declare -A SRC
-declare -A DEST
-parse_file_path SRC "$SRC_URI"
-parse_file_path DEST "$DEST_URI"
-if [[ ${SRC[host]+set} ]]; then TEMPDIR_HOSTS+=( "${SRC[host]}" ); fi
-if [[ ${DEST[host]+set} ]]; then TEMPDIR_HOSTS+=( "${DEST[host]}" ); fi
 
 get_signature() {
 	declare -n from="$1"
@@ -119,6 +98,41 @@ apply_delta() {
 	fi
 }
 
+
+#
+# main
+#
+
+if ! (( $# >= 2 )); then
+	usage "Not enough parameters (got $#, expected at least 2)"
+fi
+
+eval "$(globaltraps)"
+
+SRC_URI="${@: -2:1}"
+DEST_URI="${@: -1:1}"
+RDIFF_ARGS=( "${@:1:$#-2}" )
+
+declare -A SRC
+declare -A DEST
+parse_file_path SRC "$SRC_URI"
+parse_file_path DEST "$DEST_URI"
+if [[ ${SRC[host]+set} ]]; then TEMPDIR_HOSTS+=( "${SRC[host]}" ); fi
+if [[ ${DEST[host]+set} ]]; then TEMPDIR_HOSTS+=( "${DEST[host]}" ); fi
+
+# This is completely unsafe, but we will use the same temporary directory path
+# on all hosts we talk to
+TEMPDIR="$(mktemp -d -p /tmp)"
+declare -A TEMPDIR_HOSTS=()
+cleanup() {
+	log "Removing $TEMPDIR"
+	rm -rf "$TEMPDIR"
+	for h in "${!TEMPDIR_HOSTS[@]}"; do
+		log "Removing $h:$TEMPDIR"
+		ssh "$h" "rm -rf ${TEMPDIR@Q}"
+	done
+}
+ltrap cleanup
 
 log "Computing signature for ${DEST_URI} -> ${SRC[host]-local machine}"
 get_signature DEST | put_signature SRC
