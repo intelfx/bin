@@ -1,0 +1,128 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+Usage: $0 [RDIFF-OPTIONS...] <SRC> <DEST>
+
+Transfer <SRC> to the same directory as <DEST>, using <DEST> as a delta
+basis.
+
+Options:
+  <SRC>, <DEST>		Local or remote (user@host:path) path to a file
+  RDIFF-OPTIONS		Options accepted by rdiff
+EOF
+}
+
+if ! (( $# >= 2 )); then
+	usage "Not enough parameters (got $#, expected at least 2)"
+fi
+
+eval "$(globaltraps)"
+
+# This is completely unsafe, but we will use the same temporary directory path
+# on all hosts we talk to
+TEMPDIR="$(mktemp -d -p /tmp)"
+declare -A TEMPDIR_HOSTS=()
+cleanup() {
+	log "Removing $TEMPDIR"
+	rm -rf "$TEMPDIR"
+	for h in "${!TEMPDIR_HOSTS[@]}"; do
+		log "Removing $h:$TEMPDIR"
+		ssh "$h" "rm -rf ${TEMPDIR@Q}"
+	done
+}
+ltrap cleanup
+
+# $1: input
+# $host, $path, $is_remote: output
+parse_file_path() {
+	declare -n parsed="$1"
+	local uri="$2"
+	if [[ $uri == *:* ]]; then
+		parsed[host]="${uri%%:*}"
+		parsed[path]="${uri#*:}"
+	else
+		unset parsed[host]
+		parsed[path]="$uri"
+	fi
+}
+
+SRC_URI="${@: -2:1}"
+DEST_URI="${@: -1:1}"
+RDIFF_ARGS=( "${@:1:$#-2}" )
+
+declare -A SRC
+declare -A DEST
+parse_file_path SRC "$SRC_URI"
+parse_file_path DEST "$DEST_URI"
+if [[ ${SRC[host]+set} ]]; then TEMPDIR_HOSTS+=( "${SRC[host]}" ); fi
+if [[ ${DEST[host]+set} ]]; then TEMPDIR_HOSTS+=( "${DEST[host]}" ); fi
+
+get_signature() {
+	declare -n from="$1"
+
+	if [[ ${from[host]+set} ]]; then
+		ssh "${from[host]}" "rdiff signature ${RDIFF_ARGS[@]@Q} ${from[path]@Q}"
+	else
+		rdiff signature "${RDIFF_ARGS[@]}" "${from[path]}"
+	fi
+}
+
+put_signature() {
+	declare -n to="$1"
+
+	if [[ ${to[host]+set} ]]; then
+		pv -N signature | ssh "${to[host]}" "mkdir -p ${TEMPDIR@Q} && cat > ${TEMPDIR@Q}/rsig"
+	else
+		pv -N signature > "$TEMPDIR/rsig"
+	fi
+}
+
+get_delta() {
+	declare -n from="$1"
+
+	if [[ ${from[host]+set} ]]; then
+		ssh "${from[host]}" "rdiff delta ${RDIFF_ARGS[@]@Q} ${TEMPDIR@Q}/rsig ${from[path]@Q}"
+	else
+		rdiff delta "${RDIFF_ARGS[@]}" "$TEMPDIR/rsig" "${from[path]}"
+	fi
+}
+
+put_delta() {
+	declare -n to="$1"
+
+	if [[ ${to[host]+set} ]]; then
+		pv -N delta | ssh "${to[host]}" "mkdir -p ${TEMPDIR@Q} && cat > ${TEMPDIR@Q}/delta"
+	else
+		pv -N delta > "$TEMPDIR/delta"
+	fi
+}
+
+apply_delta() {
+	declare -n from="$1"
+	declare -n to="$2"
+	local from_basename to_dirname newpath
+	from_basename="$(basename "${from[path]}")"
+	to_dirname="$(dirname "${to[path]}")"
+	if [[ $to_dirname != . ]]; then
+		newpath="$to_dirname/$from_basename"
+	else
+		newpath="$from_basename"
+	fi
+
+	if [[ ${to[host]+set} ]]; then
+		ssh "${to[host]}" "rdiff patch ${RDIFF_ARGS[@]@Q} ${to[path]@Q} ${TEMPDIR@Q}/delta ${newpath@Q}"
+	else
+		rdiff patch "${RDIFF_ARGS[@]}" "${to[path]}" "$TEMPDIR/delta" "$newpath"
+	fi
+}
+
+
+log "Computing signature for ${DEST_URI} -> ${SRC[host]-local machine}"
+get_signature DEST | put_signature SRC
+log "Computing delta from ${SRC_URI} -> ${DEST[host]-local machine}"
+get_delta SRC | put_delta DEST
+log "Applying delta to ${DEST_URI}"
+apply_delta SRC DEST
