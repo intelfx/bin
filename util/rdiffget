@@ -56,6 +56,19 @@ run_on() {
 	fi
 }
 
+run_on_with_dir() {
+	declare -n arg="$1"
+	local dir="$2"
+	shift 2
+
+	if [[ ${arg[host]+set} ]]; then
+		ssh "${arg[host]}" "cd ${dir@Q} && ${*@Q}"
+	else
+		( cd "$dir" && "$@" )
+	fi
+
+}
+
 rm_on() {
 	declare -n arg="$1"
 
@@ -142,6 +155,9 @@ fi
 
 eval "$(globaltraps)"
 
+CHECKSUM_CREATE=( sha1sum -b )
+CHECKSUM_VERIFY=( sha1sum -c )
+
 SRC_URI="${@: -2:1}"
 DEST_URI="${@: -1:1}"
 RDIFF_ARGS=( "${@:1:$#-2}" )
@@ -168,3 +184,7 @@ log "Computing delta from ${SRC[uri]} -> ${DEST[host]-local machine}"
 get_delta SRC | put_delta DEST
 log "Applying delta to ${DEST[uri]}"
 apply_delta SRC DEST
+
+log "Verifying checksum"
+run_on_with_dir SRC "$(dirname "${SRC[path]}")" "${CHECKSUM_CREATE[@]}" "$(basename "${SRC[path]}")" \
+| run_on_with_dir DEST "$(dirname "${DEST[path]}")" "${CHECKSUM_VERIFY[@]}" -
