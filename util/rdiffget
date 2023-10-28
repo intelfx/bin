@@ -105,13 +105,9 @@ apply_delta() {
 	local from_basename to_dirname newpath
 	from_basename="$(basename "${from[path]}")"
 	to_dirname="$(dirname "${to[path]}")"
-	if [[ $to_dirname != . ]]; then
-		newpath="$to_dirname/$from_basename"
-	else
-		newpath="$from_basename"
-	fi
+	newpath="$(joinpath "$to_dirname" "$from_basename")"
 
-	run_on "$1" rdiff patch "${RDIFF_ARGS[@]}" "${to[path]}" "$TEMPDIR/rdiff-delta" "$newpath"
+	run_on "$2" rdiff patch "${RDIFF_ARGS[@]}" "${to[path]}" "$TEMPDIR/rdiff-delta" "$newpath"
 }
 
 maybe_extract() {
