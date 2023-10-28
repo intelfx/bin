@@ -67,44 +67,36 @@ rm_on() {
 	run_on "$1" rm -rf "$2"
 }
 
-get_signature() {
-	declare -n from="$1"
+put_on() {
+	declare -n arg="$1"
+	local path="$2"
+	local dir="$(dirname "$path")"
+	shift 2
 
-	if [[ ${from[host]+set} ]]; then
-		ssh "${from[host]}" "rdiff signature ${RDIFF_ARGS[@]@Q} ${from[path]@Q}"
+	if [[ ${arg[host]+set} ]]; then
+		pv "$@" | ssh "${arg[host]}" "mkdir -p ${dir@Q} && cat >${path@Q}"
 	else
-		rdiff signature "${RDIFF_ARGS[@]}" "${from[path]}"
+		mkdir -p "$dir"
+		pv "$@" >"$path"
 	fi
 }
 
-put_signature() {
-	declare -n to="$1"
+get_signature() {
+	declare -n from="$1"
+	run_on "$1" rdiff signature "${RDIFF_ARGS[@]}" "${from[path]}"
+}
 
-	if [[ ${to[host]+set} ]]; then
-		pv -N signature | ssh "${to[host]}" "mkdir -p ${TEMPDIR@Q} && cat > ${TEMPDIR@Q}/rsig"
-	else
-		pv -N signature > "$TEMPDIR/rsig"
-	fi
+put_signature() {
+	put_on "$1" "$TEMPDIR/rdiff-signature" -N signature
 }
 
 get_delta() {
 	declare -n from="$1"
-
-	if [[ ${from[host]+set} ]]; then
-		ssh "${from[host]}" "rdiff delta ${RDIFF_ARGS[@]@Q} ${TEMPDIR@Q}/rsig ${from[path]@Q}"
-	else
-		rdiff delta "${RDIFF_ARGS[@]}" "$TEMPDIR/rsig" "${from[path]}"
-	fi
+	run_on "$1" rdiff delta "${RDIFF_ARGS[@]}" "$TEMPDIR/rdiff-signature" "${from[path]}"
 }
 
 put_delta() {
-	declare -n to="$1"
-
-	if [[ ${to[host]+set} ]]; then
-		pv -N delta | ssh "${to[host]}" "mkdir -p ${TEMPDIR@Q} && cat > ${TEMPDIR@Q}/delta"
-	else
-		pv -N delta > "$TEMPDIR/delta"
-	fi
+	put_on "$1" "$TEMPDIR/rdiff-delta" -N delta
 }
 
 apply_delta() {
@@ -119,11 +111,7 @@ apply_delta() {
 		newpath="$from_basename"
 	fi
 
-	if [[ ${to[host]+set} ]]; then
-		ssh "${to[host]}" "rdiff patch ${RDIFF_ARGS[@]@Q} ${to[path]@Q} ${TEMPDIR@Q}/delta ${newpath@Q}"
-	else
-		rdiff patch "${RDIFF_ARGS[@]}" "${to[path]}" "$TEMPDIR/delta" "$newpath"
-	fi
+	run_on "$1" rdiff patch "${RDIFF_ARGS[@]}" "${to[path]}" "$TEMPDIR/rdiff-delta" "$newpath"
 }
 
 maybe_extract() {
