@@ -1,0 +1,47 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+BZR_DIR="$(pwd)"
+
+if ! [[ $BZR_DIR == *.bzr ]]; then
+	die "Current working directory must be named <project>.bzr"
+fi
+
+GIT_DIR="${BZR_DIR%.bzr}.git"
+
+log "Source (bzr) directory: $BZR_DIR"
+log "Target (git) directory: $GIT_DIR"
+
+if ! (( $# )); then
+	die "No branches specified"
+fi
+
+log "Branches: $(join ', ' "$@")"
+
+if [[ -e "$GIT_DIR/.git" ]]; then
+	die "Git repository already initialized, bailing out"
+fi
+
+for branch; do
+	base="$(basename "$branch")"
+	if ! [[ -d "$base" ]]; then
+		log "Checking out '$branch' as '$base'"
+		bzr branch "$branch"
+	fi
+done
+
+cleanup() {
+	rm -f "$BZR_MARKS"
+}
+trap cleanup EXIT
+BZR_MARKS="$(mktemp -p "$BZR_DIR")"
+
+mkdir -p "$GIT_DIR"
+git -C "$GIT_DIR" init
+
+for branch; do
+	base="$(basename "$branch")"
+	brz fast-export -b "$base" "$base" # --marks "$BZR_MARKS" # TODO: fix brz-fast-export
+done | git -C "$GIT_DIR" fast-import
+
