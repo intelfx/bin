@@ -4,6 +4,7 @@ BASE_DIR=~/tmp/big/flatpak-builder
 mkdir -p "$BASE_DIR"/{state,repo,app}
 
 : "${FLATPAK_BUILDER_REPO="$BASE_DIR/repo"}"
+: "${FLATPAK_BUILDER_CACHE="$BASE_DIR/state"}"
 
 APP_DIR="$(mktemp -d -p ~/tmp/big/flatpak-builder/app)"
 cleanup() {
@@ -12,9 +13,10 @@ cleanup() {
 trap cleanup EXIT
 
 /usr/bin/flatpak-builder \
+	--install-deps-from=flathub \
 	--gpg-sign='31EFDDC98A18FA610D389A3D281015BE2CAC2CBC' \
 	--ccache \
-	--state-dir "$BASE_DIR/state" \
+	--state-dir "$FLATPAK_BUILDER_CACHE" \
 	--repo "$FLATPAK_BUILDER_REPO" \
 	"$APP_DIR" \
 	"$@"
