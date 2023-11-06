@@ -5,30 +5,48 @@ import sys
 import argparse
 import subprocess
 
+class UserError(RuntimeError):
+	pass
+
 MMCLI_PATH = '/usr/bin/mmcli'
-MMCLI_ARGS = [ 'mmcli' ]
+MMCLI_ARGS = [ sys.argv[0] ]
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-m', '--modem',
-	help='Specify modem by path or index, or "-" to pick the only available one.')
-args, remainder = parser.parse_known_args()
+def mmcli_wrap():
+	global MMCLI_PATH
+	global MMCLI_ARGS
 
-if args.modem == '-':
-	mm_busctl_tree = subprocess.run(
-		[ 'busctl', '--auto-start=false', '--list', 'tree', 'org.freedesktop.ModemManager1' ],
-		text=True,
-		check=True,
-		stdout=subprocess.PIPE,
-	)
-	mm_objects = mm_busctl_tree.stdout.splitlines()
-	mm_modems = [ o for o in mm_objects if o.startswith('/org/freedesktop/ModemManager1/Modem/') ]
-	if len(mm_modems) != 1:
-		raise RuntimeError(f'mmcli: {len(mm_modems)} != 1 modems available, cannot auto-pick modem')
-	args.modem = mm_modems[0]
+	parser = argparse.ArgumentParser()
+	parser.add_argument('-m', '--modem',
+		help='Specify a modem by path or index, or "-" to pick the only available one.')
+	args, remainder = parser.parse_known_args()
 
-if args.modem:
-	MMCLI_ARGS += [ '--modem', args.modem ]
+	if args.modem == '-':
+		mm_busctl_tree = subprocess.run(
+			[ 'busctl', '--auto-start=false', '--list', 'tree', 'org.freedesktop.ModemManager1' ],
+			text=True,
+			check=True,
+			stdout=subprocess.PIPE,
+		)
+		mm_objects = mm_busctl_tree.stdout.splitlines()
+		mm_modems = [ o for o in mm_objects if o.startswith('/org/freedesktop/ModemManager1/Modem/') ]
+		if not mm_modems:
+			raise UserError(f'mmcli: no modems available')
+		if len(mm_modems) != 1:
+			raise UserError(f'mmcli: more than 1 modem available, \"--modem=-\" not allowed')
+		args.modem = mm_modems[0]
 
-sys.stdout.flush()
-sys.stderr.flush()
-os.execv(MMCLI_PATH, MMCLI_ARGS + remainder)
+	if args.modem:
+		MMCLI_ARGS += [ '--modem', args.modem ]
+
+	sys.stdout.flush()
+	sys.stderr.flush()
+	os.execv(MMCLI_PATH, MMCLI_ARGS + remainder)
+
+def main():
+	try:
+		mmcli_wrap()
+	except UserError as e:
+		sys.exit(str(e))
+
+if __name__ == '__main__':
+	main()
