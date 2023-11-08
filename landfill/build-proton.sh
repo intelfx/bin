@@ -43,7 +43,8 @@ set -x
 (
 	cd "$SOURCE_DIR"
 	git reset --hard; git clean -fxd
-	git submodule foreach 'git reset --hard; git clean -fxd'
+	git submodule foreach --recursive 'git reset --hard; git clean -fxd'
+	git submodule update --init --recursive --progress
 	./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
 	for p in "$PATCH_DIR"/*.patch; do
 		git apply -3 "$p"
