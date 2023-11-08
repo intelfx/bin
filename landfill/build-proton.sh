@@ -25,8 +25,12 @@ CMD=(
 	--container-engine=podman
 )
 
+SOURCE_TAG="$(cd "$SOURCE_DIR" && git describe --tags --abbrev=0)"
+
 if [[ ${TAG+set} ]]; then
-	CMD+=( --build-name="$(cd "$SOURCE_DIR" && git describe --tags)-$TAG" )
+	CMD+=( --build-name="$SOURCE_TAG-$TAG" )
+else
+	CMD+=( --build-name="$SOURCE_TAG" )
 fi
 
 shopt -s nullglob
