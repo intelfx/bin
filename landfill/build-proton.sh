@@ -17,6 +17,7 @@ while (( $# )); do
 		shift
 	else
 		ARGS+=( "$1" )
+		shift 1
 	fi
 done
 
