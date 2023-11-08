@@ -48,9 +48,15 @@ set -x
 	git submodule update --init --recursive --progress
 	./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
 	for p in "$PATCH_DIR"/*.patch; do
+		if [[ $p == *WIP* ]]; then
+			continue
+		fi
 		git apply -3 "$p"
 	done
 	for p in "$PATCH_DIR/openfst"/*.patch; do
+		if [[ $p == *WIP* ]]; then
+			continue
+		fi
 		git -C openfst apply -3 "$p"
 	done
 )
