@@ -1,5 +1,6 @@
 #!/bin/bash -e
 
+SCRIPT_DIR="$(dirname "$BASH_SOURCE")"
 SOURCE_DIR="$(dirname "$BASH_SOURCE")/proton-ge-custom"
 BUILD_DIR="$(pwd)"
 
@@ -43,5 +44,10 @@ set -x
 	done
 )
 "$SOURCE_DIR/configure.sh" "${CMD[@]}" "${ARGS[@]}"
+sed -r "/^ENABLE_CCACHE := 1/{
+aexport CCACHE_BASEDIR := $BUILD_DIR
+aexport CCACHE_CONFIGPATH := $SCRIPT_DIR/ccache.conf
+}" -i Makefile
+
 make all redist
 put *.tar.* '/mnt/data/Files/shared/dist/misc/deck/proton'
