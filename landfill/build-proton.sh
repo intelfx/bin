@@ -42,7 +42,16 @@ fi
 if [[ ${PATCH_VERSION+set} ]]; then
 	log "Forcing patches v${PATCH_VERSION}"
 else
-	PATCH_VERSION=8
+	case "$SOURCE_TAG" in
+		GE-Proton8-*)
+			PATCH_VERSION=8ge ;;
+		GE-Proton7-*)
+			PATCH_VERSION=7ge ;;
+		proton-7.0-*)
+			PATCH_VERSION=7 ;;
+		*)
+			die "Unknown source tag $SOURCE_TAG, cannot pick patches" ;;
+	esac
 	log "Using patches v${PATCH_VERSION}"
 fi
 
