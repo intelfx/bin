@@ -33,6 +33,11 @@ else
 	CMD+=( --build-name="$SOURCE_TAG" )
 fi
 
+PATCH_DIR="$SCRIPT_DIR/patches8"
+if ! [[ -d "$PATCH_DIR" ]]; then
+	die "Patch directory does not exist: $PATCH_DIR"
+fi
+
 shopt -s nullglob
 set -x
 (
@@ -40,11 +45,11 @@ set -x
 	git reset --hard; git clean -fxd
 	git submodule foreach 'git reset --hard; git clean -fxd'
 	./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
-	for p in ../patches8/*.patch; do
+	for p in "$PATCH_DIR"/*.patch; do
 		git apply -3 "$p"
 	done
-	for p in ../patches-openfst/*.patch; do
-		git -C openfst apply -3 "../$p"
+	for p in "$PATCH_DIR/openfst"/*.patch; do
+		git -C openfst apply -3 "$p"
 	done
 )
 
