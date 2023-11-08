@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
-SCRIPT_DIR="$(dirname "$BASH_SOURCE")"
-SOURCE_DIR="$(dirname "$BASH_SOURCE")/proton-ge-custom"
-BUILD_DIR="$(pwd)"
+SCRIPT_DIR="$HOME/build/my/proton-ge"
+SOURCE_DIR="$SCRIPT_DIR/proton-ge-custom"
+BUILD_DIR="/mnt/ssd/Scratch/proton-ge"
 
 CMD=()
 ARGS=()
@@ -43,6 +43,10 @@ set -x
 		git -C openfst apply -3 "../$p"
 	done
 )
+
+mkdir -p "$BUILD_DIR"
+cd "$BUILD_DIR"
+
 "$SOURCE_DIR/configure.sh" "${CMD[@]}" "${ARGS[@]}"
 sed -r "/^ENABLE_CCACHE := 1/{
 aexport CCACHE_BASEDIR := $BUILD_DIR
