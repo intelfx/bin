@@ -9,11 +9,15 @@ BUILD_DIR="/mnt/ssd/Scratch/proton-ge"
 CMD=()
 ARGS=()
 unset TAG
+unset PATCH_VERSION
 
 while (( $# )); do
 	declare k v n
 	if get_arg k v n --build-tag -- "$@"; then
 		TAG="$v"
+		shift "$n"
+	elif get_arg k v n -v -- "$@"; then
+		PATCH_VERSION="$v"
 		shift "$n"
 	else
 		ARGS+=( "$1" )
@@ -34,7 +38,14 @@ else
 	CMD+=( --build-name="$SOURCE_TAG" )
 fi
 
-PATCH_DIR="$SCRIPT_DIR/patches8"
+if [[ ${PATCH_VERSION+set} ]]; then
+	log "Forcing patches v${PATCH_VERSION}"
+else
+	PATCH_VERSION=8
+	log "Using patches v${PATCH_VERSION}"
+fi
+
+PATCH_DIR="$SCRIPT_DIR/patches${PATCH_VERSION}"
 if ! [[ -d "$PATCH_DIR" ]]; then
 	die "Patch directory does not exist: $PATCH_DIR"
 fi
