@@ -1,5 +1,7 @@
 #!/bin/bash -e
 
+. $HOME/bin/lib/lib.sh || exit
+
 SCRIPT_DIR="$HOME/build/my/proton-ge"
 SOURCE_DIR="$SCRIPT_DIR/proton-ge-custom"
 BUILD_DIR="/mnt/ssd/Scratch/proton-ge"
@@ -9,12 +11,10 @@ ARGS=()
 unset TAG
 
 while (( $# )); do
-	if [[ $1 == --build-tag ]]; then
-		TAG="$2"
-		shift 2
-	elif [[ $1 == --build-tag=* ]]; then
-		TAG="${1#*=}"
-		shift
+	declare k v n
+	if get_arg k v n --build-tag -- "$@"; then
+		TAG="$v"
+		shift "$n"
 	else
 		ARGS+=( "$1" )
 		shift 1
