@@ -1,6 +1,7 @@
 #!/bin/bash -e
 
 . $HOME/bin/lib/lib.sh || exit
+shopt -s nullglob
 
 SCRIPT_DIR="$HOME/build/my/proton-ge"
 SOURCE_DIR="$SCRIPT_DIR/proton-ge-custom"
@@ -57,13 +58,18 @@ set -x
 	git reset --hard; git clean -fxd
 	git submodule foreach --recursive 'git reset --hard; git clean -fxd'
 	git submodule update --init --recursive --progress
-	./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
+
+	if [[ -e ./patches/protonprep-valve-staging.sh ]]; then
+		./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
+	fi
+
 	for p in "$PATCH_DIR"/*.patch; do
 		if [[ $p == *WIP* ]]; then
 			continue
 		fi
 		git apply -3 "$p"
 	done
+
 	for p in "$PATCH_DIR/openfst"/*.patch; do
 		if [[ $p == *WIP* ]]; then
 			continue
