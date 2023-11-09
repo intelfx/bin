@@ -96,5 +96,5 @@ aexport CCACHE_BASEDIR := $BUILD_DIR
 aexport CCACHE_CONFIGPATH := $SCRIPT_DIR/ccache.conf
 }" -i Makefile
 
-make all redist
+make redist
 put *.tar.* '/mnt/data/Files/shared/dist/misc/deck/proton'
