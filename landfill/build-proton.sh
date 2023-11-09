@@ -55,7 +55,7 @@ else
 	log "Using patches v${PATCH_VERSION}"
 fi
 
-PATCH_DIR="$SCRIPT_DIR/patches${PATCH_VERSION}"
+PATCH_DIR="$SCRIPT_DIR/patches-${PATCH_VERSION}"
 if ! [[ -d "$PATCH_DIR" ]]; then
 	die "Patch directory does not exist: $PATCH_DIR"
 fi
@@ -72,14 +72,14 @@ set -x
 		./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
 	fi
 
-	for p in "$PATCH_DIR"/*.patch; do
+	for p in "${PATCH_DIR}"/*.patch; do
 		if [[ $p == *WIP* ]]; then
 			continue
 		fi
 		git apply -3 "$p"
 	done
 
-	for p in "$PATCH_DIR/openfst"/*.patch; do
+	for p in "${PATCH_DIR}-openfst"/*.patch; do
 		if [[ $p == *WIP* ]]; then
 			continue
 		fi
