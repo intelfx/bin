@@ -26,7 +26,9 @@ elif [[ "${1##*/}" == git ]]; then
 elif [[ "${1##*/}" == grep ]]; then
 	vimgrep_grep "$@"
 else
-	if command -v git &>/dev/null && [[ "$(git rev-parse --is-inside-work-tree 2>/dev/null)" == "true" ]]; then
+	if command -v git &>/dev/null \
+	&& [[ "$(git rev-parse --is-inside-work-tree 2>/dev/null)" == "true" ]] \
+	&& ! git check-ignore -q .; then
 		vimgrep_git_grep git grep "$@"
 	elif command -v rg &>/dev/null; then
 		vimgrep_rg rg "$@"
