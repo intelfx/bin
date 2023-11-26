@@ -1,0 +1,39 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+KEYS=(
+	#DeviceClass
+	DeviceName
+	#HardwareModel
+	#ModelNumber
+	ProductType
+	ProductVersion
+)
+
+kvpairs() {
+	declare -n table="$1"
+	shift
+
+	local items=()
+	local k v
+	for k; do
+		if [[ ${table[$k]+set} ]]; then
+			items+=( "$k=${table[$k]}" )
+		fi
+	done
+	echo "${items[*]}"
+}
+
+idevice_id --list | while read udid; do
+	declare -A info
+	for k in "${KEYS[@]}"; do
+		if v="$(ideviceinfo --udid "$udid" --key "$k")"; then
+			info[$k]="$v"
+		else
+			log "Failed to retrieve $udid/$k"
+		fi
+	done
+
+	echo "$udid (${info[DeviceName]}) [${info[ProductType]}] [${info[ProductVersion]}]"
+done
