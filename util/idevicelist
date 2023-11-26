@@ -27,11 +27,11 @@ kvpairs() {
 
 idevice_id --list | while read udid; do
 	declare -A info
-	for k in "${KEYS[@]}"; do
-		if v="$(ideviceinfo --udid "$udid" --key "$k")"; then
-			info[$k]="$v"
+	ideviceinfo --udid "$udid" | grep -E "^($(join '|' "${KEYS[@]}")): " | while read line; do
+		if [[ $line =~ ^([^ ]+):\ (.+)$ ]]; then
+			info[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
 		else
-			log "Failed to retrieve $udid/$k"
+			err "$udid: bad line: '$line'"
 		fi
 	done
 
