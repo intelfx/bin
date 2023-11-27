@@ -1,0 +1,79 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+KEYS=(
+	DeviceClass
+	DeviceName
+	HardwareModel
+	ModelNumber
+	ProductType
+	ProductVersion
+)
+
+_usage() {
+	cat <<EOF
+Usage: $0 [-v|--verbose] [SEARCH-TERM]
+
+Searches for connected Apple mobile devices that match SEARCH-TERM,
+then prints information for all found devices.
+
+If 
+EOF
+}
+
+declare -A ARGS=(
+	[-v|--verbose]=ARG_VERBOSE
+	[--]=ARG_TERM
+)
+if ! parse_args ARGS "$@"; then
+	usage
+fi
+if (( ${#ARG_TERM[@]} > 1 )); then
+	usage "Expected at most one argument"
+fi
+
+FOUND_UDID=()
+FOUND_DESC=()
+FOUND_LIST=0
+FOUND_EXACT=0
+FOUND_INEXACT=0
+
+idevice_id --list | while read udid; do
+	declare -A info
+	ideviceinfo --udid "$udid" | grep -E "^($(join '|' "${KEYS[@]}")): " | while read line; do
+		if [[ $line =~ ^([^ ]+):\ (.+)$ ]]; then
+			info[${BASH_REMATCH[1]}]="${BASH_REMATCH[2]}"
+		else
+			err "$udid: bad line: '$line'"
+		fi
+	done
+
+	unset found
+	if ! [[ ${ARG_TERM+set} ]]; then
+		# if no arguments, print all devices according to -v/--verbose
+		found=list
+	elif [[ ${info[DeviceName],,} == ${ARG_TERM,,} ]]; then
+		found=exact
+	else
+		for v in "${info[@]}"; do
+			if [[ ${v,,} == *${ARG_TERM,,}* ]]; then
+				found=inexact
+				break
+			fi
+		done
+	fi
+	if [[ ${found+set} ]]; then
+		FOUND_UDID+=( "$udid" )
+		FOUND_DESC+=( "$udid (${info[DeviceName]}) [${info[ProductType]}] [${info[ProductVersion]}]" )
+		eval "(( ++FOUND_${found^^} ))"
+	fi
+done
+
+if (( !ARG_VERBOSE && ((!FOUND_INEXACT && FOUND_EXACT == 1) || FOUND_LIST) )); then
+	printf "%s\n" "${FOUND_UDID[@]}"
+elif (( FOUND_EXACT || FOUND_INEXACT || FOUND_LIST )); then
+	printf "%s\n" "${FOUND_DESC[@]}"
+else
+	exit 1
+fi
