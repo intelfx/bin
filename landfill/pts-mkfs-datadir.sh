@@ -29,8 +29,10 @@ if [[ ${ARG_PART+set} ]]; then
 	if mountpoint -q "$DATA_DIR"; then
 		sudo umount "$DATA_DIR"
 	fi
-	sudo mkfs ${ARG_FSTYPE+-t "$ARG_FSTYPE"} ${ARG_MKFS_OPTIONS+$ARG_MKFS_OPTIONS} "$ARG_PART"
-	sudo mount "$ARG_PART" ${ARG_MOUNT_OPTIONS+-o "$ARG_MOUNT_OPTIONS"} "$DATA_DIR"
+	[[ ${ARG_FSTYPE+set} ]] || die "--part set without --fstype"
+	sudo blkdiscard -f "$ARG_PART"
+	sudo mkfs -t "$ARG_FSTYPE" ${ARG_MKFS_OPTIONS+$ARG_MKFS_OPTIONS} "$ARG_PART"
+	sudo mount -t "$ARG_FSTYPE" "$ARG_PART" ${ARG_MOUNT_OPTIONS+-o "$ARG_MOUNT_OPTIONS"} "$DATA_DIR"
 	sudo chown "$(id -u):$(id -g)" "$DATA_DIR"
 	log "Re-initialized and mounted $ARG_PART (as $ARG_FSTYPE) on $DATA_DIR"
 else
