@@ -11,6 +11,7 @@ declare -A ARGS=(
 	[--fs:]=ARG_FSTYPE
 	[--mkfs:]=ARG_MKFS_OPTIONS
 	[--mount:]=ARG_MOUNT_OPTIONS
+	[--cmd:]="ARG_CMD append"
 	[--]=ARG_DIR
 )
 parse_args ARGS "$@" || usage 
@@ -41,6 +42,13 @@ else
 	[[ ! ${ARG_MOUNT_OPTIONS+set} ]] || die "--mount set without --part"
 	sudo find "$DATA_DIR" -mindepth 1 -maxdepth 1 -execdir rm -rf {} \+
 	log "Cleared $DATA_DIR"
+fi
+
+if [[ ${ARG_CMD+set} ]]; then
+	for c in "${ARG_CMD[@]}"; do
+		parallel --tty "$c" ::: "$DATA_DIR"
+	done
+	log "Ran ${#ARG_CMD[@]} commands on '$DATA_DIR'"
 fi
 
 tar -xaf "$DATA_FILE"
