@@ -207,6 +207,32 @@ pts_run() (
 	phoronix-test-suite benchmark "$name" "$@"
 )
 
+pts_setup_part() {
+	mkdir -p "$PTS_ROOT"
+	if [[ ${ARG_PART+set} ]]; then
+		[[ ${ARG_FSTYPE+set} ]] || die "--part set without --fstype"
+		pts_release_part
+		dry_run sudo blkdiscard -f "$ARG_PART"
+		dry_run sudo mkfs -t "$ARG_FSTYPE" ${ARG_MKFS_OPTIONS+$ARG_MKFS_OPTIONS} "$ARG_PART"
+		dry_run sudo mount -t "$ARG_FSTYPE" "$ARG_PART" ${ARG_MOUNT_OPTIONS+-o "$ARG_MOUNT_OPTIONS"} "$PTS_ROOT"
+		dry_run sudo chown "$(id -u):$(id -g)" "$PTS_ROOT"
+		dry_run sudo rm -df "$PTS_ROOT/lost+found"
+		log "Re-initialized and mounted $ARG_PART (as $ARG_FSTYPE) on $PTS_ROOT"
+	else
+		[[ ! ${ARG_FSTYPE+set} ]] || die "--fstype set without --part"
+		[[ ! ${ARG_MKFS_OPTIONS+set} ]] || die "--mkfs set without --part"
+		[[ ! ${ARG_MOUNT_OPTIONS+set} ]] || die "--mount set without --part"
+		dry_run sudo find "$PTS_ROOT" -mindepth 1 -maxdepth 1 -execdir rm -rf {} \+
+		log "Cleared $PTS_ROOT"
+	fi
+}
+
+pts_release_part() {
+	if mountpoint -q "$PTS_ROOT"; then
+		dry_run sudo umount "$PTS_ROOT"
+		log "Unmounted $PTS_ROOT"
+	fi
+}
 
 
 #
@@ -224,6 +250,7 @@ declare -A PTS_ENV=(
 	[pts/pgbench.TEST_RESULTS_NAME]=fstests
 )
 
+
 #
 # args
 #
@@ -236,48 +263,44 @@ declare -A ARGS=(
 	[--cmd:]="ARG_CMD append"
 	[--pts-env:]="ARG_PTS_ENV append"
 	[--pts-option:]="ARG_PTS_OPTIONS append"
-	[--install-only]=ARG_INSTALL_ONLY
 	[--]=ARGS_REMAINDER
 )
 
 parse_args ARGS "$@" || usage
 (( ${#ARGS_REMAINDER[@]} > 0 )) || usage
 
-ARG_TEST="${ARGS_REMAINDER[0]}"
+ARG_VERB="${ARGS_REMAINDER[0]}"
+
 
 #
-# mount scratch on pts dir
+# main
 #
 
-mkdir -p "$PTS_ROOT"
-if [[ ${ARG_PART+set} ]]; then
-	[[ ${ARG_FSTYPE+set} ]] || die "--part set without --fstype"
-	if mountpoint -q "$PTS_ROOT"; then
-		dry_run sudo umount "$PTS_ROOT"
-	fi
-	dry_run sudo blkdiscard -f "$ARG_PART"
-	dry_run sudo mkfs -t "$ARG_FSTYPE" ${ARG_MKFS_OPTIONS+$ARG_MKFS_OPTIONS} "$ARG_PART"
-	dry_run sudo mount -t "$ARG_FSTYPE" "$ARG_PART" ${ARG_MOUNT_OPTIONS+-o "$ARG_MOUNT_OPTIONS"} "$PTS_ROOT"
-	dry_run sudo chown "$(id -u):$(id -g)" "$PTS_ROOT"
-	dry_run sudo rm -df "$PTS_ROOT/lost+found"
-	log "Re-initialized and mounted $ARG_PART (as $ARG_FSTYPE) on $PTS_ROOT"
-else
-	[[ ! ${ARG_FSTYPE+set} ]] || die "--fstype set without --part"
-	[[ ! ${ARG_MKFS_OPTIONS+set} ]] || die "--mkfs set without --part"
-	[[ ! ${ARG_MOUNT_OPTIONS+set} ]] || die "--mount set without --part"
-	dry_run sudo find "$PTS_ROOT" -mindepth 1 -maxdepth 1 -execdir rm -rf {} \+
-	log "Cleared $PTS_ROOT"
-fi
+case "$ARG_VERB" in
+benchmark)
+	(( ${#ARGS_REMAINDER[@]} == 2 )) || usage
+	ARG_TEST="${ARGS_REMAINDER[1]}"
 
-#
-# restore pts dir
-#
-
-pts_restore
-pts_install "$ARG_TEST"
-pts_save
-if ! [[ ${ARG_INSTALL_ONLY+set} ]]; then
+	pts_setup_part
+	pts_restore
+	pts_install "$ARG_TEST"
+	pts_save
 	pts_run "$ARG_TEST"
 	pts_restore_file "$PTS_TEST_ROOT" "$SAVED_FILE"  # drop modified test state
 	pts_save
-fi
+	;;
+
+install)
+	(( ${#ARGS_REMAINDER[@]} == 2 )) || usage
+	ARG_TEST="${ARGS_REMAINDER[1]}"
+
+	pts_setup_part
+	pts_restore
+	pts_install "$ARG_TEST"
+	pts_save
+	;;
+
+*)
+	die "Unknown verb: $ARG_VERB"
+	;;
+esac
