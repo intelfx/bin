@@ -124,6 +124,7 @@ pts_restore_file() {
 
 pts_restore() {
 	pts_restore_dir "$HOME" "$PTS_ROOT"
+	ltrap pts_save
 }
 
 pts_save() {
@@ -209,9 +210,10 @@ pts_run() (
 
 pts_setup_part() {
 	mkdir -p "$PTS_ROOT"
+	pts_release_part
+	ltrap pts_release_part
 	if [[ ${ARG_PART+set} ]]; then
 		[[ ${ARG_FSTYPE+set} ]] || die "--part set without --fstype"
-		pts_release_part
 		dry_run sudo blkdiscard -f "$ARG_PART"
 		dry_run sudo mkfs -t "$ARG_FSTYPE" ${ARG_MKFS_OPTIONS+$ARG_MKFS_OPTIONS} "$ARG_PART"
 		dry_run sudo mount -t "$ARG_FSTYPE" "$ARG_PART" ${ARG_MOUNT_OPTIONS+-o "$ARG_MOUNT_OPTIONS"} "$PTS_ROOT"
@@ -276,6 +278,8 @@ ARG_VERB="${ARGS_REMAINDER[0]}"
 # main
 #
 
+eval "$(globaltraps)"
+
 case "$ARG_VERB" in
 benchmark)
 	(( ${#ARGS_REMAINDER[@]} == 2 )) || usage
@@ -286,7 +290,6 @@ benchmark)
 	pts_install "$ARG_TEST"
 	pts_run "$ARG_TEST"
 	pts_restore_file "$PTS_TEST_ROOT" "$SAVED_FILE"  # drop modified test state
-	pts_save
 	;;
 
 install)
@@ -295,7 +298,6 @@ install)
 
 	pts_restore
 	pts_install "$ARG_TEST"
-	pts_save
 	;;
 
 *)
