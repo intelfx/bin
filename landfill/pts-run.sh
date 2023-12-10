@@ -284,7 +284,6 @@ benchmark)
 	pts_setup_part
 	pts_restore
 	pts_install "$ARG_TEST"
-	pts_save
 	pts_run "$ARG_TEST"
 	pts_restore_file "$PTS_TEST_ROOT" "$SAVED_FILE"  # drop modified test state
 	pts_save
