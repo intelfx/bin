@@ -34,6 +34,10 @@ pts_save_dir() {
 	else
 		die "Found ${#dirs[@]} directories matching $dir, cannot proceed"
 	fi
+
+	SAVED=1
+	SAVED_FILE="$root/$file.tar.zst"
+	SAVED_DIR="$dirs"
 }
 
 pts_restore_dir() {
@@ -274,5 +278,6 @@ pts_install "$ARG_TEST"
 pts_save
 if ! [[ ${ARG_INSTALL_ONLY+set} ]]; then
 	pts_run "$ARG_TEST"
+	pts_restore_file "$PTS_TEST_ROOT" "$SAVED_FILE"  # drop modified test state
 	pts_save
 fi
