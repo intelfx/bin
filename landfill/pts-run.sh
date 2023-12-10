@@ -293,7 +293,6 @@ install)
 	(( ${#ARGS_REMAINDER[@]} == 2 )) || usage
 	ARG_TEST="${ARGS_REMAINDER[1]}"
 
-	pts_setup_part
 	pts_restore
 	pts_install "$ARG_TEST"
 	pts_save
