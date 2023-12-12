@@ -1,0 +1,36 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+CURL_ARGS=()
+HAS_FILE=0
+
+add_url_or_file() {
+	(( !HAS_FILE )) || die "Multiple URL or file arguments"
+	HAS_FILE=1
+	if [[ $1 == *://* ]]; then
+		CURL_ARGS+=( "-Furl=$1" )
+	else
+		CURL_ARGS+=( "-Ffile=@$1" )
+	fi
+}
+
+while (( $# )); do
+	if [[ $1 == -- ]]; then
+		break
+	elif [[ $1 == -* ]]; then
+		FIELDS+=( "$1" )
+	elif [[ $1 == *=* ]]; then
+		FIELDS+=( "-F$1" )
+	else
+		add_url_or_file "$1"
+	fi
+	shift 1
+done
+
+while (( $# )); do
+	add_url_or_file "$1"
+	shift 1
+done
+
+exec curl "${CURL_ARGS[@]}" https://0x0.st
