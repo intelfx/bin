@@ -1,17 +1,123 @@
 #!/bin/bash -e
 
-#
-# disable cache autodetection and only rely on $PATH
-#
+die() {
+	echo "$*" >&2
+	exit 1
+}
 
-function try() {
+cache=auto
+args=()
+cc=(cc gcc clang)
+cxx=(c++ g++ clang++)
+compilers=()
+
+if [[ $CC ]]; then
+	cc=( "$CC" "${cc[@]}" )
+	unset CC
+fi
+if [[ $CXX ]]; then
+	cxx=( "$CXX" "${cxx[@]}" )
+	unset CXX
+fi
+
+grab_compiler() {
+	local arg
 	for arg; do
-		command -v "$arg" 2>/dev/null && return
+		if [[ $arg == */* ]]; then
+			echo "$arg"
+			return 0
+		elif command -v "$arg" 2>/dev/null; then
+			return 0
+		fi
 	done
 	return 1
 }
 
-[[ $CC ]] || export CC="$(try cc gcc clang)"
-[[ $CXX ]] || export CXX="$(try c++ g++ clang++)"
+grab_option() {
+	local diag="$1" opt="$2" name value novalue
 
-exec /usr/bin/meson "$@"
+	if [[ $opt =~ ^([^=]+)=(.*)?$ ]]; then
+		name="${BASH_REMATCH[1]}"
+		value="${BASH_REMATCH[2]}"
+	elif [[ $opt =~ ^([^=]+)$ ]]; then
+		name="${BASH_REMATCH[1]}"
+		novalue=1
+	else
+		die "Bad option: $diag"
+	fi
+
+	if [[ $name == cache && ! $novalue ]]; then
+		case "$value" in
+		''|0|no|off|none) cache="" ;;
+		ccache|sccache) cache="$value" ;;
+		*) die "Bad option: $diag" ;;
+		esac
+	elif [[ $name =~ ^(ccache|sccache)$ && ( $value || $novalue ) ]]; then
+		case "$value" in
+		''|1|yes|on|true|enabled) cache=$name ;;
+		*) die "Bad option: $diag" ;;
+		esac
+	else
+		die "Bad option: $diag"
+	fi
+}
+
+while (( $# )); do
+	if [[ $1 == -D && $2 =~ ^(cache|ccache|sccache) ]]; then
+		grab_option "$1 $2" "$2"
+		shift 2
+	elif [[ $1 =~ ^-D(cache|ccache|sccache) ]]; then
+		grab_option "$1" "${1#-D}"
+		shift 1
+	elif [[ $1 != -- ]]; then
+		args+=( "$1" )
+		shift 1
+	else
+		args+=( "$@" )
+		shift $#
+	fi
+done
+
+if [[ $cache == auto ]]; then
+	# disable meson's autodetection and find whatever is in $PATH
+	compilers+=(
+		CC="$(grab_compiler "${cc[@]}")"
+		CXX="$(grab_compiler "${cxx[@]}")"
+	)
+else
+	# find whatever is in $PATH sans caching wrappers, then prepend
+	# whatever caching wrapper is set (or nothing)
+	IFS=:
+	path=( $PATH )
+	newpath=()
+	for p in "${path[@]}"; do
+		if ! [[ $p/ == */ccache/* || $p/ == */sccache/* ]]; then
+			newpath+=( "$p" )
+		fi
+	done
+	PATH="${newpath[*]}"
+	unset IFS path newpath
+
+	if [[ $cache ]]; then
+		compilers+=(
+			CC="$cache $(grab_compiler "${cc[@]}")"
+			CXX="$cache $(grab_compiler "${cxx[@]}")"
+		)
+	else
+		compilers+=(
+			CC="$(grab_compiler "${cc[@]}")"
+			CXX="$(grab_compiler "${cxx[@]}")"
+		)
+	fi
+fi
+
+# do this here just for the sake of printing them
+for v in CPPFLAGS CFLAGS CXXFLAGS LDFLAGS; do
+	if [[ ${!v} ]]; then
+		compilers+=( "$v=${!v}" )
+	fi
+done
+
+set -x
+export "${compilers[@]}"
+exec /usr/bin/meson "${args[@]}"
