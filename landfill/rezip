@@ -1,0 +1,37 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+set -x
+
+_usage() { echo "Usage: $0 <zip file> <zip (1) args...>"; }
+
+ZIPFILE="$1"
+shift
+ZIPARGS=( "$@" )
+
+if ! [[ -n $ZIPFILE && -f $ZIPFILE ]]; then
+	die "Invalid zipfile: $ZIPFILE"
+fi
+
+tempdir=
+cleanup() {
+	rm -rf "$tempdir"
+	trap - EXIT
+}
+trap cleanup EXIT
+tempdir="$(mktemp -d)"
+
+origdir="$PWD"
+zippath="$(realpath --strip -- "$ZIPFILE")"
+cd "$tempdir"
+#UNZIP_DISABLE_ZIPBOMB_DETECTION=TRUE unzip -UU "$zippath"
+7zz x "$zippath"
+zip -r "${ZIPARGS[@]}" "$zippath.new.$$" .
+cd "$origdir"
+cleanup
+
+touch -r "$zippath" "$zippath.new.$$"
+#mv "$zippath" "$zippath~"
+mv "$zippath.new.$$" "$zippath"
+#mv "$zippath.new.$$" "$zippath.new"

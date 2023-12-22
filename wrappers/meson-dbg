@@ -1,0 +1,23 @@
+#!/bin/bash -e
+
+loadflags() (
+  . /etc/makepkg.conf &>/dev/null
+  # as we are hardcoding debug, do this also
+  CFLAGS+=" $DEBUG_CFLAGS"
+  CXXFLAGS+=" $DEBUG_CXXFLAGS"
+  { declare -p CC CXX CPPFLAGS CFLAGS CXXFLAGS LDFLAGS | sed -nr "s|^declare (-[^ ]+ )+|export |p"; } 2>/dev/null
+)
+
+eval "$(loadflags)"
+exec meson setup \
+  --prefix        /usr \
+  --libexecdir    lib \
+  --sbindir       bin \
+  --buildtype     debug \
+  --auto-features enabled \
+  --wrap-mode     nodownload \
+  -D              b_lto=false \
+  -D              b_pie=true \
+  -D              python.bytecompile=1 \
+  "$@"
+

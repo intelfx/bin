@@ -1,0 +1,58 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+CURL_ARGS=()
+HAS_FILE=0
+
+add_url_or_file() {
+	(( !HAS_FILE )) || die "Multiple URL or file arguments"
+	HAS_FILE=1
+	if [[ $1 == *://* ]]; then
+		log "Asking 0x0 to read from URL: $1"
+		CURL_ARGS+=( "-F" "url=$1" )
+	else
+		log "Reading from file: $1"
+		CURL_ARGS+=( "-F" "file=@$1" )
+	fi
+}
+
+add_stdin() {
+	(( !HAS_FILE )) || die "Multiple URL or file arguments"
+	HAS_FILE=1
+	log "Reading from stdin"
+	CURL_ARGS+=( "-Ffile=@-;filename=stdin" )
+}
+
+add_named_stdin() {
+	(( !HAS_FILE )) || die "Multiple URL or file arguments"
+	HAS_FILE=1
+	log "Reading from stdin as $1"
+	CURL_ARGS+=( "-F" "file=@-;filename=$1" )
+}
+
+while (( $# )); do
+	if [[ $1 == -- ]]; then
+		break
+	elif [[ $1 == - ]]; then
+		add_stdin
+	elif [[ $1 == *=- ]]; then
+		add_named_stdin "${1%=-}"
+	elif [[ $1 == -=* ]]; then
+		add_named_stdin "${1#-=}"
+	elif [[ $1 == -* ]]; then
+		FIELDS+=( "$1" )
+	elif [[ $1 == *=* ]]; then
+		FIELDS+=( "-F$1" )
+	else
+		add_url_or_file "$1"
+	fi
+	shift 1
+done
+
+while (( $# )); do
+	add_url_or_file "$1"
+	shift 1
+done
+
+trace curl "${CURL_ARGS[@]}" https://0x0.st
