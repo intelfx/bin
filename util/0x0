@@ -9,9 +9,11 @@ add_url_or_file() {
 	(( !HAS_FILE )) || die "Multiple URL or file arguments"
 	HAS_FILE=1
 	if [[ $1 == *://* ]]; then
-		CURL_ARGS+=( "-Furl=$1" )
+		log "Asking 0x0 to read from URL: $1"
+		CURL_ARGS+=( "-F" "url=$1" )
 	else
-		CURL_ARGS+=( "-Ffile=@$1" )
+		log "Reading from file: $1"
+		CURL_ARGS+=( "-F" "file=@$1" )
 	fi
 }
 
@@ -33,4 +35,4 @@ while (( $# )); do
 	shift 1
 done
 
-exec curl "${CURL_ARGS[@]}" https://0x0.st
+trace curl "${CURL_ARGS[@]}" https://0x0.st
