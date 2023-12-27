@@ -17,7 +17,7 @@ git_list_versions_rc() {
 	# TODO: "rolling back" changes with sed is ugly
 	# separate the tag and the sorting key
 	git tag --list \
-		| grep -Ex 'v[0-9]+\.[0-9]+(.[0-9]+)?(-rc[0-9]+)?' \
+		| grep -Ex 'v[0-9]+\.[0-9]+(-rc[0-9]+|\.[0-9]+)?' \
 		| sed -r 's|-rc|~rc|' \
 		| sort -V "$@" \
 		| sed -r 's|~rc|-rc|'
@@ -64,6 +64,7 @@ merge_makefile() {
 }
 
 declare -A PARSE_ARGS=(
+	[--rc]="ARG_RC"
 	[-c]="ARG_CONFLICTS"
 	[--conflicts]="ARG_CONFLICTS"
 	[-b:]="ARG_MAJOR"
@@ -81,43 +82,102 @@ parse_args PARSE_ARGS "$@"
 log "Fetching remotes"
 git fetch -j$(nproc) --multiple stable arch pf
 
+#
+# Determine patchset tips to use
+#
+
+if [[ $ARG_RC ]]; then
+	git_list_versions() { git_list_versions_rc "$@"; }
+fi
+
 log "Determining versions"
 if [[ "$ARG_MINOR" ]]; then
-	tag="$(git_list_versions | grep -Fx "$ARG_MINOR" | tail -n1)"
-	git_verify "$tag" || die "Failed to find $ARG_MINOR, exiting" || true
-	log " Requested version: $tag"
+	if tag="$(git_list_versions | grep -Fx "$ARG_MINOR" | tail -n1)" \
+	&& git_verify "$tag"; then
+		log " Requested release: $tag"
+	else
+		die "Failed to verify requested release: $ARG_MINOR"
+	fi
 elif [[ "$ARG_MAJOR" ]]; then
-	tag="$(git_list_versions | grep -Ex "$ARG_MAJOR(\.[0-9]+)?" | tail -n1)"
-	git_verify "$tag" || die "Failed to determine latest patch for $ARG_MAJOR, exiting" || true
-	log " Latest patch for $ARG_MAJOR: $tag"
+	if tag="$(git_list_versions | grep -Ex "$ARG_MAJOR(\.[0-9]+)?" | tail -n1)" \
+	&& git_verify "$tag"; then
+		log " Latest release for requested branch: $tag"
+	elif tag="$(git_list_versions | grep -Ex "$ARG_MAJOR-rc[0-9]+" | tail -n1)" \
+	&& git_verify "$tag"; then
+		log " Latest -rc for requested branch: $tag"
+	else
+		die "Failed to determine latest release for requested branch: $ARG_MAJOR"
+	fi
 else
-	tag="$(git_list_versions | tail -n1)"
-	git_verify "$tag" || die "Failed to determine latest stable, exiting" || true
-	log " Latest stable: $tag"
+	if tag="$(git_list_versions | tail -n1)" \
+	&& git_verify "$tag"; then
+		log " Latest release: $tag"
+	else
+		die "Failed to determine latest release"
+	fi
 fi
 
-release="$(<<<"$tag" sed -nr 's|^v([0-9]+\.[0-9]+)(\.[0-9]+)?$|\1|p')" || true
-git_verify "v$release" || die "Failed to determine major release, exiting"
-log " Major release: $release"
+if major="$(<<<"$tag" sed -nr 's#^v([0-9]+\.[0-9]+)(\.[0-9]+)?$#\1#p')" \
+&& git_verify "v$major"; then
+	log " Major branch: $major"
+elif major="$(<<<"$tag" sed -nr 's#^v([0-9]+\.[0-9]+)(-rc[0-9]+)?$#\1#p')"; then
+	log " Major branch: $major (${tag#v$major})"
+else
+       die "Failed to determine major branch, exiting"
+fi
 
-if [[ "$ARG_PF" ]]; then
-	pf_tag="$ARG_PF"
-	git_verify "$pf_tag" || die "Failed to find $pf_tag, exiting" || true
+if [[ "$ARG_PF" ]] \
+&& pf_tag="$ARG_PF" \
+&& git_verify "$pf_tag"; then
 	log " Requested -pf tag: $pf_tag"
-else
-	pf_tag="$(git tag --list "v$release-pf*" | grep -E -- '-pf[0-9]+$' | sort -V | tail -n1)" || true
-	git_verify "$pf_tag" || die "Failed to determine latest -pf, exiting"
+elif pf_tag="$(git tag --list "v$major-pf*" | grep -E -- '-pf[0-9]+$' | sort -V | tail -n1)" \
+  && git_verify "$pf_tag"; then
 	log " Latest -pf tag: $pf_tag"
+elif pf_tag="pf/pf-$major" \
+  && git_verify "$pf_tag"; then
+	log " Using -pf branch: $pf_tag"
+else
+	die "Failed to determine latest -pf, exiting"
 fi
 
-arch_tag="$(git tag --list "$tag-arch*" | grep -E -- '-arch[0-9]+$' | sort -V | tail -n1)" || true
-git_verify "$arch_tag" || die "Failed to determine latest -arch, exiting"
+arch_tag="$(git tag --list "$tag*arch*" | grep -E -- '-(rc[0-9]+)?arch[0-9]+$' | sort -V | tail -n1)" || true
+git_verify "$arch_tag" || die "Failed to determine latest -arch for $tag, exiting"
 log " Latest -arch tag: $arch_tag"
 
-#if ! final_extraversion="$(makefile_get_extraversion)"; then
-#	die "Could not determine final extraversion"
-#fi
-final_tag="$tag-${arch_tag##*-}${pf_tag##*-}"
+#
+# Compute git version string
+#
+
+tag_base="$tag"
+tag_extras=()
+if [[ $tag != *-* ]]; then
+	:
+elif [[ $tag =~ ^(.+)-(rc[0-9]+)$ ]]; then
+	tag_base="${BASH_REMATCH[1]}"
+	tag_extras+=( "${BASH_REMATCH[2]}" )
+else
+	die "Failed to extract base version ($tag)"
+fi
+
+if [[ $arch_tag =~ (arch[0-9]+)$ ]]; then
+	tag_extras+=( "${BASH_REMATCH[1]}" )
+else
+	die "Failed to extract -arch version ($arch_tag)"
+fi
+
+pf_desc="$(git describe --tags "$pf_tag")"
+if [[ $pf_desc =~ (pf[0-9]+)$ ]]; then
+	tag_extras+=( "${BASH_REMATCH[1]}" )
+elif [[ $pf_desc =~ (pf[0-9]+)-([0-9]+)-g.+$ ]]; then
+	tag_extras+=( "${BASH_REMATCH[1]}+${BASH_REMATCH[2]}" )
+elif [[ $pf_desc =~ -([0-9]+)-g.+$ ]]; then
+	tag_extras+=( "pf0+${BASH_REMATCH[1]}" )
+else
+	die "Failed to extract -pf version ($pf_tag) ($pf_desc)"
+fi
+
+IFS=''; final_tag="$tag_base-${tag_extras[*]}"; unset IFS
+log " Final tag: $final_tag"
 
 if [[ "$ARG_KEEP" ]] && git_verify "$final_tag"; then
 	log "Tag $final_tag already exists and -k/--keep specified, not overwriting"
@@ -126,14 +186,23 @@ fi
 
 eval "$(globaltraps)"
 
-log "Merging -pf"
-git checkout -f "$arch_tag"
-if ! git merge --no-commit "$pf_tag"; then
-	ltrap 'git merge --abort'
+#
+# Actually merge patchset tips
+#
+
+log "Checking out base tag"
+git checkout -f "$tag"
+
+log "Merging -arch"
+if ! git merge --ff "$arch_tag"; then
+	die "Failed to merge -arch -- not fast-forward?"
 fi
 
+log "Merging -pf"
+git merge --no-ff --no-commit "$pf_tag" || true
+ltrap 'git merge --abort'
+
 log "Handling conflicts"
-conflicts=0
 git_list_conflicts | while read line; do
 	git_list_parse "$line"
 	case "$file" in
