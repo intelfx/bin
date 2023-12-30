@@ -1,0 +1,5 @@
+#!/bin/bash
+
+set -exo pipefail
+
+podman image ls "$@" --format json | jq -r '.[] | (try .Names[] | sub(":[^:]+$"; ""))' | sort -u
