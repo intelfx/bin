@@ -1,0 +1,49 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+# $1 -- dir
+update_srcinfo() (
+	cd "$1"
+	if [[ -e PKGBUILD && PKGBUILD -nt .SRCINFO ]]; then
+		makepkg --printsrcinfo > .SRCINFO
+	fi
+)
+
+# $1:
+# - /path/to/PKGBUILD
+# - /path/to/.SRCINFO
+# - /path/to/dir/ (must contain PKGBUILD and/or .SRCINFO)
+# - /path/to/file (interpreted as .SRCINFO)
+print_srcinfo() {
+	local arg="$1" dir name
+
+	if [[ -f "$arg" ]]; then
+		dir="$(dirname "$arg")"
+		name="$(basename "$arg")"
+		if [[ $name == PKGBUILD || $name == .SRCINFO ]]; then
+			update_srcinfo "$dir"
+			name=.SRCINFO
+		fi
+	elif [[ -d "$arg" ]]; then
+		dir="$arg"
+		if [[ -e "$dir/PKGBUILD" || -e "$dir/.SRCINFO" ]]; then
+			update_srcinfo "$dir"
+			name=.SRCINFO
+		else
+			die "Directory does not contain PKGBUILD or .SRCINFO: $dir"
+		fi
+	else
+		die "Argument does not exist: $arg"
+	fi
+
+	parse_srcinfo --json < "$dir/$name"
+}
+
+libsh_export_log
+export -f update_srcinfo print_srcinfo
+
+if [[ $# == 0 ]]; then
+	set -- .
+fi
+PARALLEL_SHELL="$BASH" exec parallel print_srcinfo ::: "$@"
