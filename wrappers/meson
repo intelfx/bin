@@ -5,11 +5,13 @@ die() {
 	exit 1
 }
 
-cache=auto
 args=()
 cc=(cc gcc clang)
 cxx=(c++ g++ clang++)
 compilers=()
+want_ccache=
+want_sccache=
+cache=auto
 
 if [[ $CC ]]; then
 	cc=( "$CC" "${cc[@]}" )
@@ -46,15 +48,20 @@ grab_option() {
 		die "Bad option: $diag"
 	fi
 
-	if [[ $name == cache && ! $novalue ]]; then
+	if [[ $name == cache ]]; then
+		if [[ $novalue ]]; then value=1; fi
 		case "$value" in
-		''|0|no|off|none) cache="" ;;
-		ccache|sccache) cache="$value" ;;
+		1|yes|on|true|enabled) want_ccache=1; want_sccache=1 ;;
+		''|0|no|off|false|disabled|none) want_ccache=0; want_sccache=0 ;;
+		ccache|sccache) declare -n target_var="want_$value"; target_var=1 ;;
 		*) die "Bad option: $diag" ;;
 		esac
-	elif [[ $name =~ ^(ccache|sccache)$ && ( $value || $novalue ) ]]; then
+	elif [[ $name =~ ^(ccache|sccache)$ ]]; then
+		if [[ $novalue ]]; then value=1; fi
+		declare -n target_var="want_$name"
 		case "$value" in
-		''|1|yes|on|true|enabled) cache=$name ;;
+		1|yes|on|true|enabled) target_var=1 ;;
+		0|no|off|false|disabled) target_var=0 ;;
 		*) die "Bad option: $diag" ;;
 		esac
 	else
@@ -62,6 +69,27 @@ grab_option() {
 	fi
 }
 
+grab_env() {
+	local env="$1"
+
+	if [[ $env =~ ^DISABLE_(CCACHE|SCCACHE)$ ]]; then
+		declare -n env_var="$env"
+		if [[ $env_var == 0 || $env_var == 1 ]]; then
+			declare -n target_var="want_${BASH_REMATCH[1],,}"
+			target_var="$(( !env_var ))"
+		elif [[ ${env_var+set} ]]; then
+			die "Bad environment variable: $env=${env_var@Q}"
+		fi
+	else
+		die "Bad environment variable: $env"
+	fi
+}
+
+# parse environment first
+grab_env DISABLE_CCACHE
+grab_env DISABLE_SCCACHE
+
+# (fake) meson options override environment
 while (( $# )); do
 	if [[ $1 == -D && $2 =~ ^(cache|ccache|sccache) ]]; then
 		grab_option "$1 $2" "$2"
@@ -78,6 +106,22 @@ while (( $# )); do
 	fi
 done
 
+# make decision
+if [[ $want_ccache == 0 && $want_sccache == 0 ]]; then
+	cache=""
+elif [[ $want_ccache == 1 && $want_sccache == 1 ]]; then
+	cache="ccache"
+elif [[ $want_ccache == 1 || $want_sccache == 0 ]]; then
+	cache="ccache"
+elif [[ $want_ccache == 0 || $want_sccache == 1 ]]; then
+	cache="sccache"
+elif [[ ! $want_ccache && ! $want_sccache ]]; then
+	cache="auto"
+else
+	die "Internal error"
+fi
+
+# implement decision
 if [[ $cache == auto ]]; then
 	# disable meson's autodetection and find whatever is in $PATH
 	compilers+=(
@@ -99,11 +143,13 @@ else
 	unset IFS path newpath
 
 	if [[ $cache ]]; then
+		# we want _some_ cache; use it
 		compilers+=(
 			CC="$cache $(grab_compiler "${cc[@]}")"
 			CXX="$cache $(grab_compiler "${cxx[@]}")"
 		)
 	else
+		# we do not want any cache
 		compilers+=(
 			CC="$(grab_compiler "${cc[@]}")"
 			CXX="$(grab_compiler "${cxx[@]}")"
