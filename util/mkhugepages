@@ -1,0 +1,141 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+#
+# Recursive call fast path (not loading lib.sh)
+#
+
+# in: $HUGE_DIR, $HUGE_NR, $RESET
+# out: $nr, exitcode
+check_hugepage_progress() {
+	nr="$(< "$HUGE_DIR/nr_hugepages" )"
+	if [[ $RESET ]]; then
+		(( nr == HUGE_NR )) && {
+			innermsg=success
+			outermsg="$nr"
+			return 0
+		} || {
+			outermsg="$nr != $HUGE_NR"
+			return 1
+		}
+	else
+		(( nr >= HUGE_NR )) && {
+			innermsg="success, $nr >= $HUGE_NR"
+			outermsg="$nr >= $HUGE_NR"
+			return 0
+		} || {
+			outermsg="$nr < $HUGE_NR"
+			return 1
+		}
+	fi
+}
+
+if [[ $1 == write && $# == 4 && -d $2 && $3 =~ ^[0-9]+$ && $4 =~ (reset|) ]]; then
+	HUGE_DIR="$2"
+	HUGE_NR="$3"
+	RESET="$4"
+
+	# status output
+	cd "$HUGE_DIR"
+	grep . free_hugepages nr_hugepages nr_overcommit_hugepages resv_hugepages surplus_hugepages
+	echo ""
+
+	if check_hugepage_progress; then
+		echo "[$innermsg]"
+		status=1  # reverse exit code for watch(1)'s --errexit
+	else
+		sync
+		sysctl vm.drop_caches=3 vm.compact_memory=1
+		echo "$HUGE_NR" > "$HUGE_DIR/nr_hugepages" && rc=0 || rc=$?
+		if [[ $rc == 0 ]]; then
+			echo "[${HUGE_DIR##*/hugepages-}].nr_hugepages = ${HUGE_NR}"
+		else
+			echo "[${HUGE_DIR##*/hugepages-}].nr_hugepages = ${HUGE_NR} [failure, rc=$rc]"
+			exit $rc
+		fi
+		status=0  # reverse exit code for watch(1)'s --errexit
+	fi
+	exit $status
+elif [[ $1 == write ]]; then
+	die "Invalid call: $0 ${*@Q}"
+fi
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+Usage: $0 [--reset] [-s|--size HUGEPAGE-SIZE] TOTAL [HUGEPAGE-SIZE]
+EOF
+}
+
+declare -A ARGS=(
+	#[-t|--timeout]=ARG_TIMEOUT
+	[-s|--size]=ARG_HUGE_SIZE
+	[--reset]=ARG_RESET
+	[--]=ARGS_REMAINDER
+)
+parse_args ARGS "$@" || usage
+
+if ! [[ ${#ARGS_REMAINDER[@]} == 1 || ${#ARGS_REMAINDER[@]} == 2 ]]; then
+	usage "Expected 1 or 2 positional arguments, got ${#ARGS_REMAINDER[@]}"
+fi
+
+if [[ ${ARG_HUGE_SIZE+set} ]]; then
+	if [[ ${#ARGS_REMAINDER[@]} == 2 ]]; then
+		usage "Either -s/--size or a positional size argument must be provided, but not both"
+	fi
+elif [[ ${#ARGS_REMAINDER[@]} == 2 ]]; then
+	ARG_HUGE_SIZE="${ARGS_REMAINDER[1]}"
+else
+	find /sys/kernel/mm/hugepages -mindepth 1 -maxdepth 1 -type d -name 'hugepages-*' -printf '%P\n' | sort -n -k 1.11 | readarray -t huges
+	[[ ${huges+set} ]] || die "The system does not support any huge page sizes"
+	[[ ${huges[0]} =~ hugepages-([0-9]+)kB ]] || die "Invalid huge page size read from sysfs: ${huges[0]}"
+	ARG_HUGE_SIZE="${BASH_REMATCH[1]}KiB"
+	log "Defaulting to $ARG_HUGE_SIZE huge pages"
+fi
+ARG_HUGE_NR="${ARGS_REMAINDER[0]}"
+
+if ! HUGE_SIZE="$(bscalc -k "$ARG_HUGE_SIZE")"; then
+	die "Invalid hugepage size: $ARG_HUGE_SIZE"
+fi
+if ! [[ $HUGE_SIZE =~ ^([0-9]+)\ KiB$ ]]; then
+	die "Invalid hugepage size: $ARG_HUGE_SIZE ($HUGE_SIZE)"
+fi
+
+HUGE_NAME="${BASH_REMATCH[1]}kB"
+HUGE_DIR="/sys/kernel/mm/hugepages/hugepages-${HUGE_NAME}"
+if ! [[ -d "$HUGE_DIR" ]]; then
+	die "Unsupported hugepage size: $ARG_HUGE_SIZE ($HUGE_SIZE, $HUGE_NAME)"
+fi
+if ! [[ -w "$HUGE_DIR/nr_hugepages" ]]; then
+	die "Insufficient privileges, cannot write to $HUGE_DIR/nr_hugepages"
+fi
+
+if [[ $ARG_HUGE_NR =~ ^[0-9]+$ ]]; then
+	HUGE_NR="$ARG_HUGE_NR"
+else
+	if ! HUGE_NR="$(bscalc "$ARG_HUGE_NR / $HUGE_SIZE")"; then
+		die "Invalid hugepage total: $ARG_HUGE_NR"
+	fi
+	if ! [[ $HUGE_NR =~ ^[0-9]+$ ]]; then
+		die "Invalid hugepage total: $ARG_HUGE_NR ($HUGE_NR of $HUGE_SIZE pages)"
+	fi
+fi
+
+if [[ ${ARG_RESET+set} ]]; then
+	RESET=reset
+else
+	RESET=""
+fi
+
+watch -n0.5 --errexit --equexit 20 --exec $0 write "$HUGE_DIR" "$HUGE_NR" "$RESET" && rc=0 || rc=$?
+
+if check_hugepage_progress; then
+	# success
+	log "Succesfully ensured $outermsg hugepages"
+else
+	# failure
+	die "Failed to make progress ($outermsg)"
+fi
