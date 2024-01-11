@@ -12,23 +12,23 @@ shopt -s lastpipe
 check_hugepage_progress() {
 	nr="$(< "$HUGE_DIR/nr_hugepages" )"
 	if [[ $RESET ]]; then
-		(( nr == HUGE_NR )) && {
+		if (( nr == HUGE_NR )); then
 			innermsg=success
 			outermsg="$nr"
 			return 0
-		} || {
+		else
 			outermsg="$nr != $HUGE_NR"
 			return 1
-		}
+		fi
 	else
-		(( nr >= HUGE_NR )) && {
+		if (( nr >= HUGE_NR )); then
 			innermsg="success, $nr >= $HUGE_NR"
 			outermsg="$nr >= $HUGE_NR"
 			return 0
-		} || {
+		else
 			outermsg="$nr < $HUGE_NR"
 			return 1
-		}
+		fi
 	fi
 }
 
