@@ -82,6 +82,7 @@ if ! [[ ${#ARGS_REMAINDER[@]} == 1 || ${#ARGS_REMAINDER[@]} == 2 ]]; then
 	usage "Expected 1 or 2 positional arguments, got ${#ARGS_REMAINDER[@]}"
 fi
 
+# parse hugepage size (-s/--size or $2)
 if [[ ${ARG_HUGE_SIZE+set} ]]; then
 	if [[ ${#ARGS_REMAINDER[@]} == 2 ]]; then
 		usage "Either -s/--size or a positional size argument must be provided, but not both"
@@ -95,7 +96,6 @@ else
 	ARG_HUGE_SIZE="${BASH_REMATCH[1]}KiB"
 	log "Defaulting to $ARG_HUGE_SIZE huge pages"
 fi
-ARG_HUGE_NR="${ARGS_REMAINDER[0]}"
 
 if ! HUGE_SIZE="$(bscalc -k "$ARG_HUGE_SIZE")"; then
 	die "Invalid hugepage size: $ARG_HUGE_SIZE"
@@ -104,15 +104,8 @@ if ! [[ $HUGE_SIZE =~ ^([0-9]+)\ KiB$ ]]; then
 	die "Invalid hugepage size: $ARG_HUGE_SIZE ($HUGE_SIZE)"
 fi
 
-HUGE_NAME="${BASH_REMATCH[1]}kB"
-HUGE_DIR="/sys/kernel/mm/hugepages/hugepages-${HUGE_NAME}"
-if ! [[ -d "$HUGE_DIR" ]]; then
-	die "Unsupported hugepage size: $ARG_HUGE_SIZE ($HUGE_SIZE, $HUGE_NAME)"
-fi
-if ! [[ -w "$HUGE_DIR/nr_hugepages" ]]; then
-	die "Insufficient privileges, cannot write to $HUGE_DIR/nr_hugepages"
-fi
-
+# parse hugepage amount ($1)
+ARG_HUGE_NR="${ARGS_REMAINDER[0]}"
 if [[ $ARG_HUGE_NR =~ ^[0-9]+$ ]]; then
 	HUGE_NR="$ARG_HUGE_NR"
 else
@@ -124,12 +117,24 @@ else
 	fi
 fi
 
+# parse reset flag (--reset)
 if [[ ${ARG_RESET+set} ]]; then
 	RESET=reset
 else
 	RESET=""
 fi
 
+# Find hugepage directory
+HUGE_NAME="${HUGE_SIZE/ KiB/kB}"
+HUGE_DIR="/sys/kernel/mm/hugepages/hugepages-${HUGE_NAME}"
+if ! [[ -d "$HUGE_DIR" ]]; then
+	die "Unsupported hugepage size: $ARG_HUGE_SIZE ($HUGE_SIZE, $HUGE_NAME)"
+fi
+if ! [[ -w "$HUGE_DIR/nr_hugepages" ]]; then
+	die "Insufficient privileges, cannot write to $HUGE_DIR/nr_hugepages"
+fi
+
+# Allocate hugepages repeatedly
 watch -n0.5 --errexit --equexit 20 --exec $0 write "$HUGE_DIR" "$HUGE_NR" "$RESET" && rc=0 || rc=$?
 
 if check_hugepage_progress; then
