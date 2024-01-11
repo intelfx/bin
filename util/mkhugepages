@@ -120,7 +120,7 @@ else
 fi
 
 # parse reset flag (--reset)
-if [[ ${ARG_RESET+set} ]]; then
+if [[ ${ARG_RESET+set} || $HUGE_NR == 0 ]]; then
 	RESET=reset
 else
 	RESET=""
