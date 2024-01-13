@@ -1,0 +1,190 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+#
+# args & usage
+#
+
+_usage() {
+	cat <<EOF
+Usage: pg_backup_to [-D|--directory POSTGRES-ROOT] [-p|--port POSTGRES-PORT]
+                    [ [-o|--output OUTPUT-FILE] | [-O|--output-dir OUTPUT-DIR] ]
+                    [-c|--compress COMPRESSOR-CMDLINE]
+                    [--] [POSTGRES-ROOT]
+EOF
+}
+
+declare -A ARGS=(
+	[-D|--directory:]="ARG_PGROOT"
+	[-p|--port:]="ARG_PGPORT"
+	#[-o|--output:]="ARG_OUTPUT"
+	[-O|--output-dir:]="ARG_OUTPUT_DIR"
+	[-c|--compress:]="ARG_COMPRESS"
+	[-N|--no-compress]="ARG_NOCOMPRESS"
+	[--]="ARG_REMAINDER"
+)
+
+parse_args ARGS "$@" || usage
+
+case "${#ARG_REMAINDER[@]}" in
+1)
+	[[ ! ${ARG_PGROOT+set} ]] || usage "Both -D/--directory and a positional parameter passed"
+	ARG_PGROOT="${ARG_REMAINDER}"
+	;;
+0)
+	[[ ${ARG_PGROOT+set} ]] || usage "-D/--directory not passed"
+	;;
+*)
+	usage "Expected at most 1 positional parameter"
+	;;
+esac
+if ! [[ -d "$ARG_PGROOT" && -r "$ARG_PGROOT" ]]; then
+	die "-D/--directory does not exist or is unreadable: $ARG_PGROOT"
+fi
+if [[ ! -e "$ARG_PGROOT/PG_VERSION" && -e "$ARG_PGROOT/data/PG_VERSION" ]]; then
+	warn "-D/--directory is $ARG_PGROOT instead of $ARG_PGROOT/data; adjusting"
+	ARG_PGROOT="$ARG_PGROOT/data"
+fi
+ARG_PGROOT="$(realpath -qe "$ARG_PGROOT")"
+log "PostgreSQL directory: $ARG_PGROOT"
+
+if ! [[ ${ARG_OUTPUT_DIR+set} ]]; then
+	usage "-O/--output-dir not set"
+fi
+if [[ -s "$ARG_OUTPUT_DIR" ]]; then
+	die "-O/--output-dir not empty"
+fi
+ARG_OUTPUT_DIR="$(realpath -qm "$ARG_OUTPUT_DIR")"
+log "Output directory: $ARG_OUTPUT_DIR"
+
+if ! [[ ${ARG_PGPORT+set} ]]; then
+	ARG_PGPORT="$(( 54320 + (RANDOM % 10) ))"
+	log "Port: $ARG_PGPORT (-p/--port not set)"
+else
+	log "Port: $ARG_PGPORT"
+fi
+
+if [[ ${ARG_NOCOMPRESS+set} ]]; then
+	COMPRESS_ARGS=()
+	EXTENSION=""
+elif [[ "$ARG_COMPRESS" ]]; then
+	COMPRESS_ARGS=( $ARG_COMPRESS )
+	case "$(basename "${ARG_COMPRESS[0]}")" in
+	gzip|pigz)
+		EXTENSION=".gz" ;;
+	xz|pixz)
+		EXTENSION=".xz" ;;
+	bzip2|pbzip2)
+		EXTENSION=".bz2" ;;
+	lrzip)
+		EXTENSION=".lrz" ;;
+	zstd|zstdmt)
+		EXTENSION=".zst"
+		unset zst_has_threads
+		for a in "${COMPRESS_ARGS[@]:1}"; do
+			if [[ ($a != --* && $a == -*T*) || $a == --threads* ]]; then
+				zst_has_threads=1
+			elif [[ $a == -- ]]; then
+				break
+			fi
+		done
+		if [[ ! ${zst_has_threads+set} ]]; then
+			log "zstd: adding -T0 to command line"
+			COMPRESS_ARGS=( "${COMPRESS_ARGS[0]}" -T0 "${COMPRESS_ARGS[@]:1}" )
+		fi
+		;;
+	*)
+		die "Unknown compressor: ${ARG_COMPRESS[0]}" ;;
+	esac
+else
+	COMPRESS_ARGS=(
+		zstd -T0 -19
+	)
+	EXTENSION=".zst"
+fi
+
+if [[ ${COMPRESS_ARGS+set} ]]; then
+	log "Compression: ${COMPRESS_ARGS[@]} ($EXTENSION)"
+else
+	log "Compression: disabled"
+fi
+
+
+#
+# cleanup
+#
+
+eval "$(globaltraps)"
+
+unset OK
+fail_cleanup() {
+	if ! [[ ${OK+set} ]]; then
+		trace rm -vf "$ARG_OUTPUT_DIR"/*
+	fi
+}
+ltrap fail_cleanup
+
+SYSTEMD_UNITS=()
+systemd_cleanup() {
+	if [[ ${SYSTEMD_UNITS+set} ]]; then
+		trace sudo systemctl stop "${SYSTEMD_UNITS[@]}"
+	fi
+}
+ltrap systemd_cleanup
+
+
+#
+# main
+#
+
+POSTGRES_ARGS=(
+	postgres
+	-D "$ARG_PGROOT"
+	-k "$ARG_PGROOT"
+	-c "huge_pages=off"
+	-h ''
+	-p "$ARG_PGPORT"
+)
+SYSTEMD_UNITS+=( "pg_backup_to-$ARG_PGPORT.service" )
+sudo systemd-run \
+	--unit "pg_backup_to-$ARG_PGPORT.service" \
+	--service-type=notify \
+	-p User=postgres \
+	"${POSTGRES_ARGS[@]}"
+
+find "$ARG_PGROOT" -type f -name '*.conf' -printf '%P\n' | readarray -t configs
+
+if ! [[ ${configs+set} ]]; then
+	die "No .conf files found under $ARG_PGROOT"
+fi
+
+TAR_ARGS=(
+	tar
+	-c
+	-C "$ARG_PGROOT"
+	--
+	"${configs[@]}"
+)
+PG_DUMP_ARGS=(
+	pg_dumpall
+	-h "$ARG_PGROOT"
+	-p "$ARG_PGPORT"
+	-Upostgres
+	-E UTF-8
+	--clean
+	--if-exists
+)
+SYSTEMD_UNITS+=( "pg_backup_to-$ARG_PGPORT-dump.service" )
+
+setuidgid="$(command -v setuidgid)"
+sudo systemd-run \
+	--unit "pg_backup_to-$ARG_PGPORT-dump.service" \
+	--service-type=exec \
+	--pty --same-dir --wait \
+	bash -c "set -eo pipefail;
+	mkdir -p ${ARG_OUTPUT_DIR@Q};
+$setuidgid postgres ${TAR_ARGS[*]@Q} | $setuidgid $(whoami) ${COMPRESS_ARGS[*]@Q} -o ${ARG_OUTPUT_DIR@Q}/conf.tar$EXTENSION;
+$setuidgid postgres ${PG_DUMP_ARGS[*]@Q} | $setuidgid $(whoami) ${COMPRESS_ARGS[*]@Q} -o ${ARG_OUTPUT_DIR@Q}/pg_dumpall.sql$EXTENSION"
+
+OK=1
