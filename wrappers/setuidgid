@@ -1,0 +1,5 @@
+#!/bin/bash
+
+user="$1"
+shift
+exec setpriv --reuid="$(id -u -- "$user")" --regid="$(id -g -- "$user")" --inh-caps=-all --clear-groups -- "$@"
