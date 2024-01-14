@@ -140,7 +140,7 @@ else
 	die "Failed to determine latest -pf, exiting"
 fi
 
-arch_tag="$(git tag --list "$tag*arch*" | grep -E -- '-(rc[0-9]+)?arch[0-9]+$' | sort -V | tail -n1)" || true
+arch_tag="$(git tag --list "${tag}arch*" "${tag}-arch*" | grep -E -- "${tag}-?arch[0-9]+$" | sort -V | tail -n1)" || true
 git_verify "$arch_tag" || die "Failed to determine latest -arch for $tag, exiting"
 log " Latest -arch tag: $arch_tag"
 
