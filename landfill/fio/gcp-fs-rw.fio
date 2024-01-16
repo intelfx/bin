@@ -10,14 +10,13 @@ stonewall
 group_reporting=1
 
 [write_throughput]
-numjobs=16
 time_based
 runtime=60s
 ramp_time=2s
-bs=1M
-iodepth=64
 rw=write
-group_reporting=1
+bs=1M
+numjobs=16
+iodepth=64
 iodepth_batch_submit=64
 iodepth_batch_complete_max=64
 
@@ -25,22 +24,20 @@ iodepth_batch_complete_max=64
 time_based
 runtime=60s
 ramp_time=2s
+rw=randwrite
 bs=4K
 iodepth=256
-rw=randwrite
-group_reporting=1
 iodepth_batch_submit=256
 iodepth_batch_complete_max=256
 
 [read_throughput]
-numjobs=16
 time_based
 runtime=60s
 ramp_time=2s
-bs=1M
-iodepth=64
 rw=read
-group_reporting=1
+bs=1M
+numjobs=16
+iodepth=64
 iodepth_batch_submit=64
 iodepth_batch_complete_max=64
 
@@ -48,9 +45,8 @@ iodepth_batch_complete_max=64
 time_based
 runtime=60s
 ramp_time=2s
+rw=randread
 bs=4K
 iodepth=256
-rw=randread
-group_reporting=1
 iodepth_batch_submit=256
 iodepth_batch_complete_max=256
