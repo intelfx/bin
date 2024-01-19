@@ -3,101 +3,157 @@
 set -eo pipefail
 . lib.sh
 
-# sets parent variables:
-# $name: option name if call succeeded (if rc=0)
-# $value: option value if call succeeded (if rc=0)
-# $shift: amount of positions consumed if call succeeded (if rc=0)
-getopt_try_get_value() {
-	local opt="$1" pos="$2"
-	shift 2
+pass_src="pass=ARGS_SOURCE"
+pass_filter="pass=ARGS_FILTER"
+pass_output="pass=ARGS_OUTPUT"
+pass_cmds="pass=ARGS_CMDS"
+declare -A JOURNALCTL_ARGS=(
+	[--system|--user]="$pass_src"
+	[-M|--machine:]="$pass_src"
+	[-m|--merge]="$pass_src"
+	[-D|--directory:]="$pass_src"
+	[--file:]="$pass_src"
+	[--root:]="$pass_src"
+	[--image:]="$pass_src"
+	[--image-policy:]="$pass_src"
+	[--namespace:]="$pass_src"
 
-	if [[ ${!pos} == "$opt" ]]; then
-		local next="$(( pos+1 ))"
-		name="${!pos}"
-		value="${!next}"
-		shift=2
-		return 0
+	[-S|--since:]="ARG_SINCE" # no pass=
+	[-U|--until:]="ARG_UNTIL" # no pass=
+	[-c|--cursor:]="$pass_filter"
+	[--after-cursor:]="$pass_filter"
+	[--cursor-file:]="$pass_filter pass=ARGS_NONIDEMPOTENT"
+	[-b|--boot::]="$pass_filter"
+	[-u|--unit:]="ARG_UNIT $pass_filter"
+	[--user-unit:]="ARG_USER_UNIT $pass_filter"
+	[-t|--identifier:]="$pass_filter"
+	[-p|--priority:]="$pass_filter"
+	[--facility:]="$pass_filter"
+	[-g|--grep:]="$pass_filter"
+	[--case-sensitive::]="$pass_filter"
+	[-k|--dmesg]="$pass_filter"
+
+	[-o|--output:]="$pass_output"
+	[--truncate-newline]="$pass_output"
+	[--output-fields:]="$pass_output"
+	[-n|--lines:]="$pass_output"
+	[-r|--reverse]="$pass_output"
+	[--show-cursor]="$pass_output"
+	[--utc]="$pass_output"
+	[-x|--catalog]="$pass_output"
+	[--no-hostname]="$pass_output"
+	[--no-full|--full|-l]="$pass_output"
+	[-a|--all]="$pass_output"
+	[-f|--follow]="$pass_output"
+	[--no-tail]="$pass_output"
+	[-q|--quiet]="$pass_output"
+	[--no-pager]="$pass_output"
+	[-e|--pager-end]="$pass_output"
+
+	[--interval:]="$pass_cmds"
+	[--verify-key:]="$pass_cmds"
+	[--force]="$pass_cmds"
+
+	[-N|--fields]="$pass_cmds"
+	[-F|--field:]="$pass_cmds"
+	[--list-boots]="$pass_cmds"
+	[--disk-usage]="$pass_cmds"
+	[--vacuum-size|--vacuum-time|--vacuum-files:]="$pass_cmds"
+	[--verify]="$pass_cmds"
+	[--sync]="$pass_cmds"
+	[--reliquish-var]="$pass_cmds"
+	[--smart-relinquish-var]="$pass_cmds"
+	[--flush]="$pass_cmds"
+	[--rotate]="$pass_cmds"
+	[--header]="$pass_cmds"
+	[--list-catalog:]="$pass_cmds"
+	[--dump-catalog:]="$pass_cmds"
+	[--update-catalog]="$pass_cmds"
+	[--setup-keys]="$pass_cmds"
+	[-h|--help]="$pass_cmds"
+	[--version]="$pass_cmds"
+	[--]="ARGS_MATCHES"
+
+
+	[-L|--last]="ARG_LAST"
+)
+
+parse_args JOURNALCTL_ARGS "$@"
+
+# transform --since/--until
+function transform_date() {
+	local value="$1"
+
+	if [[ $value =~ ^(([A-Za-z]+ +)?[0-9]+-[0-9]+-[0-9]+ *)?( *[0-9]+:[0-9]+(:[0-9]+)?)( +[A-Za-z/]+)?$ ]] || \
+	   [[ $value =~ ^(now|today|yesterday|tomorrow)( +[A-Za-z/]+)?$ ]] ||
+	   [[ $value =~ ^[+-].+$ ]] ||
+	   [[ $value =~ ^[0-9]+.+\ +ago$ ]] ||
+	   [[ $value =~ ^@[0-9]+$ ]]
+	then
+		: # timestamp is in format directly accepted by journalctl
+	else
+		value="$(date -d "$value" '+%Y-%m-%d %H:%M:%S')"
 	fi
 
-	if [[ ${!pos} =~ ^(${opt})=(.*)$ ]]; then
-		name="${BASH_REMATCH[1]}"
-		value="${BASH_REMATCH[2]}"
-		shift=1
-		return 0
-	fi
-
-	if [[ ${!pos} =~ ^(${opt})(.+)$ ]]; then
-		name="${BASH_REMATCH[1]}"
-		value="${BASH_REMATCH[2]}"
-		shift=1
-		return 0
-	fi
-
-	return 1
+	echo "$value"
 }
 
-ARG_UNIT=
-ARG_USER_UNIT=
-ARG_LAST=
-ARGS=()
-for (( i=1; i <= $#; )); do
-	shift=1
-	pass=1
-	if getopt_try_get_value '-u' "$i" "$@" || getopt_try_get_value '--unit' "$i" "$@"; then
-		(( ++ARG_UNIT_NR ))
-		ARG_UNIT="$value"
-	elif getopt_try_get_value '--user-unit' "$i" "$@"; then
-		(( ++ARG_UNIT_NR ))
-		ARG_USER_UNIT="$value"
-	elif [[ ${!i} == "-L" || ${!i} == "--last" ]]; then
-		pass=0
-		ARG_LAST=1
-	elif getopt_try_get_value '--since' "$i" "$@" || getopt_try_get_value '--until' "$i" "$@"; then
-		if [[ "$value" =~ ^(([A-Za-z]+ +)?[0-9]+-[0-9]+-[0-9]+ *)?( *[0-9]+:[0-9]+(:[0-9]+)?)( +[A-Za-z/]+)?$ ]] || \
-		   [[ "$value" =~ ^(now|today|yesterday|tomorrow)( +[A-Za-z/]+)?$ ]] ||
-		   [[ "$value" =~ ^[+-].+$ ]] ||
-		   [[ "$value" =~ ^[0-9]+.+\ +ago$ ]] ||
-		   [[ "$value" =~ ^@[0-9]+$ ]]
-		then
-			: # timestamp is in format directly accepted by journalctl
-		else
-			value="$(date -d "$value" '+%Y-%m-%d %H:%M:%S')"
-			ARGS+=( "$name" "$value" )
-			pass=0
-		fi
-	fi
-
-	if (( pass )); then
-		ARGS+=( "${@:$i:$shift}" )
-	fi
-	(( i += shift ))
-done
-
-if (( ARG_LAST )); then
-	if (( ARG_UNIT_NR != 1 )); then
-		die "Invalid options: -L/--last is only applicable if exactly one of --unit/--user-unit is specified"
-	fi
-
-	INVOCATION=
-	if [[ "$ARG_UNIT" ]]; then
-		INVOCATION="$(systemctl --system show -p InvocationID --value "$ARG_UNIT")"
-	elif [[ "$ARG_USER_UNIT" ]]; then
-		INVOCATION="$(systemctl --user show -p InvocationID --value "$ARG_USER_UNIT")"
-	else
-		die "Invalid options: -L/--last was set, but no --unit/--user-unit was provided"
-	fi
-
-	if ! [[ "$INVOCATION" ]]; then
-		if [[ "$ARG_UNIT" ]]; then
-			die "Could not get invocation ID for unit '$ARG_UNIT'"
-		elif [[ "$ARG_USER_UNIT" ]]; then
-			die "Could not get invocation ID for user unit '$ARG_USER_UNIT'"
-		else
-			unreachable
-		fi
-	fi
-
-	ARGS+=( _SYSTEMD_INVOCATION_ID="$INVOCATION" + INVOCATION_ID="$INVOCATION" )
+if [[ ${ARG_SINCE+set} ]]; then
+	ARGS_FILTER+=( --since "$(transform_date "$ARG_SINCE")" )
+fi
+if [[ ${ARG_UNTIL+set} ]]; then
+	ARGS_FILTER+=( --until "$(transform_date "$ARG_UNTIL")" )
 fi
 
-exec /usr/bin/journalctl "${ARGS[@]}"
+# handle -L/--last
+if [[ ${ARG_LAST+set} ]]; then
+	if [[ ${ARG_UNIT+set} && ${#ARGS_FILTER[@]} == 2 && ! ${ARGS_MATCHES+set} ]]; then
+		# the only filter is --unit
+		if ! systemctl --system show -p InvocationID --value "$ARG_UNIT" | read invocation || \
+		   ! [[ $invocation ]]; then
+			die "Could not get invocation ID for unit '$ARG_UNIT'"
+		fi
+	elif [[ ${ARG_USER_UNIT+set} && ${#ARGS_FILTER[@]} == 2 && ! ${ARGS_MATCHES+set} ]]; then
+		# the only filter is --user-unit
+		if ! systemctl --user show -p InvocationID --value "$ARG_USER_UNIT" | read invocation || \
+		   ! [[ $invocation ]]; then
+		   	die "Could not get invocation ID for user unit '$ARG_USER_UNIT'"
+		fi
+	else
+		if [[ ${ARGS_CMDS+set} ]]; then
+			die "Unsupported: -L/--last with command flags (${ARGS_CMDS[*]})"
+		fi
+		if [[ ${ARGS_NONIDEMPOTENT+set} ]]; then
+			die "Unsupported: -L/--last with non-idempotent filters (${ARGS_NONIDEMPOTENT[*]})"
+		fi
+		if in_array "+" "${ARGS_MATCHES[@]}"; then
+			die "Unsupported: -L/--last with a '+' in matches (${ARGS_MATCHES[@]})"
+		fi
+
+		# handle it the naïve way
+		ignore_pipefail() { (( $1 == 141 )) || return $1; }
+		{ /usr/bin/journalctl --quiet \
+			"${ARGS_SOURCE[@]}" \
+			"${ARGS_FILTER[@]}" \
+			"${ARGS_MATCHES[@]}" \
+			-o cat --output-fields _SYSTEMD_INVOCATION_ID --reverse --quiet 2>/dev/null \
+			|| ignore_pipefail $?; } \
+		| read invocation
+
+		# this appends _SYSTEMD_INVOCATION_ID=... to whatever matches are there (AND),
+		# then ORs it all with INVOCATION_ID=... (which is supposed to represent systemd's own messages about it)
+		# and USER_INVOCATION_ID=... (same, but for systemd --user)
+		ARGS_MATCHES+=(
+			_SYSTEMD_INVOCATION_ID="$invocation" 
+			+ _COMM=systemd INVOCATION_ID="$invocation" 
+			+ _COMM=systemd USER_INVOCATION_ID="$invocation"
+		)
+	fi
+fi
+
+exec /usr/bin/journalctl \
+	"${ARGS_SOURCE[@]}" \
+	"${ARGS_FILTER[@]}" \
+	"${ARGS_OUTPUT[@]}" \
+	"${ARGS_CMDS[@]}" \
+	"${ARGS_MATCHES[@]}"
