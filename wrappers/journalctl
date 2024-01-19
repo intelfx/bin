@@ -55,7 +55,8 @@ declare -A JOURNALCTL_ARGS=(
 	[--force]="$pass_cmds"
 
 	[-N|--fields]="$pass_cmds"
-	[-F|--field:]="$pass_cmds"
+	[-F:]="$pass_cmds"  # separately; see below
+	[--field:]="$pass_cmds"
 	[--list-boots]="$pass_cmds"
 	[--disk-usage]="$pass_cmds"
 	[--vacuum-size|--vacuum-time|--vacuum-files:]="$pass_cmds"
@@ -76,8 +77,16 @@ declare -A JOURNALCTL_ARGS=(
 
 
 	[-L|--last]="ARG_LAST"
+	[--follow-all]="ARG_FOLLOW_ALL"
 )
 
+if [[ -t 0 && -t 1 && -t 2 ]]; then
+	# In interactive usage, I do not care about `journalctl -F` being `journalctl --field=`
+	# XXX: this is a war crime
+	unset JOURNALCTL_ARGS[-F:]
+	JOURNALCTL_ARGS[-F]="ARG_FOLLOW_ALL"
+fi
+	
 parse_args JOURNALCTL_ARGS "$@"
 
 # transform --since/--until
@@ -103,6 +112,11 @@ if [[ ${ARG_SINCE+set} ]]; then
 fi
 if [[ ${ARG_UNTIL+set} ]]; then
 	ARGS_FILTER+=( --until "$(transform_date "$ARG_UNTIL")" )
+fi
+
+# transform --follow-all
+if [[ ${ARG_FOLLOW_ALL+set} ]]; then
+	ARGS_OUTPUT+=( --follow --no-tail )
 fi
 
 # handle -L/--last
