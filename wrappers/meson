@@ -157,13 +157,5 @@ else
 	fi
 fi
 
-# do this here just for the sake of printing them
-for v in CPPFLAGS CFLAGS CXXFLAGS LDFLAGS; do
-	if [[ ${!v} ]]; then
-		compilers+=( "$v=${!v}" )
-	fi
-done
-
-set -x
 export "${compilers[@]}"
 exec /usr/bin/meson "${args[@]}"
