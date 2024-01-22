@@ -1,0 +1,26 @@
+#!/bin/bash
+
+loadflags() (
+  . /etc/makepkg.conf &>/dev/null
+  # as we are hardcoding LTO, do this also
+  # 1. drop -flto, -flto=*, -fuse-linker-plugin
+  ltoflags=( $LTOFLAGS )
+  for (( i=0; i<=${#ltoflags[@]}; ++i )); do
+    if [[ ${ltoflags[$i]} == -flto || ${ltoflags[$i]} == -flto=* || ${ltoflags[$i]} == -fuse-linker-plugin ]]; then
+      unset ltoflags[$i]
+    fi
+  done
+  # 2. re-add -fuse-linker-plugin
+  ltoflags+=( -fuse-linker-plugin )
+  # 3. append $LTOFLAGS
+  CFLAGS+=" ${ltoflags[*]}"
+  CXXFLAGS+=" ${ltoflags[*]}"
+  { declare -p CC CXX CPPFLAGS CFLAGS CXXFLAGS LDFLAGS | sed -nr "s|^declare (-[^ ]+ )+|export |p"; } 2>/dev/null
+)
+
+eval "$(loadflags)"
+exec cmake \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON \
+  "$@"
