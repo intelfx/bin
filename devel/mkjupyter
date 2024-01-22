@@ -1,0 +1,59 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+$0 -- create a jupyter kernel definition from a virtualenv
+
+Usage: $0 VIRTUALENV-PATH|INTERPRETER-PATH
+EOF
+}
+
+(( $# == 1 )) || usage "Expected 1 positional parameter, got $#"
+
+if [[ -f "$1" && -x "$1" ]]; then
+	VIRTUALENV_PYTHON="$1"
+elif [[ -d "$1" && -f "$1/bin/python" && -x "$1/bin/python" ]]; then
+	VIRTUALENV_PYTHON="$1/bin/python"
+fi
+
+VIRTUALENV_ROOT="$(dirname "$(dirname "$VIRTUALENV_PYTHON")")"
+
+if ! [[ -e "$VIRTUALENV_ROOT/pyvenv.cfg" ]]; then
+	die "Bad python virtualenv at $VIRTUALENV_ROOT -- pyvenv.cfg does not exist"
+fi
+
+VIRTUALENV_NAME="$(basename "$VIRTUALENV_ROOT")"
+VIRTUALENV_PYTHON_VERSION="$("$VIRTUALENV_PYTHON" --version)"
+log "Virtualenv root: $VIRTUALENV_ROOT"
+log "Virtualenv name: $VIRTUALENV_NAME"
+
+KERNEL_DEFAULT_ROOT="/usr/share/jupyter/kernels/python3"
+KERNEL_ROOT="$(systemd-path user-shared)/jupyter/kernels/$VIRTUALENV_NAME"
+KERNEL_NAME="${VIRTUALENV_PYTHON_VERSION%%.*} ($VIRTUALENV_NAME)"
+log "Default kernel: $KERNEL_DEFAULT_ROOT"
+log "New kernel name: $KERNEL_NAME"
+
+if [[ -e "$KERNEL_ROOT" ]]; then
+	warn "$KERNEL_ROOT already exists, deleting"
+	rm -rf "$KERNEL_ROOT"
+fi
+cp -a "$KERNEL_DEFAULT_ROOT" -T "$KERNEL_ROOT"
+jq \
+	--arg venv "$VIRTUALENV_ROOT" \
+	--arg python "$VIRTUALENV_PYTHON" \
+	--arg name "$KERNEL_NAME" \
+	'
+	.
+	| .display_name |= $name
+	| .argv |= [
+		"sh",
+		"-c",
+		"PATH=\"\($venv)/bin:$PATH\" exec \"$@\"",
+		"-",
+		$python
+	] + .[1:]
+' <"$KERNEL_DEFAULT_ROOT/kernel.json" >"$KERNEL_ROOT/kernel.json"
+
+log "Kernel created at: $KERNEL_ROOT"
