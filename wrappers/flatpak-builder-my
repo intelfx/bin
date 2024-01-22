@@ -1,10 +1,12 @@
 #!/bin/bash
 
 BASE_DIR=~/tmp/big/flatpak-builder
-mkdir -p "$BASE_DIR"/{state,repo,app}
 
 : "${FLATPAK_BUILDER_REPO="$BASE_DIR/repo"}"
 : "${FLATPAK_BUILDER_CACHE="$BASE_DIR/state"}"
+: "${FLATPAK_BUILDER_APP="$BASE_DIR/app"}"
+
+mkdir -p "$FLATPAK_BUILDER_REPO" "$FLATPAK_BUILDER_CACHE" "$FLATPAK_BUILDER_APP"
 
 FLATPAK_BUILDER_ARGS=()
 if [[ ${FLATPAK_BUILDER_KEY+set} ]]; then
@@ -13,7 +15,7 @@ if [[ ${FLATPAK_BUILDER_KEY+set} ]]; then
 	)
 fi
 
-APP_DIR="$(mktemp -d -p ~/tmp/big/flatpak-builder/app)"
+APP_DIR="$(mktemp -d -p "$FLATPAK_BUILDER_APP")"
 cleanup() {
 	rm -rf "$app_dir"
 }
