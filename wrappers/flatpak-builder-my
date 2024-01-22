@@ -17,7 +17,7 @@ fi
 
 APP_DIR="$(mktemp -d -p "$FLATPAK_BUILDER_APP")"
 cleanup() {
-	rm -rf "$app_dir"
+	rm -rf "$APP_DIR"
 }
 trap cleanup EXIT
 
