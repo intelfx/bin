@@ -1,0 +1,18 @@
+#!/bin/bash
+
+BASE_DIR=~/tmp/big/mkosi
+mkdir -p "$BASE_DIR"/{cache,workspace,build,output}
+
+#WORKSPACE_DIR="$(mktemp -d -p "$BASE_DIR/workspace")"
+#cleanup() {
+#	rm -rf "$WORKSPACE_DIR"
+#}
+#trap cleanup EXIT
+
+/usr/bin/mkosi \
+	--cache-dir "$BASE_DIR/cache" \
+	--workspace-dir "$BASE_DIR/workspace" \
+	--build-dir "$BASE_DIR/build" \
+	"$@"
+	#--workspace-dir "$WORKSPACE_DIR" \
+	#--output-dir "$BASE_DIR/output" \
