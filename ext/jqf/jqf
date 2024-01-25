@@ -95,7 +95,7 @@ touch "$history_file"
 _jqf_preview_cmd() {
   cat <<EOF
 query={q}
-[ ! -n \$query ] && query="." # todo this doesn't work
+if ! [[ -n \$query ]]; then query=.; fi
 
 jq_args=()
 [[ "${#jq_args[@]}" -gt 0 ]] && jq_args+=($(printf " %q" "${jq_args[@]}"))
