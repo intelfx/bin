@@ -60,17 +60,12 @@ while [[ $# -gt 0 ]]; do
       shift
       continue
     fi
-    if [[ -f "$1" ]]; then
-      if [[ ! -r "$1" ]]; then
-        panic "file %s does not exist" "$1"
-      fi
-
-      inputs+=("$1")
-      shift
-      continue
+    if ! [[ -f "$1" && -r "$1" ]]; then
+      panic "file %s does not exist" "$1"
     fi
-    panic "unknown arg %s" "$1"
+    inputs+=("$1")
     shift
+    continue
     ;;
   esac
 done
@@ -97,8 +92,7 @@ _jqf_preview_cmd() {
 query={q}
 if ! [[ -n \$query ]]; then query=.; fi
 
-jq_args=()
-[[ "${#jq_args[@]}" -gt 0 ]] && jq_args+=($(printf " %q" "${jq_args[@]}"))
+jq_args=( ${@@Q} )
 
 while IFS='' read -r arg; do
   arg="\${arg#"\${arg%%[![:space:]]*}"}" # remove leading whitespace characters
@@ -110,7 +104,7 @@ done < <(
   cat "$preview_cmd_args_file"
 )
 
-command $jq "\${jq_args[@]}" "\$query" "${inputs[@]}" >"$tmp_dir/out.tmp" 2>&1
+command $jq "\${jq_args[@]}" "\$query" ${inputs[@]@Q} >"$tmp_dir/out.tmp" 2>&1
 rc=\$?
 
 headers="\$(sed 's/\x1B\[\([0-9]\{1,2\}\(;[0-9]\{1,2\}\)\?\)\?[mGK]//g' $header_file | grep -vE '^(err|null|OK)$')"
