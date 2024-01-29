@@ -71,36 +71,42 @@ log "Context: $CTX_NAME"
 log "Cluster: $CTX_CLUSTER"
 log "User:    $CTX_USER"
 log "Server:  $CLUSTER_SERVER"
-log "=> New name: $RENAME"
 
-query -y \
-	--arg context "$CTX_NAME" \
-	--arg cluster "$CTX_CLUSTER" \
-	--arg user "$CTX_USER" \
-	--arg host "$HOST" \
-	--arg rename "$RENAME" \
-	'.
-| .clusters |= (.
-	| map(select(.name == $cluster))
-	| map(.cluster.server |= gsub("127\\.0\\.0\\.1"; $host))
-	| map(.name |= $rename)
-	)
-| .users |= (.
-	| map(select(.name == $user))
-	| map(.name |= $rename)
-	)
-| .contexts |= [{
-	name: $rename,
-	context: {
-		cluster: $rename,
-		user: $rename,
-       	}
-}]
-| .["current-context"] |= $rename
-' \
-| sponge "$TMP_FILE"
+if [[ $CTX_NAME == default || $CTX_CLUSTER == default || $CTX_USER == default || $CLUSTER_SERVER == *127.0.0.1* ]]; then
+	log "=> New name:   $RENAME"
+	log "=> New server: $HOST"
 
-query . "$TMP_FILE"
+	query -y \
+		--arg context "$CTX_NAME" \
+		--arg cluster "$CTX_CLUSTER" \
+		--arg user "$CTX_USER" \
+		--arg host "$HOST" \
+		--arg rename "$RENAME" \
+		'.
+	| .clusters |= (.
+		| map(select(.name == $cluster))
+		| map(.cluster.server |= gsub("127\\.0\\.0\\.1"; $host))
+		| map(.name |= $rename)
+		)
+	| .users |= (.
+		| map(select(.name == $user))
+		| map(.name |= $rename)
+		)
+	| .contexts |= [{
+		name: $rename,
+		context: {
+			cluster: $rename,
+			user: $rename,
+		}
+	}]
+	| .["current-context"] |= $rename
+	' \
+	| sponge "$TMP_FILE"
+
+	query . "$TMP_FILE"
+else
+	log "=> Keeping everything as-is"
+fi
 
 : ${KUBECONFIG=$HOME/.kube/config}
 KUBECONFIG="$TMP_FILE:$KUBECONFIG" kubectl config view --flatten | sponge "$KUBECONFIG"
