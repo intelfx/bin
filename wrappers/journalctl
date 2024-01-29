@@ -153,16 +153,16 @@ if [[ ${ARG_LAST+set} ]]; then
 			-o cat --output-fields _SYSTEMD_INVOCATION_ID --reverse --quiet 2>/dev/null \
 			|| ignore_pipefail $?; } \
 		| read invocation
-
-		# this appends _SYSTEMD_INVOCATION_ID=... to whatever matches are there (AND),
-		# then ORs it all with INVOCATION_ID=... (which is supposed to represent systemd's own messages about it)
-		# and USER_INVOCATION_ID=... (same, but for systemd --user)
-		ARGS_MATCHES+=(
-			_SYSTEMD_INVOCATION_ID="$invocation" 
-			+ _COMM=systemd INVOCATION_ID="$invocation" 
-			+ _COMM=systemd USER_INVOCATION_ID="$invocation"
-		)
 	fi
+
+	# this appends _SYSTEMD_INVOCATION_ID=... to whatever matches are there (AND),
+	# then ORs it all with INVOCATION_ID=... (which is supposed to represent systemd's own messages about it)
+	# and USER_INVOCATION_ID=... (same, but for systemd --user)
+	ARGS_MATCHES+=(
+		_SYSTEMD_INVOCATION_ID="$invocation"
+		+ _COMM=systemd INVOCATION_ID="$invocation"
+		+ _COMM=systemd USER_INVOCATION_ID="$invocation"
+	)
 fi
 
 exec /usr/bin/journalctl \
