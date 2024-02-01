@@ -6,8 +6,8 @@
 # copied into makepkg(8) albeit in a very much less usable form.
 #
 
-if command -v aur &>/dev/null; then
-	exec aur build--pkglist --srcinfo > .SRCINFO
+if [[ -x /usr/lib/aurutils/aur-build--pkglist ]]; then
+	exec /usr/lib/aurutils/aur-build--pkglist --srcinfo > .SRCINFO
 else
 	exec makepkg --printsrcinfo > .SRCINFO
 fi
