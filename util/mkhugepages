@@ -73,12 +73,14 @@ EOF
 }
 
 declare -A ARGS=(
+	[-h|--help]=ARG_HELP
 	#[-t|--timeout]=ARG_TIMEOUT
 	[-s|--size]=ARG_HUGE_SIZE
 	[--reset]=ARG_RESET
 	[--]=ARGS_REMAINDER
 )
 parse_args ARGS "$@" || usage
+[[ ! ${ARG_HELP+set} ]] || usage
 
 if ! [[ ${#ARGS_REMAINDER[@]} == 1 || ${#ARGS_REMAINDER[@]} == 2 ]]; then
 	usage "Expected 1 or 2 positional arguments, got ${#ARGS_REMAINDER[@]}"
