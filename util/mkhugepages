@@ -75,7 +75,7 @@ EOF
 declare -A ARGS=(
 	[-h|--help]=ARG_HELP
 	#[-t|--timeout]=ARG_TIMEOUT
-	[-s|--size]=ARG_HUGE_SIZE
+	[-s|--size:]=ARG_HUGE_SIZE
 	[--reset]=ARG_RESET
 	[--]=ARGS_REMAINDER
 )
