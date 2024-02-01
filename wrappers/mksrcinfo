@@ -7,8 +7,8 @@
 #
 
 if [[ -x /usr/lib/aurutils/aur-build--pkglist ]]; then
-	exec /usr/lib/aurutils/aur-build--pkglist --srcinfo > .SRCINFO
+	exec /usr/lib/aurutils/aur-build--pkglist --srcinfo
 else
-	exec makepkg --printsrcinfo > .SRCINFO
-fi
+	exec makepkg --printsrcinfo
+fi | sponge .SRCINFO
 
