@@ -22,7 +22,6 @@ cleanup() {
 trap cleanup EXIT
 
 /usr/bin/flatpak-builder \
-	--user \
 	--install-deps-from=flathub \
 	"${FLATPAK_BUILDER_ARGS[@]}" \
 	--ccache \
