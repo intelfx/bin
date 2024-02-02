@@ -130,7 +130,7 @@ if [[ "$ARG_PF" ]] \
 && pf_tag="$ARG_PF" \
 && git_verify "$pf_tag"; then
 	log " Requested -pf tag: $pf_tag"
-elif pf_tag="$(git tag --list "v$major-pf*" | grep -E -- '-pf[0-9]+$' | sort -V | tail -n1)" \
+elif pf_tag="$(git tag --list "v$major-pf*" | grep -E -- '-pf[0-9.]+$' | sort -V | tail -n1)" \
   && git_verify "$pf_tag"; then
 	log " Latest -pf tag: $pf_tag"
 elif pf_tag="pf/pf-$major" \
@@ -166,11 +166,12 @@ else
 fi
 
 pf_desc="$(git describe --tags "$pf_tag")"
-if [[ $pf_desc =~ (pf[0-9]+)$ ]]; then
+if [[ $pf_desc =~ (pf[0-9.]+)$ ]]; then
 	tag_extras+=( "${BASH_REMATCH[1]}" )
-elif [[ $pf_desc =~ (pf[0-9]+)-([0-9]+)-g.+$ ]]; then
+elif [[ $pf_desc =~ (pf[0-9.]+)-([0-9]+)-g.+$ ]]; then
 	tag_extras+=( "${BASH_REMATCH[1]}+${BASH_REMATCH[2]}" )
-elif [[ $pf_desc =~ -([0-9]+)-g.+$ ]]; then
+elif [[ $pf_desc =~ -([0-9.]+)-g.+$ ]]; then
+	# unreleased, i. e. `--pf pf/pf-6.7`
 	tag_extras+=( "pf0+${BASH_REMATCH[1]}" )
 else
 	die "Failed to extract -pf version ($pf_tag) ($pf_desc)"
