@@ -51,4 +51,6 @@ if (( candidate_packs < 2 )); then
 	exit
 fi
 
-git gc-now --keep-largest-pack "$@"
+git \
+	-c gc.pruneExpire=now \
+	gc --keep-largest-pack --prune=now "$@"
