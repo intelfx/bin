@@ -95,17 +95,22 @@ while (( $# )); do
 	fi
 done
 
+do_fstrim() {
+	set -x
+	fstrim "$@" || { exit $?; } 2>/dev/null
+	{ set +x; } 2>/dev/null
+}
+
 printf -v time_start "%(%s)T"
 
 for step in "${STEPS[@]}"; do
-	if [[ "$MINIMUM" ]] && (( $(parse_size "$step") < $(parse_size "$MINIMUM") )); then
-		exec fstrim "${ARGS_FULL[@]}"
+	if [[ "$MINIMUM" ]] && (( $(parse_size "$step") <= $(parse_size "$MINIMUM") )); then
+		do_fstrim "${ARGS[@]}" --minimum "$MINIMUM"
+		break
 	fi
 
 	printf -v time_now "%(%s)T"
-	set -x
-	fstrim "${ARGS[@]}" --minimum "$step" || { exit $?; } 2>/dev/null
-	{ set +x; } 2>/dev/null
+	do_fstrim "${ARGS[@]}" --minimum "$step"
 	printf -v time_end "%(%s)T"
 
 	if (( time_end - time_now > MAX_TIME_STEP )); then
