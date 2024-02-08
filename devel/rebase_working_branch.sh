@@ -16,19 +16,25 @@ git_find_base_version() {
 		#--exclude 'v*.*.*' \
 }
 
+_usage() {
+	cat <<EOF
+Usage: $0 <onto> <branch>...
+EOF
+}
+
 if ! (( $# >= 2 )); then
-	die "Expected 2 or more arguments, got $# (usage: $0 <target version> <branch...>)"
+	usage "Expected 2 or more arguments"
 fi
 
 BASE="$1"
-shift
+BRANCHES=( "${@:2}" )
 
 if ! git_verify "$BASE"; then
 	die "Invalid base: $BASE"
 fi
 
 rc=0
-for BRANCH; do
+for BRANCH in "${BRANCHES[@]}"; do
 	if ! git_verify "$BRANCH"; then
 		die "Invalid branch to rebase: $BRANCH"
 	fi
