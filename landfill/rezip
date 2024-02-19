@@ -24,15 +24,23 @@ tempdir="$(mktemp -d)"
 
 origdir="$PWD"
 zippath="$(realpath --strip -- "$ZIPFILE")"
+
 cd "$tempdir"
 #UNZIP_DISABLE_ZIPBOMB_DETECTION=TRUE unzip -UU "$zippath"
 7zz x "$zippath"
 touch -r "$zippath" .
-zip -r "${ZIPARGS[@]}" "$zippath.new.$$" .
+
+if [[ ${ZIPARGS[0]} == tar ]]; then
+	newpath="${zippath%.zip}.tar"
+	"${ZIPARGS[@]}" -cf "$newpath.new.$$" .
+else
+	newpath="$zippath"
+	zip -r "${ZIPARGS[@]}" "$newpath.new.$$" .
+fi
+
 cd "$origdir"
 cleanup
 
-touch -r "$zippath" "$zippath.new.$$"
+touch -r "$zippath" "$newpath.new.$$"
 #mv "$zippath" "$zippath~"
-mv "$zippath.new.$$" "$zippath"
-#mv "$zippath.new.$$" "$zippath.new"
+mv "$newpath.new.$$" "$newpath"
