@@ -27,6 +27,7 @@ zippath="$(realpath --strip -- "$ZIPFILE")"
 cd "$tempdir"
 #UNZIP_DISABLE_ZIPBOMB_DETECTION=TRUE unzip -UU "$zippath"
 7zz x "$zippath"
+touch -r "$zippath" .
 zip -r "${ZIPARGS[@]}" "$zippath.new.$$" .
 cd "$origdir"
 cleanup
