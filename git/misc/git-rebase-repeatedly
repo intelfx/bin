@@ -1,0 +1,38 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+say() {
+	echo "${0##*/}: $*" >&2
+}
+
+git_dir() {
+	git "$@" rev-parse --git-dir
+}
+
+if ! git rebase "$@"; then
+	while [[ -d "$(git_dir)/rebase-merge" ]] && ! git diff-files --quiet; do
+		say "launching interactive shell"
+		say "to continue, resolve and stage conflicts and exit 0"
+		say "to abort, exit 1"
+		if "$SHELL" -i; then
+			# dance to capture exit code of $SHELL (cannot use ! in the condition)
+			:
+		else
+			rc=$?
+			git rebase --abort
+			exit $rc
+		fi
+		# if the user not just staged the resolution but continued the rebase, play along
+		if [[ -d "$(git_dir)/rebase-merge" ]]; then
+			# also play along if the index turned out empty
+			if git diff-index --quiet HEAD --; then
+				git rebase --continue || true
+			else
+				git rebase --skip || true
+			fi
+		fi
+	done
+
+fi
