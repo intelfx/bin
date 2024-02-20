@@ -1,0 +1,234 @@
+#!/bin/bash
+
+set -e
+. lib.sh
+
+keygrip_regex="[0-9A-F]{40}"
+fpr_regex="MD5(:[0-9a-f]{2}){16}"
+
+gpg_keygrip_for_key() {
+	local uid="$1"
+	declare -A fpr_to_grp
+	declare -a uids
+	local _sec _ssb _fpr _grp
+	gpg --list-secret-keys --fingerprint --with-keygrip --with-colons "$uid" | while read line; do
+		echo -n "$line" | readarray -d: -t fields
+		case "${fields[0]}" in
+		sec)
+			if [[ $_sec ]]; then
+				die "Multiple secret keys matched ($_sec, ${fields[4]})"
+			fi
+			_sec="${fields[4]}"
+			;;
+		ssb) _ssb="${fields[4]}" ;;
+		uid) uids+=( "${fields[9]}" ) ;;
+		fpr) _fpr="${fields[9]}" ;;
+		grp) _grp="${fields[9]}" ;;
+		esac
+
+		if [[ $_fpr && $_grp ]]; then
+			fpr_to_grp["$_fpr"]="$_grp"
+			_fpr=""
+			_grp=""
+		fi
+	done
+
+	local f
+	for f in "${!fpr_to_grp[@]}"; do
+		printf "%s\t%s\n" "$f" "${fpr_to_grp[$f]}"
+	done
+}
+
+ssh_keygrip_for_key() {
+	local priv="$1"
+	local pub="$1.pub"
+	[[ -r "$priv" ]] || die "Private key '$priv' not readable"
+	[[ -r "$pub" ]] || die "Public key '$pub' not readable"
+
+	local key_len key_fpr key_comment key_type
+	read key_len key_fpr key_comment key_type < <(ssh-keygen -E md5 -l -f "$priv")
+	regex_chk "$key_type" "\((.*)\)" key_type
+	regex_chk "$key_len" "[0-9]+"
+	regex_chk "$key_fpr" "$fpr_regex"
+	dbg "SSH key: $type/$len fpr $key_fpr ($key_comment)"
+
+	local agent_line agent_keygrip agent_fpr
+	declare -a keygrips
+	while read agent_line; do
+		if [[ $agent_line == OK ]]; then
+			break
+		fi
+
+		regex_chk "$agent_line" "S KEYINFO ($keygrip_regex) D - - . . ($fpr_regex) - S" agent_keygrip agent_fpr
+		if [[ $agent_fpr == $key_fpr ]]; then
+			keygrips+=( "$agent_keygrip" )
+		fi
+	done < <(gpg-connect-agent 'keyinfo --ssh-list --ssh-fpr' '/bye')
+
+	case "${#keygrips[@]}" in
+	1)
+		echo "${keygrips[0]}"
+		return 0
+		;;
+	0)
+		return 1
+		;;
+	*)
+		err "ssh_keygrip_for_key: multiple (${#keygrips[@]}) keygrips for fingerprint '$key_fpr'"
+		return 1
+		;;
+	esac
+}
+
+secret_get_by_keygrip() {
+	local prefix="$1"
+	local keygrip="$2"
+
+	regex_chk "$prefix" "[ns]"
+	regex_chk "$keygrip" "[0-9A-F]{40}"
+
+	secret-tool lookup keygrip "$prefix/$keygrip"
+}
+gpg_secret_get_by_keygrip() { secret_get_by_keygrip "n" "$@"; }
+ssh_secret_get_by_keygrip() { secret_get_by_keygrip "s" "$@"; }
+
+secret_insert_by_keygrip() {
+	local prefix="$1"
+	local keygrip="$2"
+	local secret="$3"
+
+	regex_chk "$prefix" "[ns]"
+	regex_chk "$keygrip" "[0-9A-F]{40}"
+	regex_chk "$secret" '.+'
+
+	echo -n "$secret" \
+	| secret-tool store \
+		--label "GnuPG: $prefix/$keygrip" \
+		keygrip "$prefix/$keygrip" \
+		xdg:schema 'org.gnupg.Passphrase'
+}
+gpg_secret_insert_by_keygrip() { secret_insert_by_keygrip "n" "$@"; }
+ssh_secret_insert_by_keygrip() { secret_insert_by_keygrip "s" "$@"; }
+
+pinentry_expect_single_reply() {
+	local expected_type="$1"
+	declare -n dest="$2"
+
+	local line_type line_content
+	while read line_type line_content; do
+		case "$line_type" in
+		"$expected_type")
+			dbg "pinentry got $expected_type: $line_content"
+			dest="$line_content"
+			break
+			;;
+		*)
+			err "pinentry unexpected $line_type: $line_content"
+			return 1
+			;;
+		esac
+	done <&$pinentry_rd
+}
+
+pinentry_send_command() {
+	local command="$1"
+
+	if (( $# > 1 )); then
+		local expected_type="$2"
+		local dest="$3"
+
+		dbg "pinentry sending '$command', expecting reply of type $expected_type"
+		echo "$command" >&$pinentry_wr
+		pinentry_expect_single_reply "$expected_type" "$dest"
+	else
+		dbg "pinentry sending '$command', not expecting reply"
+		echo "$command" >&$pinentry_wr
+	fi
+
+	dbg "pinentry expecting OK"
+	pinentry_expect_single_reply OK _
+}
+
+secret_ask_by_keygrip() {
+	local keygrip="$1"
+	local description="$2"
+
+	coproc pinentry
+	local pinentry_rd=${COPROC[0]}
+	local pinentry_wr=${COPROC[1]}
+	local pinentry_pid=${COPROC_PID}
+	trap "exec $pinentry_rd<&- $pinentry_wr>&-; wait $pinentry_pid" RETURN
+
+	# read greeting
+	pinentry_expect_single_reply $pinentry_rd OK _
+
+	# send commands
+	local reply
+	pinentry_send_command "option allow-external-password-cache"
+	pinentry_send_command "setkeyinfo $keygrip"
+	pinentry_send_command "getpin" D reply
+	pinentry_send_command "bye"
+
+	echo "$reply"
+}
+
+_usage() {
+	cat <<EOF
+Usage: $0 COMMAND ARGUMENTS...
+
+	gpg_keygrip KEY
+		Print keygrip for GnuPG key ID <KEY>
+	
+	gpg_secret KEY
+		Print cached passphrase(s) for GnuPG key id <KEY>
+
+	gpg_secret_put KEY SECRET
+		Pre-seed passphrase for GnuPG key id <KEY>
+
+	ssh_keygrip FILE
+		Print keygrip for SSH key <FILE>
+
+	ssh_secret FILE
+		Print cached passphrase(s) for SSH key <FILE>
+EOF
+}
+
+case "$1" in
+	gpg_keygrip)
+		(( $# == 2 )) || usage "Expected 2 arguments, got $#"
+		gpg_keygrip_for_key "$2"
+		;;
+
+	gpg_secret)
+		(( $# == 2 )) || usage "Expected 2 arguments, got $#"
+		gpg_keygrip_for_key "$2" | while IFS=$'\t' read fpr grp; do
+			echo "F: $fpr"
+			echo "G: $grp"
+			echo -n "S: "
+			gpg_secret_get_by_keygrip "$grp" || echo "<none>"
+		done
+		;;
+
+	gpg_secret_put)
+		(( $# == 3 )) || usage "Expected 3 arguments, got $#"
+		gpg_keygrip_for_key "$2" | while IFS=$'\t' read fpr grp; do
+			echo "F: $fpr"
+			echo "G: $grp"
+			gpg_secret_insert_by_keygrip "$grp" "$3"
+		done
+		;;
+
+	ssh_keygrip)
+		(( $# == 2 )) || usage "Expected 2 arguments, got $#"
+		[[ -e "$2" ]] || die "Key does not exist: '$2'"
+		ssh_keygrip_for_key "$2"
+		;;
+
+	ssh_secret)
+		[[ -e "$2" ]] || die "Key does not exist: '$2'"
+		ssh_secret_get_by_keygrip "$(ssh_keygrip_for_key "$2")"
+		;;
+	*)
+		usage "Unknown verb: '$1'"
+		;;
+esac
