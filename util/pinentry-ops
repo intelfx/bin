@@ -1,0 +1,104 @@
+#!/bin/bash
+
+set -eo pipefail
+
+log() {
+	echo "[${_log_direction}] [$(date -Iseconds)] $*" >&2
+}
+
+set_var() (
+	local name="$1" value="$2"
+	exec 9<"$TMP_FILE"
+	flock -x 9
+	jaq --arg name="$name" --arg value="$value" '. |= (.[$name] = $value)' --in-place "$TMP_FILE"
+)
+
+set_expr() {
+	local expr="$1" value="$2"
+	exec 9<"$TMP_FILE"
+	flock -x 9
+	jaq --arg value="$value" ". |= ($expr)" --in-place "$TMP_FILE"
+}
+
+get_var() {
+	local name="$1" value="$2"
+	exec 9<"$TMP_FILE"
+	flock -x 9
+	jaq --arg name="$name" -r '.[$name]' "$TMP_FILE"
+}
+
+pinentry_stdin() {
+	local _log_direction=IN
+	local keyinfo=""
+	local allow_external=""
+	local keyid=""
+
+	local line
+	while read -r line; do
+		read -r cmd data <<< "$line"
+		if [[ $cmd == OPTION ]]; then
+			IFS='=' read -r key value <<< "$data"
+			log "OPTION: key=$key value=$value"
+
+			if [[ $key == allow-external-password-cache ]]; then
+				allow_external=1
+			fi
+		elif [[ $cmd == SETKEYINFO ]]; then
+			if [[ $data == ?/* ]]; then
+				log "KEYINFO: $data"
+				keyinfo="$data"
+			elif [[ $data == --clear ]]; then
+				log "KEYINFO: (cleared)"
+				keyinfo=""
+			else
+				log "KEYINFO: (unexpected: $data)"
+				keyinfo=""
+			fi
+		elif [[ $cmd == SETDESC ]]; then
+			log "SETDESC: $data"
+
+			# try to fish out fingerprint and enable external...
+			if ! [[ $keyinfo ]]; then
+				if [[ $data =~ (0x[0-9A-F]+) ]]; then
+					keyid="${BASH_REMATCH[1]}"
+					log "INFERRED KEYID: $keyid"
+				fi
+				# TODO
+			fi
+		else
+			log "$line"
+		fi
+
+		printf "%s\n" "$line"
+	done
+}
+
+pinentry_stdout() {
+	local _log_direction=OUT
+	local line
+	while read -r line; do
+		log "$line"
+
+		printf "%s\n" "$line"
+	done
+}
+
+#
+# main
+#
+
+if ! [[ ${PINENTRY_DEBUG+set} ]]; then
+	exec /usr/bin/pinentry-gnome3 "$@"
+fi
+
+TMP_FILE="$(mktemp --suffix '.json')"
+chmod 0600 "$TMP_FILE"
+cleanup() {
+	rm -f "$TMP_FILE"
+}
+trap cleanup EXIT
+
+exec 2> >(systemd-cat -t pinentry-debug)
+/usr/bin/pinentry-gnome3 "$@" \
+	< <(pinentry_stdin) \
+	> >(pinentry_stdout)
