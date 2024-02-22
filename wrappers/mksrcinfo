@@ -6,6 +6,10 @@
 # copied into makepkg(8) albeit in a very much less usable form.
 #
 
+if ! [[ .SRCINFO -ot PKGBUILD ]]; then
+	exit 0
+fi
+
 if [[ -x /usr/lib/aurutils/aur-build--pkglist ]]; then
 	exec /usr/lib/aurutils/aur-build--pkglist --srcinfo
 else
