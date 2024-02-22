@@ -53,4 +53,9 @@ export -f update_srcinfo print_srcinfo
 if [[ $# == 0 ]]; then
 	set -- .
 fi
-PARALLEL_SHELL="$BASH" exec parallel print_srcinfo ::: "$@"
+
+printer="print_srcinfo {}"
+if [[ -t 1 ]]; then
+	printer+=" | jq --color-output"
+fi
+PARALLEL_SHELL="$BASH" exec parallel "$printer" ::: "$@"
