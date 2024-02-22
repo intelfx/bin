@@ -5,9 +5,11 @@
 # $1 -- dir
 update_srcinfo() (
 	cd "$1"
-	if [[ -e PKGBUILD && PKGBUILD -nt .SRCINFO ]]; then
-		makepkg --printsrcinfo > .SRCINFO
-	fi
+	if [[ -x /usr/lib/aurutils/aur-build--pkglist ]]; then
+		exec /usr/lib/aurutils/aur-build--pkglist --srcinfo
+	else
+		exec makepkg --printsrcinfo
+	fi | sponge .SRCINFO
 )
 
 # $1:
