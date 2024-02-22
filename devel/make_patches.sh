@@ -107,12 +107,13 @@ log "Starting point: $ONTO ($TARGET)"
 
 for b in "${BRANCHES[@]}"; do
 	log "Picking $UPSTREAM..$b"
+	rev="$(git rev-parse "$b")"
 
 	# see if $b has already been merged into upstream
 	if git merge-base --is-ancestor "$b" "$UPSTREAM"; then
 		die "Unimplemented: $b is ancestor of $UPSTREAM"
 	else
-		git rebase-repeatedly --onto "$TARGET" "$UPSTREAM" "$b"
+		git rebase-repeatedly --onto "$TARGET" "$UPSTREAM" "$rev"
 	fi
 
 	old="$TARGET"
