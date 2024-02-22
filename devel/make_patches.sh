@@ -111,7 +111,23 @@ for b in "${BRANCHES[@]}"; do
 
 	# see if $b has already been merged into upstream
 	if git merge-base --is-ancestor "$b" "$UPSTREAM"; then
-		die "Unimplemented: $b is ancestor of $UPSTREAM"
+		warn "Applying hack: $b is ancestor of $UPSTREAM"
+
+		git log --first-parent --format="%H %P" "$UPSTREAM" \
+		| awk -v rev="$rev" '$3 == rev { print $1; exit }' \
+		| read mergepoint \
+			|| true
+		if ! [[ $mergepoint ]]; then
+			die "Hack failed: failed to find merge point of $UPSTREAM and $b"
+		fi
+
+		mergeparent="$(git rev-parse "$mergepoint^1")"
+		if git merge-base --is-ancestor "$b" "$mergeparent"; then
+			die "Hack failed: $b is still an ancestor of $mergeparent"
+		fi
+
+		mergebase="$(git merge-base "$b" "$mergeparent")"
+		git rebase-repeatedly --reapply-cherry-picks --onto "$TARGET" "$mergeparent" "$rev"
 	else
 		git rebase-repeatedly --reapply-cherry-picks --onto "$TARGET" "$UPSTREAM" "$rev"
 	fi
