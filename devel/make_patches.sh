@@ -113,7 +113,7 @@ for b in "${BRANCHES[@]}"; do
 	if git merge-base --is-ancestor "$b" "$UPSTREAM"; then
 		die "Unimplemented: $b is ancestor of $UPSTREAM"
 	else
-		git rebase-repeatedly --onto "$TARGET" "$UPSTREAM" "$rev"
+		git rebase-repeatedly --reapply-cherry-picks --onto "$TARGET" "$UPSTREAM" "$rev"
 	fi
 
 	old="$TARGET"
