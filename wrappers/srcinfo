@@ -5,6 +5,11 @@
 # $1 -- dir
 update_srcinfo() (
 	cd "$1"
+
+	if ! [[ .SRCINFO -ot PKGBUILD ]]; then
+		return 0
+	fi
+
 	if [[ -x /usr/lib/aurutils/aur-build--pkglist ]]; then
 		exec /usr/lib/aurutils/aur-build--pkglist --srcinfo
 	else
