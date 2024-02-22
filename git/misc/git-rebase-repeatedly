@@ -11,8 +11,10 @@ git_dir() {
 	git "$@" rev-parse --git-dir
 }
 
-if ! git rebase "$@"; then
-	while [[ -d "$(git_dir)/rebase-merge" ]] && ! git diff-files --quiet; do
+git rebase "$@" || true
+
+while [[ -d "$(git_dir)/rebase-merge" ]]; do
+	if ! git diff-files --quiet; then
 		say "launching interactive shell"
 		say "to continue, resolve and stage conflicts and exit 0"
 		say "to abort, exit 1"
@@ -24,15 +26,19 @@ if ! git rebase "$@"; then
 			git rebase --abort
 			exit $rc
 		fi
-		# if the user not just staged the resolution but continued the rebase, play along
-		if [[ -d "$(git_dir)/rebase-merge" ]]; then
-			# also play along if the index turned out empty
-			if git diff-index --quiet HEAD --; then
-				git rebase --continue || true
-			else
-				git rebase --skip || true
-			fi
-		fi
-	done
+	else
+		say "no conflicts left, continuing"
+	fi
 
-fi
+	# if the user not just staged the resolution but continued the rebase, play along
+	if ! [[ -d "$(git_dir)/rebase-merge" ]]; then
+		break
+	fi
+
+	# also play along if the index turned out empty
+	if git diff-index --quiet HEAD --; then
+		git rebase --continue || true
+	else
+		git rebase --skip || true
+	fi
+done
