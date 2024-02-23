@@ -1,0 +1,64 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+Usage: $0 PKGBUILD-DIR [PATTERN...]
+EOF
+}
+
+(( $# >= 1 )) && [[ -d $1 && -f $1/PKGBUILD ]] || usage
+
+DIR="$1"
+PKGBUILD="$DIR/PKGBUILD"
+SRCINFO="$DIR/.SRCINFO"
+PATTERNS=( "${@:2}" )
+
+SRCDEST="$DIR" # default
+eval "$( . /etc/makepkg.conf &>/dev/null; if [[ $SRCDEST ]]; then declare -p SRCDEST; fi )"
+
+do_mksrcinfo() (
+	if [[ ! -e $1/.SRCINFO || $1/PKGBUILD -nt $1/.SRCINFO ]]; then
+		cd "$1" && mksrcinfo
+	fi
+)
+
+do_mksrcinfo "$DIR"
+cat "$SRCINFO" | sed -nr 's#\tsource(|_[^ ]+) = ((.+)::)?(.+)#\4\t\3#p' | while { unset url name; IFS=$'\t' read url name; }; do
+	if ! [[ $url == *://* ]]; then
+		# local file, url is name
+		continue
+	fi
+
+	if ! [[ $name ]]; then
+		# plain url -- extract name
+		name="${url}"
+		name="${name%%#*}"
+		name="${name##*/}"
+	fi
+
+	scheme="${url%%://}"
+	case "${scheme%%+*}" in
+	bzr|fossil|git|hg|svn)
+		# vcs source
+		continue ;;
+	*)
+		# non-vcs source
+		;;
+	esac
+
+	if [[ ${PATTERNS+set} ]]; then
+		match=
+		for p in "${PATTERNS[@]}"; do
+			if [[ $name == $p ]]; then
+				match=1
+			fi
+		done
+		[[ $match ]] || continue
+	fi
+
+	if [[ -e "$SRCDEST/$name" ]]; then
+		rm -v "$SRCDEST/$name"
+	fi
+done
