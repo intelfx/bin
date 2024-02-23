@@ -6,6 +6,12 @@
 # copied into makepkg(8) albeit in a very much less usable form.
 #
 
+case "$#" in
+0) ;;
+1) cd "$1" ;;
+*) echo "Expected 0 or 1 arguments, got $#" >&2; exit 1;;
+esac
+
 if ! [[ .SRCINFO -ot PKGBUILD ]]; then
 	exit 0
 fi
