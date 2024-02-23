@@ -8,24 +8,26 @@ Usage: $0 PKGBUILD-DIR [PATTERN...]
 EOF
 }
 
-(( $# >= 1 )) && [[ -d $1 && -f $1/PKGBUILD ]] || usage
+case "$#" in
+0) DIR=.; PATTERNS=( "*" );;
+1)
+	if [[ -d "$1" && $1 != *[*?]* ]]
+	then DIR="$1"; PATTERNS=( "*" )
+	else DIR="."; PATTERNS=( "$@" )
+	fi
+	ambig=1 ;;
+*) DIR="$1"; PATTERNS=( "${@:2}" ) ;;
+esac
 
-DIR="$1"
-PKGBUILD="$DIR/PKGBUILD"
-SRCINFO="$DIR/.SRCINFO"
-PATTERNS=( "${@:2}" )
+(( !ambig )) || warn "Assuming ${DIR@Q} is target directory and ${PATTERNS[*]@Q} is pattern"
+[[ -d "$DIR" && -f "$DIR/PKGBUILD" ]] || usage "Invalid directory: ${DIR@Q}"
+cd "$DIR"
 
-SRCDEST="$DIR" # default
+SRCDEST="$PWD" # default
 eval "$( . /etc/makepkg.conf &>/dev/null; if [[ $SRCDEST ]]; then declare -p SRCDEST; fi )"
 
-do_mksrcinfo() (
-	if [[ ! -e $1/.SRCINFO || $1/PKGBUILD -nt $1/.SRCINFO ]]; then
-		cd "$1" && mksrcinfo
-	fi
-)
-
-do_mksrcinfo "$DIR"
-cat "$SRCINFO" | sed -nr 's#\tsource(|_[^ ]+) = ((.+)::)?(.+)#\4\t\3#p' | while { unset url name; IFS=$'\t' read url name; }; do
+mksrcinfo
+cat .SRCINFO | sed -nr 's#\tsource(|_[^ ]+) = ((.+)::)?(.+)#\4\t\3#p' | while { unset url name; IFS=$'\t' read url name; }; do
 	if ! [[ $url == *://* ]]; then
 		# local file, url is name
 		continue
