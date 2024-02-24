@@ -26,7 +26,7 @@ cat .SRCINFO | sed -nr 's|\tsource_([^ ]+) = (.+::)?(.+)|\1 \3|p' | while read a
 	filename_to_arch["$filename"]="$arch"
 done
 
-cat "$SRCINFO" | sed -nr 's|\tsource_([^ ]+) = (.+::)?(.+)|\1 \3|p' | while read arch link; do
+cat .SRCINFO | sed -nr 's|\tsource_([^ ]+) = (.+::)?(.+)|\1 \3|p' | while read arch link; do
 	echo "${link}.sha256"
 done | parallel curl -fsSL | while read sha256sum filename; do
 	filename="${filename#\*}"
@@ -37,5 +37,5 @@ done | parallel curl -fsSL | while read sha256sum filename; do
 
 done
 
-trace sed -r "${sed_expr[@]}" -i "$PKGBUILD"
-do_mksrcinfo "$DIR"
+trace sed -r "${sed_expr[@]}" -i PKGBUILD
+mksrcinfo
