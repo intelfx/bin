@@ -12,7 +12,7 @@ case "$#" in
 *) echo "Expected 0 or 1 arguments, got $#" >&2; exit 1;;
 esac
 
-if ! [[ .SRCINFO -ot PKGBUILD ]]; then
+if [[ .SRCINFO -nt PKGBUILD ]]; then
 	exit 0
 fi
 
