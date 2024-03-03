@@ -1,0 +1,42 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+declare -A ARGS=(
+	[-j|--procs:]="pass=ARGS_PASS"
+	[--seed:]="pass=ARGS_PASS"
+	[-p|--physical]="pass=ARGS_PASS"
+	[-x|--expert]="pass=ARGS_PASS"
+	[-i|--interval:]="pass=ARGS_PASS"
+	[--headless]="pass=ARGS_PASS"
+	[-n|--max-samples:]="pass=ARGS_PASS"
+	[--max-time:]="pass=ARGS_PASS"
+	[--min-resolution:]="pass=ARGS_PASS"
+	[-o|--export:]="pass=ARGS_PASS"
+	[-f|--import:]="pass=ARGS_PASS"
+	[--du]="pass=ARGS_PASS"
+	[--]="ARGS_PATH pass=ARGS_PASS"
+)
+parse_args ARGS "$@" || exec /usr/bin/btdu "$@"
+[[ ${ARGS_PATH+set} ]] || exec /usr/bin/btdu "$@"
+
+if ! [[ ${BTDU_UNSHARED+set} ]]; then
+	BTDU_UNSHARED=1 exec unshare --mount -- "$0" "$@"
+fi
+
+ARGS_PATH_ROOTS=()
+for p in "${ARGS_PATH[@]}"; do
+	set -x
+	if dev="$(findmnt --output source --list --noheadings --first-only --nofsroot --target "$p")" \
+	&& uuid="$(blkid --output value --match-tag UUID -- "$dev")"; then
+		mkdir -p "/run/btdu/$uuid"
+		mount "$dev" "/run/btdu/$uuid" -o subvolid=5
+		{ set +x; } &>/dev/null
+		ARGS_PATH_ROOTS+=( "/run/btdu/$uuid" )
+	else
+		{ set +x; } &>/dev/null
+		ARGS_PATH_ROOTS+=( "$p" )
+	fi
+done
+
+/usr/bin/btdu "${ARGS_PASS[@]}" "${ARGS_PATH_ROOTS[@]}"
