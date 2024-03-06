@@ -4,4 +4,5 @@ exec podman run \
 	--volume /var/cache/pacman/pkg:/var/cache/pacman/pkg:rw \
 	--volume "$HOME"/bin/etc/pacman.conf:/etc/pacman.conf:ro \
 	--volume /etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist:ro \
+	--volume /etc/pacman.d/gnupg:/etc/pacman.d/gnupg:ro \
 	"$@"
