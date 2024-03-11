@@ -1,10 +1,14 @@
 #!/bin/bash
 
+. lib.sh || exit
+
 BASE_DIR=~/tmp/big/flatpak-builder
 
 : "${FLATPAK_BUILDER_REPO="$BASE_DIR/repo"}"
 : "${FLATPAK_BUILDER_CACHE="$BASE_DIR/state"}"
 : "${FLATPAK_BUILDER_APP="$BASE_DIR/app"}"
+
+eval "$(globaltraps)"
 
 mkdir -p "$FLATPAK_BUILDER_REPO" "$FLATPAK_BUILDER_CACHE" "$FLATPAK_BUILDER_APP"
 
@@ -16,10 +20,7 @@ if [[ ${FLATPAK_BUILDER_KEY+set} ]]; then
 fi
 
 APP_DIR="$(mktemp -d -p "$FLATPAK_BUILDER_APP")"
-cleanup() {
-	rm -rf "$APP_DIR"
-}
-trap cleanup EXIT
+ltrap "rm -rf '$APP_DIR'"
 
 /usr/bin/flatpak-builder \
 	--install-deps-from=flathub \
