@@ -41,7 +41,7 @@ if [[ ${FLATPAK_BUILDER_PREFETCH+set} ]]; then
 	do_prefetch() {
 		local src="$1" dest="$2" ref="$3"
 		if [[ -d "$dest" ]]; then
-			git -C "$dest" fetch --verbose origin "$ref:$ref"
+			git -C "$dest" fetch --verbose origin "+$ref:$ref"
 		else
 			git clone --verbose "$src" "$dest" --mirror --branch "$ref"
 		fi
