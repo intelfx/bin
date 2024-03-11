@@ -7,6 +7,7 @@ BASE_DIR=~/tmp/big/flatpak-builder
 : "${FLATPAK_BUILDER_REPO="$BASE_DIR/repo"}"
 : "${FLATPAK_BUILDER_CACHE="$BASE_DIR/state"}"
 : "${FLATPAK_BUILDER_APP="$BASE_DIR/app"}"
+: "${FLATPAK_BUILDER_PREFETCH=1}"
 
 eval "$(globaltraps)"
 
@@ -22,6 +23,60 @@ fi
 APP_DIR="$(mktemp -d -p "$FLATPAK_BUILDER_APP")"
 ltrap "rm -rf '$APP_DIR'"
 
+# Search for manifest, crudely
+manifest=
+for arg; do
+	if [[ ("$arg" == *.yml || "$arg" == *.yaml) && -f "$arg" ]] && grep -Eq '^app-id:' "$arg"; then
+		manifest="$arg"
+		break
+	fi
+done
+if ! [[ $manifest ]]; then
+	err "Could not find manifest -- disabling better update"
+	unset FLATPAK_BUILDER_PREFETCH
+fi
+
+if [[ ${FLATPAK_BUILDER_PREFETCH+set} ]]; then
+	libsh_export_log
+	do_prefetch() {
+		local src="$1" dest="$2" ref="$3"
+		if [[ -d "$dest" ]]; then
+			git -C "$dest" fetch --verbose origin "$ref:$ref"
+		else
+			git clone --verbose "$src" "$dest" --mirror --branch "$ref"
+		fi
+	}
+	export -f do_prefetch
+
+	JQ_PROG='
+	.modules[]
+	| select(type == "object")
+	| .sources[]
+	| select(.type == "git")
+	# FIXME
+	| select(.branch)
+	| {
+		src: (.path // .url),
+		ref: (.branch),
+		name: ((.path // .url) | gsub("[^0-9a-zA-Z.-]+"; "_"))
+	}
+	| "\(.src)\t\(.name)\t\(.ref)"
+	'
+
+	repos=()
+	count=0
+	yq -r "$JQ_PROG" "$manifest" | while IFS=$'\t' read src name ref; do
+		dest="$FLATPAK_BUILDER_CACHE/git/$name"
+		repos+=( "$src" "$dest" "$ref" )
+		(( ++count ))
+	done
+	log "Prefetching $count repositories concurrently"
+	printf "%s\n" "${repos[@]}" | parallel -N3 'do_prefetch'
+
+	log "Prefetch done -- disabling updates via flatpak-builder"
+	FLATPAK_BUILDER_ARGS+=( --disable-updates )
+fi
+	
 /usr/bin/flatpak-builder \
 	--install-deps-from=flathub \
 	"${FLATPAK_BUILDER_ARGS[@]}" \
