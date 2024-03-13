@@ -1,0 +1,59 @@
+#!/bin/bash
+#
+# 'tig-pick' is a wrapper script that uses 'tig' to pick a Git commit from the
+# history. On success, The script prints the ID of the commit to standard
+# output, so that it can be used as a parameter for subsequent commands, e.g.
+# 'git rebase -i $(tig-pick)'
+#
+# All parameters passed to the script will be forwarded to 'tig'.
+#
+
+set -eo pipefail
+
+CLEANUP=()
+trap 'rm -f "${CLEANUP[@]}"' EXIT
+
+mktemp() {
+	CLEANUP+="$(command mktemp --tmpdir "${0##*/}-$1.XXXXXXXXXX" "${@:2}")"
+	echo "${CLEANUP[-1]}"
+}
+
+mkpipe() {
+	declare -n rd_fd="$1" wr_fd="$2"
+	local rdwr_fd fifo
+	fifo="$(mktemp 'pipe' --dry-run)"
+	mkfifo -m0600 "$fifo"
+	# open RDWR in a throwaway fd before doing anything else because
+	# opening a pipe either RD or WR when other end isn't opened blocks
+	exec {rdwr_fd}<>"$fifo" {rd_fd}<"$fifo" {wr_fd}>"$fifo" {rdwr_fd}>&-
+	rm -f "$fifo"
+}
+
+# Prepare config file: source user config, if present
+CONFIG="$(mktemp 'tigrc')"
+if [[ "$TIGRC_USER" ]]; then
+	echo "source $TIGRC_USER" >> "$CONFIG"
+elif [[ -f "$HOME/.tigrc" ]]; then
+	echo "source $HOME/.tigrc" >> "$CONFIG"
+fi
+
+# Create a pipe
+mkpipe READ_FD WRITE_FD
+
+# Bind Enter to print the selected commit ID to the pipe and exit
+echo "bind main <Enter> <sh -c \"echo '%(commit)' >&$WRITE_FD\"" >> "$CONFIG"
+
+# start tig in background with stdin forcibly redirected from the terminal
+# (bash redirects stdin from /dev/null for background processes by default)
+# also, close its read end
+TIGRC_USER="$CONFIG" tig "$@" </dev/stdin {READ_FD}<&- &
+# close our write end
+exec {WRITE_FD}<&-
+# this will block until all write ends are closed, i. e. until tig exits
+readarray -u "$READ_FD" -t REVS
+# exit if tig failed
+wait $! || exit
+# exit if no revisions were returned
+[[ ${REVS+set} ]] || exit
+# print revisions
+printf "%s\n" "${REVS[@]}"
