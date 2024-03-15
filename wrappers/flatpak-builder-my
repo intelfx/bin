@@ -15,6 +15,14 @@ eval "$(globaltraps)"
 # but will not reinit an empty one
 mkdir -p "$FLATPAK_BUILDER_CACHE" "$FLATPAK_BUILDER_APP"
 
+if [[ -d "$FLATPAK_BUILDER_REPO" && ! -d "$FLATPAK_BUILDER_REPO/objects" ]]; then
+	log "Repo directory $FLATPAK_BUILDER_REPO is uninitialized"
+	FLATPAK_BUILDER_REPO_ORIG="$FLATPAK_BUILDER_REPO"
+	FLATPAK_BUILDER_REPO="$(mktemp -p "$FLATPAK_BUILDER_REPO" "repo.XXXXXX" --dry-run)"
+	ltrap "rm -rf '$FLATPAK_BUILDER_REPO'"
+	log "Will build into $FLATPAK_BUILDER_REPO"
+fi
+
 FLATPAK_BUILDER_ARGS=()
 if [[ ${FLATPAK_BUILDER_KEY+set} ]]; then
 	FLATPAK_BUILDER_ARGS=(
@@ -87,3 +95,10 @@ fi
 	--repo "$FLATPAK_BUILDER_REPO" \
 	"$APP_DIR" \
 	"$@"
+
+if [[ ${FLATPAK_BUILDER_REPO_ORIG+set} ]]; then
+	log "Moving $FLATPAK_BUILDER_REPO -> $FLATPAK_BUILDER_REPO_ORIG"
+	find "$FLATPAK_BUILDER_REPO" -mindepth 1 -maxdepth 1 -execdir mv -vn -t "$FLATPAK_BUILDER_REPO_ORIG" {} \+
+	rm -vd "$FLATPAK_BUILDER_REPO"
+	log "Done moving"
+fi
