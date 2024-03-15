@@ -43,10 +43,10 @@ for arg; do
 done
 if ! [[ $manifest ]]; then
 	err "Could not find manifest -- disabling better update"
-	unset FLATPAK_BUILDER_PREFETCH
+	FLATPAK_BUILDER_PREFETCH=0
 fi
 
-if [[ ${FLATPAK_BUILDER_PREFETCH+set} ]]; then
+if (( FLATPAK_BUILDER_PREFETCH )); then
 	libsh_export_log
 	do_prefetch() {
 		local src="$1" dest="$2" ref="$3"
