@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+cleanup() {
+	git reset
+}
+trap cleanup EXIT
+
+TOP_DIR="$(git rev-parse --show-toplevel)"
+git reset 'HEAD^' -- "$TOP_DIR"
+git add --edit
+git commit --amend --no-edit "$@"
+
+trap - EXIT
