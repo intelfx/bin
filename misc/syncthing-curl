@@ -1,0 +1,28 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+$0 -- syncthing API query tool
+
+Usage: $0 /rest/... [CURL-ARGS]
+EOF
+}
+
+CONFIG_XML="$HOME/.config/syncthing/config.xml"
+
+[[ -f "$CONFIG_XML" && -r "$CONFIG_XML" && -s "$CONFIG_XML" ]] || die "Syncthing configuration file could not be found at $CONFIG_XML"
+(( $# >= 1 )) || usage "Expected 1 or more arguments"
+[[ $1 == /* ]] || usage "Invalid request path: $1"
+
+REQ_PATH="${1##/}"
+ARGS=( "${@:2}" )
+
+xq -r .configuration.gui.apikey "$CONFIG_XML" | read SYNCTHING_APIKEY
+xq -r '.configuration.gui.address | sub(".*:"; "")' "$CONFIG_XML" | read SYNCTHING_PORT
+SYNCTHING_ADDRESS="localhost"
+
+curl -fsSL \
+	-H "X-API-Key: $SYNCTHING_APIKEY" \
+	"http://${SYNCTHING_ADDRESS}:${SYNCTHING_PORT}/${REQ_PATH}" "${ARGS[@]}"
