@@ -23,6 +23,6 @@ xq -r .configuration.gui.apikey "$CONFIG_XML" | read SYNCTHING_APIKEY
 xq -r '.configuration.gui.address | sub(".*:"; "")' "$CONFIG_XML" | read SYNCTHING_PORT
 SYNCTHING_ADDRESS="localhost"
 
-curl -fsSL \
+curl -sSL \
 	-H "X-API-Key: $SYNCTHING_APIKEY" \
 	"http://${SYNCTHING_ADDRESS}:${SYNCTHING_PORT}/${REQ_PATH}" "${ARGS[@]}"
