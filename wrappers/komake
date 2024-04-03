@@ -1,0 +1,78 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+Usage: komake [--inplace] [MAKE-ARGS...]
+EOF
+}
+
+unset ARG_INPLACE
+case "$1" in
+-h|--help)
+	usage
+	;;
+--inplace)
+	ARG_INPLACE=1
+	shift
+	;;
+esac
+
+#
+#
+#
+
+VERSION="$(uname -r)"
+KDIR_SRC="/usr/lib/modules/$VERSION/build"
+FILES_SRC=(
+	.config
+	vmlinux
+	Module.symvers
+	System.map
+	version
+)
+FILES_PWD=(
+	Makefile
+	Kbuild
+	Kconfig
+)
+
+if ! [[ -d "$KDIR_SRC" ]]; then
+	die "$KDIR_SRC does not exist"
+fi
+
+for f in "${FILES_SRC[@]}"; do
+	if ! [[ -f "$KDIR_SRC/$f" ]]; then
+		die "$KDIR_SRC/$f does not exist"
+	fi
+done
+
+if [[ ${ARG_INPLACE+set} ]]; then
+	# approach 1: given $KDIR is the kernel-headers dir, copy over
+	# all files that are needed (vmlinux, System.map, Module.symvers)
+	# and use $PWD both as the source-tree and the build-tree
+
+	for f in "${FILES_PWD[@]}"; do
+		if ! [[ -f "$f" ]]; then
+			die "$f does not exist"
+		fi
+	done
+
+	KDIR="$PWD"
+	rsync -av "$KDIR_SRC/" "$KDIR/" --files-from=<(printf '%s\n' "${FILES_SRC[@]}")
+
+	kmake -C "$KDIR" KERNELRELEASE="$(<"$KDIR/version")" prepare modules_prepare
+else
+	# approach 2: given $KDIR is the kernel-headers dir, copy over entire
+	# $KDIR into a temporary place (because $KDIR is likely not writable)
+	# and use $KDIR as the build-tree and $PWD as the source-tree
+
+	eval "$(globaltraps)"
+	ltrap 'rm -rf "$KDIR"'
+
+	KDIR="$(mktemp -d)"
+	rsync -a --info=progress2 --human-readable --delete-after "$KDIR_SRC/" "$KDIR/"
+fi
+
+exec kmake -C "$KDIR" KERNELRELEASE="$(<"$KDIR/version")" "M=$PWD" "$@"
