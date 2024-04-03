@@ -1,0 +1,30 @@
+#!/bin/bash
+
+cargo=(
+	cargo
+	--config "$HOME/.cargo/config-rel.toml" 
+)
+
+while (( $# )); do
+	case "$1" in
+	run|build|check|rustc|install)
+		cargo+=( "$1" --profile=release )
+		shift
+		break ;;
+	--profile*|--release|--dev)
+		# if there is a user profile provided, do not ever attempt to
+		# override it
+		break ;;
+	--)
+		# if we got to -- without seeing the command, append --release
+		# into the last possible position and bail
+		cargo+=( --profile=release )
+		break ;;
+	*)
+		cargo+=( "$1" )
+		shift ;;
+	esac
+done
+
+set -x
+exec "${cargo[@]}" "$@"
