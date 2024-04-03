@@ -8,7 +8,7 @@
 
 case "$#" in
 0) ;;
-1) cd "$1" ;;
+1) if [[ -f $1 ]]; then cd "$(dirname "$1")"; else cd "$1"; fi ;;
 *) echo "Expected 0 or 1 arguments, got $#" >&2; exit 1;;
 esac
 
