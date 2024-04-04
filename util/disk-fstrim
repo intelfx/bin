@@ -28,6 +28,10 @@ ON SUCH PARTITIONS.
 EOF
 }
 
+lsblk1() {
+	lsblk --nodeps --list --noheadings "$@"
+}
+
 run() {
 	if (( ARG_DRY_RUN || ARG_VERBOSE )); then
 		echo "+ $*" >&2
@@ -61,13 +65,14 @@ disk_fstrim() {
 			return
 		fi
 		ltrap "run_always losetup -d '$loop'"
+		run_always partprobe "$loop" 
 		log "$disk: configured a loopback device at $loop"
 		disk="$loop"
 	fi
 
 	local pttype fstype
-	pttype="$(blkid -o value -s PTTYPE "$disk")"
-	fstype="$(blkid -o value -s TYPE "$disk")"
+	pttype="$(lsblk1 -o PTTYPE "$disk")"
+	fstype="$(lsblk1 -o FSTYPE "$disk")"
 	local partitions=()
 
 	if [[ "$pttype" ]]; then
@@ -105,7 +110,7 @@ part_fstrim() {
 	eval "$(ltraps)"
 
 	local fstype
-	fstype="$(blkid -o value -s TYPE "$part")"
+	fstype="$(lsblk1 -o FSTYPE "$part")"
 	if ! [[ "$fstype" ]]; then
 		if ! (( ARG_TRIM_UNKNOWN )); then
 			warn "$rpart: could not find a filesystem signature, skipping"
@@ -123,7 +128,7 @@ part_fstrim() {
 
 	local uuid luks part="$part"
 	if [[ $fstype == crypto_LUKS ]]; then
-		uuid="$(blkid -o value -s UUID "$part")"
+		uuid="$(lsblk1 -o UUID "$part")"
 		if ! [[ $uuid ]]; then
 			err "$rpart: could not read LUKS container UUID, skipping"
 			(( ++errs ))
