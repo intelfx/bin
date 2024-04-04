@@ -53,20 +53,21 @@ disk_fstrim() {
 		return
 	fi
 
-	local rdisk="$disk"
+	local rdisk="$disk" disk="$disk" loop
 	if ! [[ -b "$disk" ]]; then
-		if ! local loop="$(run_always losetup -Pf --show "$disk")" || ! [[ $loop ]]; then
+		if ! loop="$(run_always losetup -Pf --show "$disk")" || ! [[ $loop ]]; then
 			err "$disk: failed to set up a loop device"
 			(( ++errs ))
 			return
 		fi
 		ltrap "run_always losetup -d '$loop'"
 		log "$disk: configured a loopback device at $loop"
-		local disk="$loop"
+		disk="$loop"
 	fi
 
-	local pttype="$(blkid -o value -s PTTYPE "$disk")"
-	local fstype="$(blkid -o value -s TYPE "$disk")"
+	local pttype fstype
+	pttype="$(blkid -o value -s PTTYPE "$disk")"
+	fstype="$(blkid -o value -s TYPE "$disk")"
 	local partitions=()
 
 	if [[ "$pttype" ]]; then
@@ -83,8 +84,9 @@ disk_fstrim() {
 
 	if (( ARG_TRIM_FILESYSTEMS )); then
 		log "$rdisk: trimming free space on ${#partitions[@]} filesystems"
+		local part rpart
 		for part in "${partitions[@]}"; do
-			local rpart="$part"
+			rpart="$part"
 			if [[ $rdisk != $disk ]]; then
 				rpart="$rdisk(${part#$disk})"
 			fi
@@ -102,7 +104,8 @@ disk_fstrim() {
 part_fstrim() {
 	eval "$(ltraps)"
 
-	local fstype="$(blkid -o value -s TYPE "$part")"
+	local fstype
+	fstype="$(blkid -o value -s TYPE "$part")"
 	if ! [[ "$fstype" ]]; then
 		if ! (( ARG_TRIM_UNKNOWN )); then
 			warn "$rpart: could not find a filesystem signature, skipping"
@@ -118,6 +121,7 @@ part_fstrim() {
 		return
 	fi
 
+	local uuid luks part="$part"
 	if [[ $fstype == crypto_LUKS ]]; then
 		uuid="$(blkid -o value -s UUID "$part")"
 		if ! [[ $uuid ]]; then
