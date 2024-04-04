@@ -1,0 +1,5 @@
+#!/bin/bash
+
+extra_columns="PARTN,PARTLABEL,PARTFLAGS,PARTTYPE,PARTTYPENAME,PARTUUID" # ,PTTYPE,PTUUID
+
+exec /usr/bin/lsblk -o "+${extra_columns}" "$@" 
