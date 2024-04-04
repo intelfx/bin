@@ -87,8 +87,8 @@ disk_fstrim() {
 		local part rpart
 		for part in "${partitions[@]}"; do
 			rpart="$part"
-			if [[ $rdisk != $disk ]]; then
-				rpart="$rdisk(${part#$disk})"
+			if [[ $rdisk != "$disk" ]]; then
+				rpart="$rdisk(${part#"$disk"})"
 			fi
 			part_fstrim || (( ++errs ))
 		done
