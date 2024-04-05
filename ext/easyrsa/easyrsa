@@ -1448,6 +1448,7 @@ install_data_to_pki() {
 	vars_file_example='vars.example'
 	ssl_cnf_file='openssl-easyrsa.cnf'
 	x509_types_dir='x509-types'
+	unset -v vars_file_example_path
 
 	# "$EASYRSA_PKI" - Preferred
 	# "$EASYRSA" - Old default and Windows
@@ -1499,6 +1500,26 @@ install_data_to_pki() {
 						"Failed to copy to PKI: ${area}/${source}"
 				fi
 			done
+
+			# Find vars example, do not copy, just save the full path
+			# (we have dedicated vars logic below)
+			# Note that in some
+			for source in \
+				"$vars_file_example" \
+				"$vars_file" \
+				# EOL
+			do
+				# do not use $EASYRSA_PKI/vars as the example vars
+				[ "${area}" = "${EASYRSA_PKI}" ] && \
+				[ "${source}" = "${vars_file}" ] && continue
+
+				# Find existing example vars
+				[ -e "${area}/${source}" ] || continue
+				# First found wins
+				[ -n "${vars_file_example_path}" ] && continue
+
+				vars_file_example_path="${area}/${source}"
+			done
 		fi
 	done
 
@@ -1522,13 +1543,13 @@ install_data_to_pki: $context - Not creating pki/vars"
 		init-pki)
 			# Only create for 'init-pki', if one does not exist
 			# 'init-pki soft' should have it's own 'vars' file
-			if [ -e "${EASYRSA_PKI}/${vars_file_example}" ] && \
+			if [ -e "${vars_file_example_path}" ] && \
 				[ ! -e "${EASYRSA_PKI}/${vars_file}" ]
 			then
 				# Failure means that no vars will exist and
 				# 'cp' will generate an error message
 				# This is not a fatal error
-				if cp "${EASYRSA_PKI}/${vars_file_example}" \
+				if cp "${vars_file_example_path}" \
 					"${EASYRSA_PKI}/${vars_file}"
 				then
 					new_vars_true=1
