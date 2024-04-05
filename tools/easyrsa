@@ -1389,7 +1389,7 @@ A vars file has not been created in your new PKI because
 conflicting vars files have been found elsewhere."
 		prefer_vars_in_pki_msg
 	else
-		unset -v EASYRSA_VARS_FILE
+		unset -v EASYRSA_NO_VARS
 		select_vars
 		information "
 Using Easy-RSA configuration:
