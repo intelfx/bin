@@ -1250,16 +1250,28 @@ verify_ca_init() {
 	help_note="\
 Run easyrsa without commands for usage and command help."
 
+	unset -v is_test is_certonly
+	while [ "$1" ]; do
+		case "$1" in
+			test) is_test=1 ;;
+			certonly) is_certonly=1 ;;
+			*) die "Internal error: unknown option: '$1'" ;;
+		esac
+		shift
+	done
+
+	files="ca.crt private/ca.key index.txt index.txt.attr serial"
+	[ -n "${is_certonly}" ] && files="ca.crt"
+
 	# Verify expected files are present.
 	# Allow files to be regular files (or symlinks),
 	# but also pipes, for flexibility with ca.key
-	for i in ca.crt private/ca.key \
-			index.txt index.txt.attr serial
+	for i in $files
 	do
 		if [ ! -f "$EASYRSA_PKI/$i" ] && \
 			[ ! -p "$EASYRSA_PKI/$i" ]
 		then
-			[ "$1" = "test" ] && return 1
+			[ -n "$is_test" ] && return 1
 			user_error "\
 Missing expected CA file: $i
 
@@ -1271,7 +1283,8 @@ $help_note"
 
 	# When operating in 'test' mode, return success.
 	# test callers don't care about CA-specific dir structure
-	[ "$1" = "test" ] && return 0
+	[ -n "$is_test" ] && return 0
+	[ -n "$is_certonly" ] && return 0
 
 	# verify expected CA-specific dirs:
 	for i in issued certs_by_serial
@@ -3847,7 +3860,7 @@ Run easyrsa without commands for usage and command help."
 		case "$pkcs_type" in
 		p12|p7)
 			# verify_ca_init() here, otherwise not required
-			if verify_ca_init test; then
+			if verify_ca_init test certonly; then
 				: # ok
 			else
 				warn "\
