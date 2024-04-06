@@ -131,9 +131,19 @@ ltrap fail_cleanup
 
 SYSTEMD_UNITS=()
 systemd_cleanup() {
-	if [[ ${SYSTEMD_UNITS+set} ]]; then
-		trace sudo systemctl stop "${SYSTEMD_UNITS[@]}"
-	fi
+	for u in "${SYSTEMD_UNITS[@]}"; do
+		case "$(systemctl is-enabled "$u")" in
+		not-found) continue ;;
+		esac
+
+		case "$(systemctl is-active "$u")" in
+		active) trace sudo systemctl stop "$u" ;;
+		failed) trace sudo systemctl status "$u" ;;
+		inactive) ;;
+		esac
+
+		trace sudo systemctl reset-failed "$u" 2>/dev/null
+	done
 }
 ltrap systemd_cleanup
 
