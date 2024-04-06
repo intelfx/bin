@@ -39,14 +39,14 @@ case "${#ARG_REMAINDER[@]}" in
 	usage "Expected at most 1 positional parameter"
 	;;
 esac
-if ! [[ -d "$ARG_PGROOT" && -r "$ARG_PGROOT" ]]; then
+if ! sudo -u postgres test -d "$ARG_PGROOT" -a -r "$ARG_PGROOT"; then
 	die "-D/--directory does not exist or is unreadable: $ARG_PGROOT"
 fi
-if [[ ! -e "$ARG_PGROOT/PG_VERSION" && -e "$ARG_PGROOT/data/PG_VERSION" ]]; then
+if sudo -u postgres test \( \! -e "$ARG_PGROOT/PG_VERSION" \) -a \( -e "$ARG_PGROOT/data/PG_VERSION" \); then
 	warn "-D/--directory is $ARG_PGROOT instead of $ARG_PGROOT/data; adjusting"
 	ARG_PGROOT="$ARG_PGROOT/data"
 fi
-ARG_PGROOT="$(realpath -qe "$ARG_PGROOT")"
+ARG_PGROOT="$(sudo -u postgres realpath -qe "$ARG_PGROOT")"
 log "PostgreSQL directory: $ARG_PGROOT"
 
 if ! [[ ${ARG_OUTPUT_DIR+set} ]]; then
