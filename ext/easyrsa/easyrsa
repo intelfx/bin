@@ -184,7 +184,12 @@ cmd_help() {
 
 		opts="
       * nopass  - Do not encrypt the private key (Default: encrypted)
-                  (Equivalent to global option '--nopass|--no-pass')"
+                  (Equivalent to global option '--nopass|--no-pass')
+      * DNS:<SAN>, IP:<SAN>, email:<SAN>, ...
+                - add a subjectAltName (this option may be repeated or
+                  accept comma-separated values, but may not be combined
+                  with the global '--san/--subject-alt-name=' option).
+                  For more info and syntax, see: 'easyrsa help altname'"
 	;;
 	inline)
 		text="
@@ -436,7 +441,14 @@ cmd_help() {
       * DNS:alternate.example.net
       * DNS:primary.example.net,DNS:alternate.example.net
       * IP:203.0.113.29
-      * email:alternate@example.net"
+      * email:alternate@example.net
+
+      Additionally, SANs may be directly provided as command options
+      to the build-{server,client,serverClient}-full commands, either
+      in a comma-separated format or as repeating options
+      (in this case, --subject-alt-name= must not be used):
+
+      * build-server-full example DNS:alternate.example.net IP:203.0.113.29"
 	;;
 	--days|days)
 		text_only=1
@@ -586,6 +598,8 @@ Certificate & Request options: (these impact cert/req field values)
 Distinguished Name mode:
 
 --dn-mode=MODE  : Distinguished Name mode to use 'cn_only' (Default) or 'org'
+--cn, --cn-only : Equivalent to '--dn-mode=cn_only'
+--dn, --org     : Equivalent to '--dn-mode=org'
 
 --req-cn=NAME   : Set CSR commonName to NAME. For details, see: 'help req-cn'
 
@@ -2575,6 +2589,7 @@ Run easyrsa without commands for usage and commands."
 	req_out="$EASYRSA_PKI/reqs/$name.req"
 	key_out="$EASYRSA_PKI/private/$name.key"
 	crt_out="$EASYRSA_PKI/issued/$name.crt"
+	unset -v user_san
 
 	# function opts support
 	while [ "$1" ]; do
@@ -2582,10 +2597,27 @@ Run easyrsa without commands for usage and commands."
 			nopass)
 				[ "$prohibit_no_pass" ] || EASYRSA_NO_PASS=1
 			;;
+			IP:*|DNS:*|email:)
+				user_san="${user_san:+"${user_san},"}$1"
+			;;
 			*) warn "Ignoring unknown command option: '$1'"
 		esac
 		shift
 	done
+
+	# append SAN from command options, if present
+	if [ -n "$user_san" ]; then
+		if printf "%s" "$EASYRSA_EXTRA_EXTS" | grep -q '^subjectAltName'
+		then
+			user_error "\
+Both --san/--subject-alt-name= global option and '<type>:<SAN>' command option
+were provided. Please use at most one."
+		fi
+
+		export EASYRSA_EXTRA_EXTS="\
+$EASYRSA_EXTRA_EXTS
+subjectAltName = $user_san"
+	fi
 
 	# abort on existing req/key/crt files
 	err_exists="\
@@ -7064,6 +7096,12 @@ while :; do
 		;;
 	--dn-mode)
 		export EASYRSA_DN="$val"
+		;;
+	--cn|--cn-only)
+		export EASYRSA_DN="cn_only"
+		;;
+	--dn|--org)
+		export EASYRSA_DN="org"
 		;;
 	--req-cn)
 		export EASYRSA_REQ_CN="$val"
