@@ -106,8 +106,10 @@ fi
 
 if [[ ${COMPRESS_ARGS+set} ]]; then
 	log "Compression: ${COMPRESS_ARGS[@]} ($EXTENSION)"
+	COMPRESS_LINE="${COMPRESS_ARGS[*]@Q} -o"
 else
 	log "Compression: disabled"
+	COMPRESS_LINE="cat >"
 fi
 
 
@@ -184,7 +186,7 @@ sudo systemd-run \
 	--pty --same-dir --wait \
 	bash -c "set -eo pipefail;
 	mkdir -p ${ARG_OUTPUT_DIR@Q};
-$setuidgid postgres ${TAR_ARGS[*]@Q} | $setuidgid $(whoami) ${COMPRESS_ARGS[*]@Q} -o ${ARG_OUTPUT_DIR@Q}/conf.tar$EXTENSION;
-$setuidgid postgres ${PG_DUMP_ARGS[*]@Q} | $setuidgid $(whoami) ${COMPRESS_ARGS[*]@Q} -o ${ARG_OUTPUT_DIR@Q}/pg_dumpall.sql$EXTENSION"
+$setuidgid postgres ${TAR_ARGS[*]@Q} | $setuidgid $(whoami) ${COMPRESS_LINE} ${ARG_OUTPUT_DIR@Q}/conf.tar$EXTENSION;
+$setuidgid postgres ${PG_DUMP_ARGS[*]@Q} | $setuidgid $(whoami) ${COMPRESS_LINE} ${ARG_OUTPUT_DIR@Q}/pg_dumpall.sql$EXTENSION"
 
 OK=1
