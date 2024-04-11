@@ -1,0 +1,66 @@
+#!/bin/bash
+
+_usage() {
+	cat <<EOF
+Invoked: $0 ${*@Q}
+Usage: $0 [FD-OPTIONS...] <PATHS...>
+
+Any single-argument dashed options will be forwarded to fd(1).
+fd(1) will be started with a '.' (match anything) pattern prepended to
+the provided search paths, as the intention here is to gather completions
+for further filtering.
+EOF
+}
+
+# NOTE the double negative here: "ignore git repo" means
+# "do not use its settings", i. e. "ignore its .gitignore"
+__fzf_compgen_skip_vcs_at() {
+	local git_toplevel_dir
+	# do not use gitignore from $HOME
+	if git_toplevel_dir="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" \
+	   && [[ "$git_toplevel_dir" == "$HOME" ]]; then
+		return 0
+	fi
+	return 1
+}
+
+__fzf_compgen_nofollow_at() {
+	# do not follow symlinks under /sys
+	if [[ $1/ == /sys/* ]]; then
+		return 0
+	fi
+	return 1
+}
+
+__fzf_compgen_fd() {
+	local relpath="${1-.}"
+	local abspath="$(realpath -q "$relpath")"
+
+	# fd_opts declared in parent scope
+	fd_opts+=( --hidden --exclude ".git" )
+	if ! __fzf_compgen_nofollow_at "$abspath"; then
+		fd_opts+=( --follow )
+	fi
+	if __fzf_compgen_skip_vcs_at "$abspath"; then
+		fd_opts+=( --no-ignore-vcs --no-ignore-parent )
+	fi
+	exec fd "${fd_opts[@]}" . "$@"
+}
+
+case "$#" in
+0) _usage; exit 1 ;;
+*) ;;
+esac
+
+fd_opts=()
+
+while (( $# )); do
+	case "$1" in
+	-*) fd_opts+=( "$1" ) ;;
+	*) break ;;
+	esac
+	shift
+done
+
+__fzf_compgen_fd "$@"
+#echo fd "${fd_opts[@]@Q}" -- "${@@Q}"
