@@ -12,6 +12,43 @@ if [[ $1 == --xrdb ]]; then
 	| readarray -t colors
 fi
 
+if ! [[ ${colors+set} ]]; then
+	colors=(
+		# black
+		[0]=base02
+		# red
+		[1]=red
+		# green
+		[2]=green
+		# yellow
+		[3]=yellow
+		# blue
+		[4]=blue
+		# magenta
+		[5]=magenta
+		# cyan
+		[6]=cyan
+		# white
+		[7]=base2
+		# brightblack
+		[8]=base03
+		# brightred
+		[9]=orange
+		# brightgreen
+		[10]=base01
+		# brightyellow
+		[11]=base00
+		# brightblue
+		[12]=base0
+		# brightmagenta
+		[13]=violet
+		# brightcyan
+		[14]=base1
+		# brightwhite
+		[15]=base3
+	)
+fi
+
 echo -e "\e[1;37m
      BLK        RED        GRN        YEL        BLU        MAG        CYN        WHT
 ────────────────────────────────────────────────────────────────────────────────────────
