@@ -8,15 +8,34 @@ echo -e "\e[1;37m
 ────────────────────────────────────────────────────────────────────────────────────────
 \e[0m"
 
-for i in {0..7}; do echo -en "\e[$((30+i))m █ $(printf "%7s" "color$i") \e[0m"; done; echo
-for i in {8..15}; do echo -en "\e[$((90+i-8))m █ $(printf "%7s" "color$i") \e[0m"; done; echo
+ncol() {
+	echo "${colors[$1]-"color$1"}"
+}
+nbold() {
+	if [[ ${colors[$1]+set} ]]; then
+		echo "${colors[$1]}"
+		#local name="${colors[$1]}"
+		#if [[ $name == base[0-9][0-9] ]]; then
+		#	echo "B[${name/base/ba}]"
+		#elif [[ $name == base[0-9] ]]; then
+		#	echo "B[${name/base/bas}]"
+		#else
+		#	echo "B[${name:0:4}]"
+		#fi
+	else
+		echo "bold$1"
+	fi
+}
+
+for i in {0..7}; do echo -en "\e[$((30+i))m █ $(printf "%7s" "$(ncol $i)") \e[0m"; done; echo
+for i in {8..15}; do echo -en "\e[$((90+i-8))m █ $(printf "%7s" "$(ncol $i)") \e[0m"; done; echo
 
 echo -e "\e[1;37m
 ────────────────────────────────────────────────────────────────────────────────────────
 \e[0m"
 
-for i in {0..7}; do echo -en "\e[1;$((30+i))m █ $(printf "%7s" "bold$i") \e[0m"; done; echo
-for i in {8..15}; do echo -en "\e[1;$((90+i-8))m █ $(printf "%7s" "bold$i") \e[0m"; done; echo
+for i in {0..7}; do echo -en "\e[1;$((30+i))m █ $(printf "%7s" "$(nbold $i)") \e[0m"; done; echo
+for i in {8..15}; do echo -en "\e[1;$((90+i-8))m █ $(printf "%7s" "$(nbold $i)") \e[0m"; done; echo
 
 echo -e "\e[1;37m
    BOLDBLK    BOLDRED    BOLDGRN    BOLDYEL    BOLDBLU    BOLDMAG    BOLDCYN    BOLDWHT
