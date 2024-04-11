@@ -1,7 +1,16 @@
 #!/bin/bash
 # Source: http://crunchbang.org/forums/viewtopic.php?pid=137566#p137566
 
-colors=($(xrdb -query | sed -n 's/.*color\([0-9]\)/\1/p' | sort -nu | cut -f2))
+set -eo pipefail
+shopt -s lastpipe
+
+if [[ $1 == --xrdb ]]; then
+	xrdb -query \
+	| sed -n 's/.*color\([0-9]\)/\1/p' \
+	| sort -nu \
+	| cut -f2 \
+	| readarray -t colors
+fi
 
 echo -e "\e[1;37m
      BLK        RED        GRN        YEL        BLU        MAG        CYN        WHT
