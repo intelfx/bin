@@ -1,0 +1,24 @@
+#!/bin/bash
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+[[ $TMUX ]] || { die "\$TMUX not set"; }
+[[ $TMUX_PANE ]] || { die "\$TMUX_PANE not set"; }
+
+respawn() {
+	tmux respawn-pane -k -t "$TMUX_PANE"
+}
+trap respawn EXIT
+
+"$@"
