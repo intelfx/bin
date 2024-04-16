@@ -6,7 +6,7 @@
 # functions
 #
 
-query() {
+yq_kubeconfig() {
 	yq -r "$@" "$TMP_FILE"
 }
 
@@ -14,8 +14,21 @@ query() {
 # args
 #
 
-TARGET="$1"
-RENAME="$2"
+_usage() {
+	cat <<EOF
+Usage: $0 [--rename NAME] [[USER@]HOST:]PATH/TO/KUBECONFIG
+EOF
+}
+
+declare -A ARGS=(
+	[--rename]=ARG_RENAME
+	[--]=ARGV
+)
+parse_args ARGS "$@" || usage
+(( ${#ARGV[@]} == 1 )) || usage "Expected 1 positional argument, got ${#ARGV[@]}"
+
+TARGET="${ARGV[0]}"
+RENAME="$ARG_RENAME"
 
 if [[ "$TARGET" =~ ^([^@]+@)?([^/:]+)(:.+)$ ]]; then
 	USER="${BASH_REMATCH[1]%'@'}"
@@ -42,28 +55,25 @@ fi
 eval "$(globaltraps)"
 
 TMP_FILE="$(mktemp -p "$HOME/.kube" config+XXXXX.yaml)"
-cleanup() {
-	rm -f "$TMP_FILE"
-}
-ltrap cleanup
+ltrap "rm -f '$TMP_FILE'"
 
 "${RETRIEVE_CMD[@]}" "$TMP_FILE"
 
-query '.contexts | length' | read CTX_NR
+yq_kubeconfig '.contexts | length' | read CTX_NR
 if (( CTX_NR != 1 )); then
 	die "$TARGET defines $CTX_NR != 1 contexts, aborting"
 fi
 
-query '.contexts[].name' | read CTX_NAME
-query '.contexts[].context.cluster' | read CTX_CLUSTER
-query '.contexts[].context.user' | read CTX_USER
+yq_kubeconfig '.contexts[].name' | read CTX_NAME
+yq_kubeconfig '.contexts[].context.cluster' | read CTX_CLUSTER
+yq_kubeconfig '.contexts[].context.user' | read CTX_USER
 
 if ! [[ $CTX_NAME && $CTX_CLUSTER && $CTX_USER ]]; then
 	err "$TARGET has a malformed context definition, aborting:"
-	query '.contexts[]'
+	yq_kubeconfig '.contexts[]'
 fi
 
-query --arg cluster "$CTX_CLUSTER" '
+yq_kubeconfig --arg cluster "$CTX_CLUSTER" '
 .clusters | map(select(.name == $cluster)) | .[].cluster.server
 ' | read CLUSTER_SERVER
 
@@ -72,38 +82,59 @@ log "Cluster: $CTX_CLUSTER"
 log "User:    $CTX_USER"
 log "Server:  $CLUSTER_SERVER"
 
-if [[ $CTX_NAME == default || $CTX_CLUSTER == default || $CTX_USER == default || $CLUSTER_SERVER == *127.0.0.1* ]]; then
-	log "=> New name:   $RENAME"
-	log "=> New server: $HOST"
+# Use existing name, if present
+for name in "$CTX_NAME" "$CTX_CLUSTER" "$CTX_USER" "$RENAME"; do
+	if ! [[ $name == default || $name == admin ]]; then
+		break
+	fi
+done
+NEW_NAME="$name"
 
-	query -y \
+# Use existing address, if present
+if [[ $CLUSTER_SERVER == *127.0.0.1* ]]; then
+	NEW_SERVER="${CLUSTER_SERVER/127.0.0.1/$HOST}"
+elif [[ $CLUSTER_SERVER == *"[::1]"* ]]; then
+	NEW_SERVER="${CLUSTER_SERVER/"[::1]"/$HOST}"
+else
+	NEW_SERVER="$CLUSTER_SERVER"
+fi
+
+if [[ $CTX_NAME != $NEW_NAME || $CTX_CLUSTER != $NEW_NAME || $CTX_USER != $NEW_NAME || $CLUSTER_SERVER != $NEW_SERVER ]]; then
+	if [[ $CTX_NAME != $NEW_NAME || $CTX_CLUSTER != $NEW_NAME || $CTX_USER != $NEW_NAME ]]; then
+		log "=> New name:   $NEW_NAME"
+	fi
+	if [[ $CLUSTER_SERVER != $NEW_SERVER ]]; then
+		log "=> New server: $NEW_SERVER"
+	fi
+
+	yq_kubeconfig -y \
 		--arg context "$CTX_NAME" \
 		--arg cluster "$CTX_CLUSTER" \
 		--arg user "$CTX_USER" \
-		--arg host "$HOST" \
-		--arg rename "$RENAME" \
+		--arg new_server "$NEW_SERVER" \
+		--arg new_name "$NEW_NAME" \
 		'.
-	| .clusters |= (.
-		| map(select(.name == $cluster))
-		| map(.cluster.server |= gsub("127\\.0\\.0\\.1"; $host))
-		| map(.name |= $rename)
+		| .clusters |= (.
+			| map(select(.name == $cluster))
+			| map(.cluster.server |= $new_server)
+			| map(.name |= $new_name)
 		)
-	| .users |= (.
-		| map(select(.name == $user))
-		| map(.name |= $rename)
+		| .users |= (.
+			| map(select(.name == $user))
+			| map(.name |= $new_name)
 		)
-	| .contexts |= [{
-		name: $rename,
-		context: {
-			cluster: $rename,
-			user: $rename,
-		}
-	}]
-	| .["current-context"] |= $rename
-	' \
+		| .contexts |= [{
+			name: $rename,
+			context: {
+				cluster: $new_name,
+				user: $new_name,
+			}
+		}]
+		| .["current-context"] |= $new_name
+		' \
 	| sponge "$TMP_FILE"
 
-	query . "$TMP_FILE"
+	yq_kubeconfig . "$TMP_FILE"
 else
 	log "=> Keeping everything as-is"
 fi
