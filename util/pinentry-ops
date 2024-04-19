@@ -87,8 +87,10 @@ pinentry_stdout() {
 # main
 #
 
+PINENTRY="$(command -v pinentry)" || exit
+
 if ! [[ ${PINENTRY_DEBUG+set} ]]; then
-	exec /usr/bin/pinentry-gnome3 "$@"
+	exec "$PINENTRY" "$@"
 fi
 
 TMP_FILE="$(mktemp --suffix '.json')"
@@ -99,6 +101,6 @@ cleanup() {
 trap cleanup EXIT
 
 exec 2> >(systemd-cat -t pinentry-debug)
-/usr/bin/pinentry-gnome3 "$@" \
+"$PINENTRY" "$@" \
 	< <(pinentry_stdin) \
 	> >(pinentry_stdout)
