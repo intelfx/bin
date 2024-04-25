@@ -1,0 +1,70 @@
+#!/bin/bash
+
+#
+# constants
+#
+
+CARGO=(
+	/usr/bin/cargo
+)
+
+declare -A CARGO_CONFIGS=(
+	[release]="$HOME/.cargo/config-rel.toml"
+)
+
+
+#
+# functions
+#
+
+call_cargo() {
+	local profile="$1"
+	local -a args=( "${@:2}" )
+	local -a cmd
+
+	cmd+=( "${CARGO[@]}" )
+	if [[ ${CARGO_CONFIGS["$profile"]+set} ]]; then
+		cmd+=( --config "${CARGO_CONFIGS["$profile"]}" )
+	fi
+	cmd+=( "${args[@]}" )
+
+	set -x
+	exec "${cmd[@]}"
+}
+
+
+#
+# main
+#
+
+args=()
+profile=
+
+while (( $# )); do
+	case "$1" in
+	run|build|check|rustc) profile=dev ;;
+	test) profile=test ;;
+	bench) profile=bench ;;
+	install) profile=release ;;
+
+	--profile) profile="$2" ;;
+	--profile=) profile="${1#--profile=}" ;;
+
+	--release) profile=release ;;
+	--dev) profile=dev ;;
+
+	# if we got to --, there won't be any parsable arguments, bail
+	--) break ;;
+	esac
+
+	args+=( "$1" )
+	shift
+done
+
+case "$profile" in
+bench|release)   call_cargo release "${args[@]}" "$@" ;;
+dev|test|"")     call_cargo dev     "${args[@]}" "$@" ;;
+# TODO parse the profile to find out what it inherits from?
+rel-*|release-*) call_cargo release "${args[@]}" "$@" ;;
+*)               call_cargo ""      "${args[@]}" "$@" ;;
+esac
