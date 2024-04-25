@@ -1,0 +1,123 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+err() {
+	echo >&2 "E: $*"
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then err "$@"; fi
+	_usage
+	exit 1
+}
+
+help() {
+	_usage
+	exit 0
+}
+
+_usage() {
+	cat <<EOF
+Usage: $0 [[i|-i|c|-c|--copy]|[o|-o|p|-p|--paste] [FILE]]
+EOF
+}
+
+
+#
+# args
+#
+
+case "$#" in
+2)
+	file="$2"
+	;&
+1)
+	case "$1" in
+	i|-i|c|-c|--copy) op=copy ;;
+	o|-o|p|-p|--paste) op=paste ;;
+	*) usage "Invalid parameter: '$1'" ;;
+	esac
+	;;
+0)
+	if [[ -t 0 && ! -t 1 ]]; then op=paste
+	elif [[ ! -t 0 && -t 1 ]]; then op=copy
+	else die "Could not infer mode; pass -c/--copy or -p/--paste"
+	fi
+	;;
+*)
+	usage "Expected 1 or 2 arguments, got $#"
+	;;
+esac
+
+
+if [[ ${WAYLAND_DISPLAY+set} ]] && command -v wl-copy wl-paste &>/dev/null; then
+	if [[ ${file+set} ]]; then
+		case "$op" in
+		copy) exec <"$file" ;;
+		paste) exec >"$file" ;;
+		*) die "Internal error" ;;
+		esac
+	fi
+	case "$op" in
+	copy) exec wl-copy ;;
+	paste) exec wl-paste ;;
+	*) die "Internal error" ;;
+	esac
+fi
+
+if [[ ${DISPLAY+set} ]] && command -v xclip &>/dev/null; then
+	args=()
+	case "$op" in
+	copy) args+=( -in ) ;;
+	paste) args+=( -out ) ;;
+	*) die "Internal error" ;;
+	esac
+	if [[ ${file+set} ]]; then
+		args+=( "$file" )
+	fi
+	exec xclip -selection clipboard "${args[@]}"
+fi
+
+if [[ ${DISPLAY+set} ]] && command -v xsel &>/dev/null; then
+	args=()
+	case "$op" in
+	copy) args+=( --input ) ;;
+	paste) args+=( --output ) ;;
+	*) die "Internal error" ;;
+	esac
+	if [[ ${file+set} ]]; then
+		case "$op" in
+		copy) exec <"$file" ;;
+		paste) exec >"$file" ;;
+		*) die "Internal error" ;;
+		esac
+	fi
+	exec xsel --clipboard "${args[@]}"
+fi
+
+if [[ ${TMUX+set} ]] && command -v tmux &>/dev/null; then
+	args=()
+	if [[ ${file+set} ]]; then
+		case "$op" in
+		copy) args+=( "$file" ) ;;
+		paste) exec >"$file" ;;
+		esac
+	else
+		case "$op" in
+		copy) args+=( - ) ;;
+		esac
+	fi
+	case "$op" in
+	copy) exec tmux load-buffer -w "${args[@]}" ;;
+	paste) exec tmux show-buffer "${args[@]}" ;;
+	esac
+fi
+
+die "No clipboard interface detected"
