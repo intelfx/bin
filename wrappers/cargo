@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
 #
 # constants
 #
@@ -8,23 +11,38 @@ CARGO=(
 	/usr/bin/cargo
 )
 
-declare -A CARGO_CONFIGS=(
-	[release]="$HOME/.cargo/config-rel.toml"
-)
+CARGO_CONFIG=
 
 
 #
 # functions
 #
 
+try_config() {
+	local arg="$1"
+	if [[ -e "$arg" ]]; then
+		CARGO_CONFIG="$arg"
+		return
+	fi
+	return 1
+}
+
+try_configs() {
+	local arg
+	for arg; do
+		if try_config "$HOME/.cargo/config-$arg.toml"; then
+			return
+		fi
+	done
+}
+
 call_cargo() {
-	local profile="$1"
-	local -a args=( "${@:2}" )
+	local -a args=( "$@" )
 	local -a cmd
 
 	cmd+=( "${CARGO[@]}" )
-	if [[ ${CARGO_CONFIGS["$profile"]+set} ]]; then
-		cmd+=( --config "${CARGO_CONFIGS["$profile"]}" )
+	if [[ $CARGO_CONFIG ]]; then
+		cmd+=( --config "$CARGO_CONFIG" )
 	fi
 	cmd+=( "${args[@]}" )
 
@@ -62,9 +80,11 @@ while (( $# )); do
 done
 
 case "$profile" in
-bench|release)   call_cargo release "${args[@]}" "$@" ;;
-dev|test|"")     call_cargo dev     "${args[@]}" "$@" ;;
+bench|release)   try_configs "$profile" "release" ;;
+dev|test|"")     try_configs "$profile" "dev" ;;
 # TODO parse the profile to find out what it inherits from?
-rel-*|release-*) call_cargo release "${args[@]}" "$@" ;;
-*)               call_cargo ""      "${args[@]}" "$@" ;;
+rel-*|release-*) try_configs "$profile" "release" ;;
+*) ;;
 esac
+
+call_cargo "${args[@]}" "$@"
