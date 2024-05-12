@@ -96,5 +96,20 @@ aexport CCACHE_BASEDIR := $BUILD_DIR
 aexport CCACHE_CONFIGPATH := $SCRIPT_DIR/ccache.conf
 }" -i Makefile
 
+# newer Makefiles do not use offline tarballs -- sunrise by hand
+mkdir -p "$SOURCE_DIR/contrib"
+cp -av \
+	"$SCRIPT_DIR"/{gecko,mono}/*.tar* \
+	-t "$SOURCE_DIR/contrib"
+
 make redist
+
+# ditto
+cp -avu \
+	"$SOURCE_DIR/contrib"/wine-gecko*.tar* \
+	-t "$SCRIPT_DIR/gecko"
+cp -avu \
+	"$SOURCE_DIR/contrib"/wine-mono*.tar* \
+	-t "$SCRIPT_DIR/mono"
+
 put *.tar.* '/mnt/data/Files/shared/dist/misc/deck/proton'
