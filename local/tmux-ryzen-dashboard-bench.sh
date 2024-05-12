@@ -19,8 +19,16 @@
 cd "$HOME"
 respawn_helper="$HOME/bin/misc/tmux-respawn-helper"
 
+if [[ -e bench.sh ]]; then
+  bench_cmd1=(sleep infinity)
+  bench_cmd2=(./bench.sh)
+else
+  bench_cmd1=()
+  bench_cmd2=()
+fi
+
 pane_shell=$(tmux new-window -P -F '#{pane_id}' -d -n "(bench)" \
-  -- sleep infinity)
+  -- "${bench_cmd1[@]}")
 pane_ryzen=$(tmux split-window -P -F '#{pane_id}' -t $pane_shell -h -b \
   -- "$respawn_helper" sudo ryzen_monitor)
 pane_liquidctl=$(tmux split-window -P -F '#{pane_id}' -t $pane_shell -h \
@@ -29,6 +37,8 @@ pane_liquidctl=$(tmux split-window -P -F '#{pane_id}' -t $pane_shell -h \
 tmux resize-pane -t $pane_ryzen -x 100  # exact=98
 tmux resize-pane -t $pane_liquidctl -x 55  # exact=52
 tmux set-option -t $pane_shell remain-on-exit on
-tmux respawn-pane -t $pane_shell -k "./bench.sh"
+if [[ ${bench_cmd2} ]]; then
+  tmux respawn-pane -t $pane_shell -k "${bench_cmd2[@]}"
+fi
 tmux select-pane -t $pane_shell
 tmux bind-key R respawn-pane
