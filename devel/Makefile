@@ -8,7 +8,7 @@ ALLFLAGS ?=
 CFLAGS ?= -march=native -ggdb3 -O2
 CXXFLAGS ?= -march=native -ggdb3 -O2
 LDFLAGS ?= 
-RUSTFLAGS ?= -C opt-level=3
+RUSTFLAGS ?= -C target-cpu=native -C opt-level=3
 
 override CFLAGS := -Wall -Wextra -std=c11 $(ALLFLAGS) $(CFLAGS)
 override CXXFLAGS := -Wall -Wextra -std=c++20 $(ALLFLAGS) $(CXXFLAGS)
