@@ -5,13 +5,13 @@ CXX = $(if $(filter clang,$(notdir $(CC))),clang++,g++)
 RUSTC = rustc
 
 ALLFLAGS ?= 
-CFLAGS ?= -ggdb3 -O2
-CXXFLAGS ?= -ggdb3 -O2
+CFLAGS ?= -march=native -ggdb3 -O2
+CXXFLAGS ?= -march=native -ggdb3 -O2
 LDFLAGS ?= 
 RUSTFLAGS ?= -C opt-level=3
 
-override CFLAGS := -Wall -Wextra -march=native -std=c11 $(ALLFLAGS) $(CFLAGS)
-override CXXFLAGS := -Wall -Wextra -march=native -std=c++20 $(ALLFLAGS) $(CXXFLAGS)
+override CFLAGS := -Wall -Wextra -std=c11 $(ALLFLAGS) $(CFLAGS)
+override CXXFLAGS := -Wall -Wextra -std=c++20 $(ALLFLAGS) $(CXXFLAGS)
 override LDFLAGS := -Wl,-O1,--relax,--sort-common,--as-needed,-z,relro,-z,now,-z,pack-relative-relocs -fuse-ld=mold $(ALLFLAGS) $(LDFLAGS)
 override LDLIBS := -ldl -lm -lrt -lpthread $(LDLIBS)
 override RUSTFLAGS := 
