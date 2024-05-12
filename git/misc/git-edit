@@ -11,6 +11,6 @@ trap cleanup EXIT
 TOP_DIR="$(git rev-parse --show-toplevel)"
 git reset 'HEAD^' -- "$TOP_DIR"
 git diff 'HEAD^..' --name-only -z \
-	| git add --all --intent-to-add --pathspec-from-file=- --pathspec-file-nul
+	| git add --all --force --intent-to-add --pathspec-from-file=- --pathspec-file-nul
 git add --edit
 git commit --amend --no-edit "$@"

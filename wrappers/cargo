@@ -11,12 +11,12 @@ CARGO=(
 	/usr/bin/cargo
 )
 
+
+#
+# state
+#
+
 CARGO_CONFIG=
-
-
-#
-# functions
-#
 
 try_config() {
 	local arg="$1"
@@ -52,24 +52,55 @@ call_cargo() {
 
 
 #
-# main
+# arguments
 #
 
 args=()
-profile=
+args_profile=
+args_config=
+args_cmd=
+
+parse_config() {
+	# --config is a global parameter and is only accepted before a command
+	if [[ $args_cmd ]]; then
+		return
+	fi
+	args_have_config=1
+	args_config="$1"
+}
+
+parse_cmd() {
+	# only the first free argument is the command
+	if [[ $args_cmd ]]; then
+	       return
+	fi	       
+	args_have_cmd=1
+	args_cmd="$1"
+	args_profile="$2"
+}
+
+parse_profile() {
+	args_have_profile=1
+	args_profile="$1"
+}
 
 while (( $# )); do
 	case "$1" in
-	run|build|check|rustc) profile=dev ;;
-	test) profile=test ;;
-	bench) profile=bench ;;
-	install) profile=release ;;
+	--config)    parse_config "$2" ;;
+	--config=*)  parse_config "${1#--config=}" ;;
 
-	--profile) profile="$2" ;;
-	--profile=) profile="${1#--profile=}" ;;
+	run|\
+	build|\
+	check|\
+	rustc)      parse_cmd "$1" dev ;;
+	test)        parse_cmd "$1" test ;;
+	bench)       parse_cmd "$1" bench ;;
+	install)     parse_cmd "$1" release ;;
 
-	--release) profile=release ;;
-	--dev) profile=dev ;;
+	--profile)   parse_profile "$2" ;;
+	--profile=*) parse_profile "${1#--profile=}" ;;
+	--release)   parse_profile release ;;
+	--dev)       parse_profile dev ;;
 
 	# if we got to --, there won't be any parsable arguments, bail
 	--) break ;;
@@ -79,12 +110,14 @@ while (( $# )); do
 	shift
 done
 
-case "$profile" in
-bench|release)   try_configs "$profile" "release" ;;
-dev|test|"")     try_configs "$profile" "dev" ;;
-# TODO parse the profile to find out what it inherits from?
-rel-*|release-*) try_configs "$profile" "release" ;;
-*) ;;
-esac
+if [[ ! $args_config ]]; then
+	case "$args_profile" in
+	bench|release)   try_configs "$args_profile" "release" ;;
+	dev|test|'')     try_configs "$args_profile" "dev" ;;
+	# TODO parse the profile to find out what it inherits from?
+	rel-*|release-*) try_configs "$args_profile" "release" ;;
+	*) ;;
+	esac
+fi
 
 call_cargo "${args[@]}" "$@"
