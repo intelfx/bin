@@ -20,7 +20,9 @@ CARGO_CONFIG=
 
 try_config() {
 	local arg="$1"
-	if [[ -e "$arg" ]]; then
+	if [[ $CARGO_CONFIG ]]; then
+		return
+	elif [[ -e "$arg" ]]; then
 		CARGO_CONFIG="$arg"
 		return
 	fi
@@ -118,6 +120,9 @@ if [[ ! $args_config ]]; then
 	rel-*|release-*) try_configs "$args_profile" "release" ;;
 	*) ;;
 	esac
+
+	# default custom config
+	try_config "$HOME/.cargo/config-my.toml"
 fi
 
 call_cargo "${args[@]}" "$@"
