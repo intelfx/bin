@@ -43,6 +43,8 @@ if [[ ${PATCH_VERSION+set} ]]; then
 	log "Forcing patches v${PATCH_VERSION}"
 else
 	case "$SOURCE_TAG" in
+		GE-Proton9-*)
+			PATCH_VERSION=9ge ;;
 		GE-Proton8-*)
 			PATCH_VERSION=8ge ;;
 		GE-Proton7-*)
