@@ -1,0 +1,12 @@
+#!/bin/bash
+
+exec /usr/bin/aria2c \
+	--file-allocation=trunc \
+	--enable-mmap=false \
+	--allow-overwrite=true \
+	--allow-piece-length-change=true \
+	--auto-file-renaming=false \
+	--conditional-get=true \
+	--remote-time=true \
+	--stderr=true \
+	"$@"
