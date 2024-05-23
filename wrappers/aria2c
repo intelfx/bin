@@ -1,3 +1,6 @@
 #!/bin/bash
 
-exec /usr/bin/aria2c --file-allocation=trunc --enable-mmap=true --auto-file-renaming=false --allow-overwrite=true --conditional-get=true "$@"
+exec /usr/bin/aria2c \
+	--file-allocation=trunc \
+	--enable-mmap=false \
+	"$@"
