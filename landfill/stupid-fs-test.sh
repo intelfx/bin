@@ -89,26 +89,32 @@ aria2c() {
 declare -a TESTS=(
 	ext4
 	btrfs
+	bcachefs
 )
 declare -A T_FSTYPE=(
 	[ext4]=ext4
 	[btrfs]=btrfs
+	[bcachefs]=bcachefs
 )
 declare -A T_BLKDEV=(
 	[ext4]=/dev/disk/by-partlabel/test1
 	[btrfs]=/dev/disk/by-partlabel/test2
+	[bcachefs]=/dev/disk/by-partlabel/test3
 )
 declare -A T_MOUNTPOINT=(
 	[ext4]=/mnt/t-ext4
 	[btrfs]=/mnt/t-btrfs
+	[bcachefs]=/mnt/t-bcachefs
 )
 declare -A T_MKFSOPTS=(
 	[ext4]="-m 0 -E lazy_itable_init=0,lazy_journal_init=0 -L test-ext4 -F"
 	[btrfs]="--csum xxhash64 -L test-btrfs -f"
+	[bcachefs]="--compression lz4 --discard -L test-bcachefs -f"
 )
 declare -A T_MNTOPTS=(
 	[ext4]="noatime,discard"
 	[btrfs]="noatime,compress=lzo,discard=async,flushoncommit"  # NOTE: flushoncommit is a pessimization
+	[bcachefs]="noatime"
 )
 
 TEST_PAYLOAD_URL="https://ftp.mozilla.org/pub/firefox/releases/127.0b5/source/firefox-127.0b5.source.tar.xz"
@@ -228,5 +234,6 @@ eval "$(globaltraps)"
 prepare_all
 run_one_test ext4
 run_one_test btrfs
+run_one_test bcachefs
 
 log "Cleaning up"
