@@ -98,4 +98,10 @@ tag="$(systemd-escape "$subpath")"
 tag="${tag//'\x'??/'-'}"
 tmpdir="$HOME/tmp/big/build/$tag"
 
-process_one_dir "target"
+if [[ -e x.py && (-e config.toml || -e config.example.toml) ]]; then
+	# rustc
+	tomlq <config.toml -r '.build["build-dir"] // empty' | IFS= read -r build_dir ||:
+	process_one_dir "${build_dir:-"build"}"
+else
+	process_one_dir "target"
+fi
