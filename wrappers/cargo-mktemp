@@ -95,6 +95,7 @@ process_one_dir() {
 
 subpath="$(realpath -qe --relative-to="$HOME" --relative-base="$HOME" .)"
 tag="$(systemd-escape "$subpath")"
+tag="${tag//'\x'??/'-'}"
 tmpdir="$HOME/tmp/big/build/$tag"
 
 process_one_dir "target"
