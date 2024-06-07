@@ -65,27 +65,36 @@ esac
 
 
 #
+# functions
+#
+
+process_one_dir() {
+	local srcdir="./$1"
+	local dstdir="$tmpdir/$1"
+	if [[ -d "$srcdir" && ! -L "$srcdir" ]]; then
+		if ! [[ -d "$dstdir" ]]; then
+			log "Moving ${srcdir@Q} to ${dstdir@Q}"
+			mkdir -vp "${dstdir%/*}"
+			mv "$srcdir" -T "$dstdir"
+		else
+			log "Removing ${srcdir@Q} as ${dstdir@Q} already exists"
+			rm -rf "$srcdir"
+		fi
+	elif [[ -e "$srcdir" ]]; then
+		rm -vrf "$srcdir"
+	fi
+
+	mkdir -vp "$dstdir"
+	ln -vsf "$dstdir" -T "$srcdir"
+}
+
+
+#
 # main
 #
 
 subpath="$(realpath -qe --relative-to="$HOME" --relative-base="$HOME" .)"
 tag="$(systemd-escape "$subpath")"
 tmpdir="$HOME/tmp/big/build/$tag"
-mkdir -vp "$tmpdir"
 
-srcdir=./target
-dstdir="$tmpdir/target"
-if [[ -d "$srcdir" && ! -L "$srcdir" ]]; then
-	if ! [[ -d "$dstdir" ]]; then
-		log "Moving ${srcdir@Q} to ${dstdir@Q}"
-		mv "$srcdir" -T "$dstdir"
-	else
-		log "Removing ${srcdir@Q} as ${dstdir@Q} already exists"
-		rm -rf "$srcdir"
-	fi
-elif [[ -e "$srcdir" ]]; then
-	rm -vrf "$srcdir"
-fi
-
-mkdir -vp "$dstdir"
-ln -vsf "$dstdir" -T "$srcdir"
+process_one_dir "target"
