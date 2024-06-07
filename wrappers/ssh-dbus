@@ -1,0 +1,58 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} HOST [USER]
+
+If USER is not specified, ssh as \`root@\` and connect to the system bus.
+If USER is specified, ssh as \`USER@\` and connect to the user bus.
+
+Suggested usage:
+	export DBUS_SYSTEM_BUS_ADDRESS="unixexec:path=${0##*/},argv1=HOST"
+	export DBUS_SESSION_BUS_ADDRESS="unixexec:path=${0##*/},argv1=HOST,argv2=USER"
+EOF
+}
+
+ssh_host=""
+ssh_args=(
+	-o BatchMode=yes
+	-T
+)
+bridge_args=()
+
+case "$1" in
+-h|--help)
+	usage
+	;;
+esac
+
+case "$#" in
+0)
+	usage "wrong number of positional arguments"
+	;;
+1)
+	ssh_host="root@$1"
+	bridge_args=( --system )
+	;;
+2)
+	ssh_host="$2@$1"
+	bridge_args=( --user )
+	;;
+*)
+	exit 1
+	;;
+esac
+
+exec ssh "${ssh_args[@]}" "$ssh_host" systemd-stdio-bridge "${bridge_args[@]}"
