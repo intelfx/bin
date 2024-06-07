@@ -1,0 +1,101 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $@" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [--relative-base=DIR] [-a|--absolute|-r|--relative]
+EOF
+}
+
+
+#
+# args
+#
+
+if args=$(getopt -o 'ar' --long 'relative-base:,absolute,relative' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+RELATIVE=1
+unset RELATIVE_BASE
+unset TARGET_DIR
+while :; do
+	case "$1" in
+	-a|--absolute) RELATIVE=0 ;;
+	-r|--relative) RELATIVE=1 ;;
+	--relative-base) shift; RELATIVE=1; RELATIVE_BASE="$1" ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+case "$#" in
+1) TARGET_DIR="$1" ;;
+*) usage "wrong number of positional arguments" ;;
+esac
+
+
+#
+# main
+#
+
+OUR_GIT_DIR="$(git rev-parse --absolute-git-dir)" \
+	&& OUR_OBJECTS="$OUR_GIT_DIR/objects" \
+	&& [[ -d "$OUR_OBJECTS" ]] \
+	|| die "${PWD@Q} is not a git repository"
+TARGET_GIT_DIR="$(git -C "$TARGET_DIR" rev-parse --absolute-git-dir)" \
+	&& TARGET_OBJECTS="$TARGET_GIT_DIR/objects" \
+	&& [[ -d "$TARGET_OBJECTS" ]] \
+	|| die "${TARGET_DIR@Q} is not a git repository"
+OUR_ALTERNATES="$OUR_OBJECTS/info/alternates"
+
+if [[ -s "$OUR_ALTERNATES" ]]; then
+	while IFS='' read -r line; do
+		alt_dir="$(cd "$OUR_OBJECTS"; realpath -qe "$line")" \
+			|| die "Failed to parse objects/info/alternates: could not resolve: ${line@Q}"
+		[[ -d "$alt_dir" ]] \
+			|| die "Failed to parse objects/info/alternates: not a directory: ${alt_dir@Q}"
+		[[ ! "$TARGET_OBJECTS" -ef "$alt_dir" ]] \
+			|| die "Alternate already exists: ${alt_dir@Q}"
+	done <"$OUR_ALTERNATES"
+fi
+
+realpath_args=()
+if (( RELATIVE )); then
+	realpath_args+=( --relative-to "$OUR_OBJECTS" )
+fi
+if [[ ${RELATIVE_BASE+set} ]]; then
+	realpath_args+=( --relative-base "$RELATIVE_BASE" )
+fi
+
+log "Adding alternate: ${OUR_GIT_DIR@Q} <- ${TARGET_GIT_DIR@Q}"
+mkdir -p "${OUR_ALTERNATES%/*}"
+realpath -qe "${realpath_args[@]}" "$TARGET_OBJECTS" >>"$OUR_ALTERNATES"
