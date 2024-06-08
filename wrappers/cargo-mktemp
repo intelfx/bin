@@ -3,100 +3,15 @@
 set -eo pipefail
 shopt -s lastpipe
 
-log() {
-	echo ":: $*" >&2
-}
-
-err() {
-	echo "E: $*" >&2
-}
-
-die() {
-	err "$@"
-	exit 1
-}
-
-usage() {
-	if (( $# )); then
-		echo "${0##*/}: $*" >&2
-		echo >&2
-	fi
-	_usage >&2
-	exit 1
-}
-
-_usage() {
-	cat <<EOF
-Usage: ${0##*/} [-d|--dir TMP-DIR]
-
-Options:
-	-d, --dir=TMP-DIR	Use TMP-DIR as the scratch directory
-				to offload builds to [${TMP_ROOT@Q}]
-EOF
-}
-
-
-#
-# args
-#
-
-TMP_ROOT="$HOME/tmp/big"
-
-if args=$(getopt -o 'd:' --long 'dir:' -n "${0##*/}" -- "$@"); then
-	eval set -- "$args"
-else
-	usage
-fi
-unset args
-
-while :; do
-	case "$1" in
-	-d|--dir) shift; TMP_ROOT="$1" ;;
-	--) shift; break ;;
-	*) die "getopt error" ;;
-	esac
-	shift
-done
-
-case "$#" in
-0) ;;
-*) usage "unexpected positional arguments" ;;
-esac
-
-
-#
-# functions
-#
-
-process_one_dir() {
-	local srcdir="./$1"
-	local dstdir="$tmpdir/$1"
-	if [[ -d "$srcdir" && ! -L "$srcdir" ]]; then
-		if ! [[ -d "$dstdir" ]]; then
-			log "Moving ${srcdir@Q} to ${dstdir@Q}"
-			mkdir -vp "${dstdir%/*}"
-			mv "$srcdir" -T "$dstdir"
-		else
-			log "Removing ${srcdir@Q} as ${dstdir@Q} already exists"
-			rm -rf "$srcdir"
-		fi
-	elif [[ -e "$srcdir" ]]; then
-		rm -vrf "$srcdir"
-	fi
-
-	mkdir -vp "$dstdir"
-	ln -vsf "$dstdir" -T "$srcdir"
-}
+# shellcheck source=../inc/-mktempdir-main
+. -- -mktempdir-main || exit
 
 
 #
 # main
 #
 
-subpath="$(realpath -qe --relative-to="$HOME" --relative-base="$HOME" .)"
-tag="$(systemd-escape "$subpath")"
-tag="${tag//'\x'??/'-'}"
-tmpdir="$HOME/tmp/big/build/$tag"
+setup_tmpdir "." "$TMP_ROOT"
 
 if [[ -e x.py && (-e config.toml || -e config.example.toml) ]]; then
 	# rustc
