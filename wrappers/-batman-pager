@@ -1,6 +1,10 @@
 #!/bin/bash
 
-args=( --paging=always --wrap=never )
+if [[ ${BATMANPREVIEW+set} ]]; then
+	args=( --color=always --paging=never --wrap=auto )
+else
+	args=( --paging=always --wrap=never )
+fi
 
 if [[ ${MANWIDTH+set} ]]; then
 	args+=( --terminal-width="$MANWIDTH" )
