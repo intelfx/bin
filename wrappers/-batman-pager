@@ -1,0 +1,11 @@
+#!/bin/bash
+
+args=( --paging=always --wrap=never )
+
+if [[ ${MANWIDTH+set} ]]; then
+	args+=( --terminal-width="$MANWIDTH" )
+fi
+
+# try not to leave a shell hanging around
+shopt -s lastpipe
+exec col -bx | exec bat --language=man --style=plain "${args[@]}"
