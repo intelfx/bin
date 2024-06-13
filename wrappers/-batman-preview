@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# accept --terminal-width= from cmdline because vifm(1) can't set environment
+# then feed it as $MANWIDTH into
+while (( $# )); do
+	case "$1" in
+	--terminal-width=*) export MANWIDTH="${1#--terminal-width=}"; shift ;;
+	*) break ;;
+	esac
+done
+
+# try not to leave a shell hanging around
+shopt -s lastpipe
+MANROFFOPT="-c" exec man "$@" 2>/dev/null | BATMANPREVIEW=1 exec -- -batman-pager
