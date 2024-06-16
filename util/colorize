@@ -22,10 +22,12 @@ function adjust_gtk3() {
 	local gtk3_theme=( Adwaita Adwaita-dark ) #( Arc Arc-Dark )
 	#local shell_theme=( Adwaita Adwaita ) #( Arc Arc-Dark )
 	local color_scheme=( default prefer-dark )
+	local icon_theme=( 'Papirus-Light' 'Papirus-Dark' )
 
 	dconf write /org/gnome/desktop/interface/color-scheme "'${color_scheme[$1]}'"
 	dconf write /org/gnome/desktop/interface/gtk-theme "'${gtk3_theme[$1]}'"
 	#dconf write /org/gnome/shell/extensions/user-theme/name "'${shell_theme[$1]}'"
+	dconf write /org/gnome/desktop/interface/icon-theme "'${icon_theme[$1]}'"
 }
 
 # $1: whether to enable dark (1 or 0)
