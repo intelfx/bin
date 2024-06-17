@@ -11,5 +11,7 @@ if [[ ${MANWIDTH+set} ]]; then
 fi
 
 # try not to leave a shell hanging around
+# https://unix.stackexchange.com/a/778258/21885
 shopt -s lastpipe
-exec col -bx | exec bat --language=man --style=plain "${args[@]}"
+trap '' CHLD
+col -bx | exec bat --language=man --style=plain "${args[@]}"
