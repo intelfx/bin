@@ -34,6 +34,8 @@ if ! [[ -e "/sys/bus/pci/devices/$dev" ]]; then
     die "device ${dev@Q} not found"
 fi
 
+log "Resolving $dev..."
+
 pciec="$(setpci -s "$dev" CAP_EXP+02.W)"
 pt="$((("0x$pciec" & 0xF0) >> 4))"
 
@@ -42,6 +44,12 @@ port="$(extract 2 "$(readlink "/sys/bus/pci/devices/$dev")")"
 case "$pt" in
 0|1|5) dev="$port" ;;
 esac
+
+if [[ ${speed+set} ]]; then
+    log "Configuring $dev..."
+else
+    log "Querying $dev..."
+fi
 
 lnkcap="$(setpci -s "$dev" CAP_EXP+0c.L)"
 lnksta="$(setpci -s "$dev" CAP_EXP+12.W)"
@@ -54,17 +62,13 @@ log "Max link speed: $max_speed"
 log "LnkSta: $lnksta"
 log "Current link speed: $act_speed"
 
-if ! [[ ${speed+set} ]]; then
-    speed="$max_speed"
-fi
-
-if ! (( speed > 0 && speed <= max_speed )); then
-    die "Bad target link speed: ${speed@Q}"
-fi
-
-log "Configuring $dev..."
-
 lnkctl2="$(setpci -s "$dev" CAP_EXP+30.L)"
+
+if ! [[ ${speed+set} ]]; then
+    log "LnkCtl2: $lnkctl2"
+    log "Target link speed: $(("0x$lnkctl2" & 0xF))"
+    exit
+fi
 
 log "Original LnkCtl2: $lnkctl2"
 log "Original target link speed: $(("0x$lnkctl2" & 0xF))"
