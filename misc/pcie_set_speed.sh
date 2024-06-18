@@ -1,83 +1,97 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
+. lib.sh || exit
+
 #
 # http://alexforencich.com/wiki/en/pcie/set-speed
 # "Except where otherwise noted, content on this wiki is licensed under the following license: CC Attribution-Share Alike 4.0 International"
 #
 
-dev=$1
-speed=$2
+_usage() {
+    cat <<EOF
+Usage: $0 PCIE-DEVICE [PCIE-GEN]
+EOF
+}
 
-if [ -z "$dev" ]; then
-    echo "Error: no device specified"
-    exit 1
+case "$#" in
+2) dev="$1"; speed="$2" ;;
+1) dev="$1"; unset speed ;;
+*) usage "expected 1 or 2 positional parameters" ;;
+esac
+
+if ! [[ "$dev" ]]; then
+    die "empty device"
 fi
 
-if [ ! -e "/sys/bus/pci/devices/$dev" ]; then
+if ! [[ -e "/sys/bus/pci/devices/$dev" ]]; then
     dev="0000:$dev"
 fi
 
-if [ ! -e "/sys/bus/pci/devices/$dev" ]; then
-    echo "Error: device $dev not found"
-    exit 1
+if ! [[ -e "/sys/bus/pci/devices/$dev" ]]; then
+    die "device ${dev@Q} not found"
 fi
 
-pciec=$(setpci -s $dev CAP_EXP+02.W)
-pt=$((("0x$pciec" & 0xF0) >> 4))
+pciec="$(setpci -s "$dev" CAP_EXP+02.W)"
+pt="$((("0x$pciec" & 0xF0) >> 4))"
 
-port=$(basename $(dirname $(readlink "/sys/bus/pci/devices/$dev")))
+port="$(extract 2 "$(readlink "/sys/bus/pci/devices/$dev")")"
 
-if (($pt == 0)) || (($pt == 1)) || (($pt == 5)); then
-    dev=$port
+case "$pt" in
+0|1|5) dev="$port" ;;
+esac
+
+lnkcap="$(setpci -s "$dev" CAP_EXP+0c.L)"
+lnksta="$(setpci -s "$dev" CAP_EXP+12.W)"
+
+max_speed="$(("0x$lnkcap" & 0xF))"
+act_speed="$(("0x$lnksta" & 0xF))"
+
+log "LnkCap: $lnkcap"
+log "Max link speed: $max_speed"
+log "LnkSta: $lnksta"
+log "Current link speed: $act_speed"
+
+if ! [[ ${speed+set} ]]; then
+    speed="$max_speed"
 fi
 
-lc=$(setpci -s $dev CAP_EXP+0c.L)
-ls=$(setpci -s $dev CAP_EXP+12.W)
-
-max_speed=$(("0x$lc" & 0xF))
-
-echo "Link capabilities:" $lc
-echo "Max link speed:" $max_speed
-echo "Link status:" $ls
-echo "Current link speed:" $(("0x$ls" & 0xF))
-
-if [ -z "$speed" ]; then
-    speed=$max_speed
+if ! (( speed > 0 && speed <= max_speed )); then
+    die "Bad target link speed: ${speed@Q}"
 fi
 
-if (($speed > $max_speed)); then
-    speed=$max_speed
-fi
+log "Configuring $dev..."
 
-echo "Configuring $dev..."
+lnkctl2="$(setpci -s "$dev" CAP_EXP+30.L)"
 
-lc2=$(setpci -s $dev CAP_EXP+30.L)
+log "Original LnkCtl2: $lnkctl2"
+log "Original target link speed: $(("0x$lnkctl2" & 0xF))"
 
-echo "Original link control 2:" $lc2
-echo "Original link target speed:" $(("0x$lc2" & 0xF))
+lnkctl2_new="$(printf "%08x" "$((("0x$lnkctl2" & 0xFFFFFFF0) | speed))")"
 
-lc2n=$(printf "%08x" $((("0x$lc2" & 0xFFFFFFF0) | $speed)))
+log "New target link speed: $speed"
+log "New LnkCtl2: $lnkctl2_new"
 
-echo "New target link speed:" $speed
-echo "New link control 2:" $lc2n
+setpci -s "$dev" CAP_EXP+30.L="$lnkctl2_new"
 
-setpci -s $dev CAP_EXP+30.L=$lc2n
+log "Triggering link retraining..."
 
-echo "Triggering link retraining..."
+lnkctl="$(setpci -s "$dev" CAP_EXP+10.L)"
 
-lc=$(setpci -s $dev CAP_EXP+10.L)
+log "Original LnkCtl: $lnkctl"
 
-echo "Original link control:" $lc
+new_lnkctl="$(printf "%08x" "$(("0x$lnkctl" | 0x20))")"
 
-lcn=$(printf "%08x" $(("0x$lc" | 0x20)))
+log "New LnkCtl: $new_lnkctl"
 
-echo "New link control:" $lcn
-
-setpci -s $dev CAP_EXP+10.L=$lcn
+setpci -s "$dev" CAP_EXP+10.L="$new_lnkctl"
 
 sleep 0.1
 
-ls=$(setpci -s $dev CAP_EXP+12.W)
+lnksta="$(setpci -s "$dev" CAP_EXP+12.W)"
+act_speed=$(("0x$lnksta" & 0xF))
 
-echo "Link status:" $ls
-echo "Current link speed:" $(("0x$ls" & 0xF))
+log "LnkSta: $lnksta"
+log "Current link speed: $act_speed"
