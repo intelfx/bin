@@ -94,9 +94,15 @@ unset mode_both
 unset mode_tty
 unset mode_desktop
 
+declare -A skip
+
 while (( $# )); do
 	case "$1" in
 	--debug) export DEBUG=1 ;;
+	--skip-wayland) skip[wl]=1 ;;
+	--skip-x11) skip[x11]=1 ;;
+	--skip-tmux) skip[tmux]=1 ;;
+	--skip-osc52) skip[osc52]=1 ;;
 	-b|--both) mode_both=1 ;;
 	-t|--tty) mode_tty=1 ;;
 	-d|--desktop) mode_desktop=1 ;;
@@ -171,6 +177,11 @@ into_file() {
 #
 
 run_wl_clipboard() {
+	if [[ ${skip[wl]+set} ]]; then
+		dbg "skipping wl-clipboard"
+		return 1
+	fi
+
 	if [[ ${file+set} ]]; then
 		case "$op" in
 		copy) exec <"$file" ;;
@@ -186,6 +197,11 @@ run_wl_clipboard() {
 }
 
 run_xclip() {
+	if [[ ${skip[x11]+set} ]]; then
+		dbg "skipping xclip"
+		return 1
+	fi
+
 	local args=()
 	case "$op" in
 	copy) args+=( -in ) ;;
@@ -200,6 +216,11 @@ run_xclip() {
 }
 
 run_xsel() {
+	if [[ ${skip[x11]+set} ]]; then
+		dbg "skipping xsel"
+		return 1
+	fi
+
 	local args=()
 	case "$op" in
 	copy) args+=( --input ) ;;
@@ -218,6 +239,11 @@ run_xsel() {
 }
 
 run_tmux() {
+	if [[ ${skip[tmux]+set} ]]; then
+		dbg "skipping tmux"
+		return 1
+	fi
+
 	local args=()
 	if [[ ${file+set} ]]; then
 		case "$op" in
@@ -236,6 +262,11 @@ run_tmux() {
 }
 
 run_osc52() {
+	if [[ ${skip[osc52]+set} ]]; then
+		dbg "skipping OSC 52"
+		return 1
+	fi
+
 	into_file
 
 	local len max=74994
