@@ -3,6 +3,12 @@
 set -eo pipefail
 shopt -s lastpipe
 
+set_trace() {
+	if (( DEBUG )); then
+		set -x
+	fi
+}
+
 warn() {
 	echo >&2 "W: $*"
 }
@@ -29,7 +35,7 @@ help() {
 
 _usage() {
 	cat <<EOF
-Usage: $0 [MODE [FILE]]
+Usage: $0 [--debug] [MODE [FILE]]
 
 Copy or paste data to/from any available clipboard.
 
@@ -48,6 +54,9 @@ Arguments:
 
 		If both standard streams are connected to the terminal,
 		a warning is printed and \`--paste\` is assumed.
+
+Options:
+	--debug		Trace execution
 EOF
 }
 
@@ -61,6 +70,7 @@ unset file
 
 while (( $# )); do
 	case "$1" in
+	--debug) export DEBUG=1 ;;
 	-i|-c|--copy) op=copy ;;
 	-o|-p|--paste) op=paste ;;
 	-*) usage "invalid flag: ${1@Q}" ;;
@@ -109,8 +119,8 @@ run_wl_clipboard() {
 		esac
 	fi
 	case "$op" in
-	copy) exec wl-copy ;;
-	paste) exec wl-paste ;;
+	copy) set_trace; exec wl-copy ;;
+	paste) set_trace; exec wl-paste ;;
 	*) die "internal error" ;;
 	esac
 }
@@ -125,6 +135,7 @@ run_xclip() {
 	if [[ ${file+set} ]]; then
 		args+=( "$file" )
 	fi
+	set_trace
 	exec xclip -selection clipboard "${args[@]}"
 }
 
@@ -142,6 +153,7 @@ run_xsel() {
 		*) die "internal error" ;;
 		esac
 	fi
+	set_trace
 	exec xsel --clipboard "${args[@]}"
 }
 
@@ -158,8 +170,8 @@ run_tmux() {
 		esac
 	fi
 	case "$op" in
-	copy) exec tmux load-buffer -w "${args[@]}" ;;
-	paste) exec tmux show-buffer "${args[@]}" ;;
+	copy) set_trace; exec tmux load-buffer -w "${args[@]}" ;;
+	paste) set_trace; exec tmux show-buffer "${args[@]}" ;;
 	esac
 }
 
