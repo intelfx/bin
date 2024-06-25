@@ -21,6 +21,12 @@ trace() {
 	fi
 }
 
+dbg() {
+	if (( DEBUG )); then
+		echo >&2 "DBG: $*"
+	fi
+}
+
 warn() {
 	echo >&2 "W: $*"
 }
@@ -68,7 +74,7 @@ Arguments:
 		a warning is printed and \`--paste\` is assumed.
 
 Options:
-	-t, --tty	Limit operation to terminal clipboard (tmux only)
+	-t, --tty	Limit operation to terminal clipboard (tmux or OSC 52)
 	-d, --desktop	Limit operation to graphical clipboard (Wayland or X11)
 	-b, --both	Attempt to work with terminal and graphical clipboards
 			in turn	(this option only makes sense with -c/--copy)
@@ -229,6 +235,33 @@ run_tmux() {
 	esac
 }
 
+run_osc52() {
+	into_file
+
+	local len max=74994
+	wc -c "$file" | read -r len _
+
+	if (( len > max )); then
+		err "osc52: input is $(( len - max )) bytes too long (input=$len, max=$max)"
+		return 1
+	fi
+
+	local enc
+	enc="$(base64 -w0 -- "$file")"
+
+	local esc_open='\033]52;c;' esc_close='\a'
+	# FIXME: when is this needed?
+	if [[ ${TMUX+set} && ${TERM} == screen* ]]; then
+		dbg "osc52: applying tmux wrapping"
+		esc_open="\033Ptmux;\033${esc_open}"
+		esc_close="${esc_close}\033\\"
+	fi
+
+	dbg "osc52: $len raw bytes, ${#enc} encoded bytes"
+	printf "${esc_open}%s${esc_close}" "$enc"
+	exit
+}
+
 run_desktop() {
 	if [[ ${WAYLAND_DISPLAY+set} ]] && command -v wl-copy wl-paste &>/dev/null; then
 		run_wl_clipboard ||:
@@ -248,6 +281,10 @@ run_desktop() {
 run_tty() {
 	if [[ ${TMUX+set} ]] && command -v tmux &>/dev/null; then
 		run_tmux ||:
+	fi
+
+	if [[ -t 1 ]]; then
+		run_osc52 ||:
 	fi
 
 	return 1
