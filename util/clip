@@ -9,6 +9,18 @@ set_trace() {
 	fi
 }
 
+trace() {
+	if (( DEBUG )); then
+		local rc=0
+		set -x
+		"$@"
+		{ rc=$?; set +x; } &>/dev/null
+		return $rc
+	else
+		"$@"
+	fi
+}
+
 warn() {
 	echo >&2 "W: $*"
 }
@@ -35,7 +47,7 @@ help() {
 
 _usage() {
 	cat <<EOF
-Usage: $0 [--debug] [MODE [FILE]]
+Usage: $0 [--debug] [--tty|--desktop|--both] [MODE [FILE]]
 
 Copy or paste data to/from any available clipboard.
 
@@ -56,6 +68,11 @@ Arguments:
 		a warning is printed and \`--paste\` is assumed.
 
 Options:
+	-t, --tty	Limit operation to terminal clipboard (tmux only)
+	-d, --desktop	Limit operation to graphical clipboard (Wayland or X11)
+	-b, --both	Attempt to work with terminal and graphical clipboards
+			in turn	(this option only makes sense with -c/--copy)
+
 	--debug		Trace execution
 EOF
 }
@@ -67,10 +84,16 @@ EOF
 
 unset op
 unset file
+unset mode_both
+unset mode_tty
+unset mode_desktop
 
 while (( $# )); do
 	case "$1" in
 	--debug) export DEBUG=1 ;;
+	-b|--both) mode_both=1 ;;
+	-t|--tty) mode_tty=1 ;;
+	-d|--desktop) mode_desktop=1 ;;
 	-i|-c|--copy) op=copy ;;
 	-o|-p|--paste) op=paste ;;
 	-*) usage "invalid flag: ${1@Q}" ;;
@@ -104,6 +127,37 @@ if [[ ! ${file+set} && ! ${op+set} ]]; then
 	else die "could not infer mode (use -i/-c/--copy or -o/-p/--paste)"
 	fi
 fi
+
+if [[ ${mode_both+set} && $op != copy ]]; then
+	die "-b/--both does not make sense for pasting"
+fi
+
+if (( mode_both + mode_tty + mode_desktop == 0 )); then
+	mode_tty=1
+	mode_desktop=1
+fi
+
+
+#
+# helper functions
+#
+
+unset tmpfile
+
+into_file() {
+	# if input is stdin or not a regular file, copy data via cat(1)
+	# NOTE: also handles the stdin case (unset $file fails `-f`)
+	if [[ ! -f ${file} ]]; then
+		# at most one tmpfile
+		[[ ! ${tmpfile+set} ]] || die "internal error"
+		trap 'trace rm -f -- "$tmpfile"' EXIT
+		tmpfile="$(trace mktemp --tmpdir=/dev/shm clip.XXXXXX)"
+
+		# NOTE: also handles the stdin case (unset $file expands to no words)
+		cat "${file[@]}" >"$tmpfile"
+		file="$tmpfile"
+	fi
+}
 
 
 #
@@ -175,25 +229,51 @@ run_tmux() {
 	esac
 }
 
+run_desktop() {
+	if [[ ${WAYLAND_DISPLAY+set} ]] && command -v wl-copy wl-paste &>/dev/null; then
+		run_wl_clipboard ||:
+	fi
+
+	if [[ ${DISPLAY+set} ]] && command -v xclip &>/dev/null; then
+		run_xclip ||:
+	fi
+
+	if [[ ${DISPLAY+set} ]] && command -v xsel &>/dev/null; then
+		run_xsel ||:
+	fi
+
+	return 1
+}
+
+run_tty() {
+	if [[ ${TMUX+set} ]] && command -v tmux &>/dev/null; then
+		run_tmux ||:
+	fi
+
+	return 1
+}
+
 
 #
 # main
 #
 
-if [[ ${WAYLAND_DISPLAY+set} ]] && command -v wl-copy wl-paste &>/dev/null; then
-	run_wl_clipboard
+fail=1
+
+if [[ ${mode_both+set} ]]; then
+	into_file
+	( run_tty ) && fail=0 ||:
+	( run_desktop ) && fail=0 ||:
 fi
 
-if [[ ${DISPLAY+set} ]] && command -v xclip &>/dev/null; then
-	run_xclip
+if [[ ${mode_desktop+set} ]]; then
+	run_desktop ||:
 fi
 
-if [[ ${DISPLAY+set} ]] && command -v xsel &>/dev/null; then
-	run_xsel
+if [[ ${mode_tty+set} ]]; then
+	run_tty ||:
 fi
 
-if [[ ${TMUX+set} ]] && command -v tmux &>/dev/null; then
-	run_tmux
+if (( fail )); then
+	die "no clipboard interface detected"
 fi
-
-die "no clipboard interface detected"
