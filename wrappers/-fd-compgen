@@ -1,9 +1,33 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
 _usage() {
 	cat <<EOF
-Invoked: $0 ${*@Q}
-Usage: $0 [FD-OPTIONS...] <PATHS...>
+Usage: ${0##*/} [-Xforce-vcs] [FD-OPTIONS...] <PATHS...>
 
 Any single-argument dashed options will be forwarded to fd(1).
 fd(1) will be started with a '.' (match anything) pattern prepended to
@@ -11,6 +35,11 @@ the provided search paths, as the intention here is to gather completions
 for further filtering.
 EOF
 }
+
+
+#
+# main
+#
 
 # NOTE the double negative here: "ignore git repo" means
 # "do not use its settings", i. e. "ignore its .gitignore"
@@ -44,15 +73,16 @@ __fzf_compgen_fd() {
 	if __fzf_compgen_skip_vcs_at "$abspath"; then
 		fd_opts+=( --no-ignore-vcs --no-ignore-parent )
 	fi
-	exec fd "${fd_opts[@]}" . "$@"
+	exec fd "${fd_opts[@]}" . "${fd_paths[@]}"
 }
 
 case "$#" in
-0) _usage; exit 1 ;;
+0) usage ;;
 *) ;;
 esac
 
 fd_opts=()
+fd_paths=()
 
 while (( $# )); do
 	case "$1" in
@@ -62,5 +92,8 @@ while (( $# )); do
 	shift
 done
 
+if (( $# )); then
+	fd_paths=( -- "$@" )
+fi
+
 __fzf_compgen_fd "$@"
-#echo fd "${fd_opts[@]@Q}" -- "${@@Q}"
