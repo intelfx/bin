@@ -3,6 +3,10 @@
 set -eo pipefail
 shopt -s lastpipe
 
+warn() {
+	echo >&2 "W: $*"
+}
+
 err() {
 	echo >&2 "E: $*"
 }
@@ -41,6 +45,9 @@ Arguments:
 		If no mode is given (in which case the file argument cannot be
 		used), the direction is determined by the standard stream which
 		is _not_ the terminal.
+
+		If both standard streams are connected to the terminal,
+		a warning is printed and \`--paste\` is assumed.
 EOF
 }
 
@@ -63,6 +70,7 @@ case "$#" in
 0)
 	if [[ -t 0 && ! -t 1 ]]; then op=paste
 	elif [[ ! -t 0 && -t 1 ]]; then op=copy
+	elif [[ -t 0 && -t 1 ]]; then op=paste; warn "no mode provided, assuming \`--paste\`"
 	else die "could not infer mode (use -i/-c/--copy or -o/-p/--paste)"
 	fi
 	;;
