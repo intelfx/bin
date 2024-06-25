@@ -56,28 +56,44 @@ EOF
 # args
 #
 
-case "$#" in
-2)
-	file="$2"
-	;&
-1)
+unset op
+unset file
+
+while (( $# )); do
 	case "$1" in
-	i|-i|c|-c|--copy) op=copy ;;
-	o|-o|p|-p|--paste) op=paste ;;
-	*) usage "invalid mode: ${1@Q}" ;;
+	-i|-c|--copy) op=copy ;;
+	-o|-p|--paste) op=paste ;;
+	-*) usage "invalid flag: ${1@Q}" ;;
+	*) break ;;
 	esac
-	;;
-0)
+	shift
+done
+
+if (( $# )) && [[ ! ${op+set} ]]; then
+	case "$1" in
+	i) op=copy ;;
+	o) op=paste ;;
+	*) usage "invalid flag: ${1@Q}" ;;
+	esac
+	shift
+fi
+
+if (( $# )); then
+	file="$1"
+	shift
+fi
+
+if (( $# )); then
+	usage "unexpected positional arguments"
+fi
+
+if [[ ! ${file+set} && ! ${op+set} ]]; then
 	if [[ -t 0 && ! -t 1 ]]; then op=paste
 	elif [[ ! -t 0 && -t 1 ]]; then op=copy
 	elif [[ -t 0 && -t 1 ]]; then op=paste; warn "no mode provided, assuming \`--paste\`"
 	else die "could not infer mode (use -i/-c/--copy or -o/-p/--paste)"
 	fi
-	;;
-*)
-	usage "expected 1 or 2 positional parameters"
-	;;
-esac
+fi
 
 
 #
