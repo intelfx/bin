@@ -25,7 +25,22 @@ help() {
 
 _usage() {
 	cat <<EOF
-Usage: $0 [[i|-i|c|-c|--copy]|[o|-o|p|-p|--paste] [FILE]]
+Usage: $0 [MODE [FILE]]
+
+Copy or paste data to/from any available clipboard.
+
+Arguments:
+	FILE
+		Path to the file that shall be read/written to/from clipboard.
+		If not set, standard streams (stdin or stdout) are used.
+
+	MODE
+		i, -i, -c, --copy	Read stdin or file into clipboard
+		o, -o, -p, --paste	Write to stdin or file from clipboard
+
+		If no mode is given (in which case the file argument cannot be
+		used), the direction is determined by the standard stream which
+		is _not_ the terminal.
 EOF
 }
 
@@ -42,17 +57,17 @@ case "$#" in
 	case "$1" in
 	i|-i|c|-c|--copy) op=copy ;;
 	o|-o|p|-p|--paste) op=paste ;;
-	*) usage "Invalid parameter: '$1'" ;;
+	*) usage "invalid mode: ${1@Q}" ;;
 	esac
 	;;
 0)
 	if [[ -t 0 && ! -t 1 ]]; then op=paste
 	elif [[ ! -t 0 && -t 1 ]]; then op=copy
-	else die "Could not infer mode; pass -c/--copy or -p/--paste"
+	else die "could not infer mode (use -i/-c/--copy or -o/-p/--paste)"
 	fi
 	;;
 *)
-	usage "Expected 1 or 2 arguments, got $#"
+	usage "expected 1 or 2 positional parameters"
 	;;
 esac
 
@@ -66,13 +81,13 @@ run_wl_clipboard() {
 		case "$op" in
 		copy) exec <"$file" ;;
 		paste) exec >"$file" ;;
-		*) die "Internal error" ;;
+		*) die "internal error" ;;
 		esac
 	fi
 	case "$op" in
 	copy) exec wl-copy ;;
 	paste) exec wl-paste ;;
-	*) die "Internal error" ;;
+	*) die "internal error" ;;
 	esac
 }
 
@@ -81,7 +96,7 @@ run_xclip() {
 	case "$op" in
 	copy) args+=( -in ) ;;
 	paste) args+=( -out ) ;;
-	*) die "Internal error" ;;
+	*) die "internal error" ;;
 	esac
 	if [[ ${file+set} ]]; then
 		args+=( "$file" )
@@ -94,13 +109,13 @@ run_xsel() {
 	case "$op" in
 	copy) args+=( --input ) ;;
 	paste) args+=( --output ) ;;
-	*) die "Internal error" ;;
+	*) die "internal error" ;;
 	esac
 	if [[ ${file+set} ]]; then
 		case "$op" in
 		copy) exec <"$file" ;;
 		paste) exec >"$file" ;;
-		*) die "Internal error" ;;
+		*) die "internal error" ;;
 		esac
 	fi
 	exec xsel --clipboard "${args[@]}"
@@ -145,4 +160,4 @@ if [[ ${TMUX+set} ]] && command -v tmux &>/dev/null; then
 	run_tmux
 fi
 
-die "No clipboard interface detected"
+die "no clipboard interface detected"
