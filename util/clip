@@ -57,7 +57,11 @@ case "$#" in
 esac
 
 
-if [[ ${WAYLAND_DISPLAY+set} ]] && command -v wl-copy wl-paste &>/dev/null; then
+#
+# possible methods
+#
+
+run_wl_clipboard() {
 	if [[ ${file+set} ]]; then
 		case "$op" in
 		copy) exec <"$file" ;;
@@ -70,10 +74,10 @@ if [[ ${WAYLAND_DISPLAY+set} ]] && command -v wl-copy wl-paste &>/dev/null; then
 	paste) exec wl-paste ;;
 	*) die "Internal error" ;;
 	esac
-fi
+}
 
-if [[ ${DISPLAY+set} ]] && command -v xclip &>/dev/null; then
-	args=()
+run_xclip() {
+	local args=()
 	case "$op" in
 	copy) args+=( -in ) ;;
 	paste) args+=( -out ) ;;
@@ -83,10 +87,10 @@ if [[ ${DISPLAY+set} ]] && command -v xclip &>/dev/null; then
 		args+=( "$file" )
 	fi
 	exec xclip -selection clipboard "${args[@]}"
-fi
+}
 
-if [[ ${DISPLAY+set} ]] && command -v xsel &>/dev/null; then
-	args=()
+run_xsel() {
+	local args=()
 	case "$op" in
 	copy) args+=( --input ) ;;
 	paste) args+=( --output ) ;;
@@ -100,10 +104,10 @@ if [[ ${DISPLAY+set} ]] && command -v xsel &>/dev/null; then
 		esac
 	fi
 	exec xsel --clipboard "${args[@]}"
-fi
+}
 
-if [[ ${TMUX+set} ]] && command -v tmux &>/dev/null; then
-	args=()
+run_tmux() {
+	local args=()
 	if [[ ${file+set} ]]; then
 		case "$op" in
 		copy) args+=( "$file" ) ;;
@@ -118,6 +122,27 @@ if [[ ${TMUX+set} ]] && command -v tmux &>/dev/null; then
 	copy) exec tmux load-buffer -w "${args[@]}" ;;
 	paste) exec tmux show-buffer "${args[@]}" ;;
 	esac
+}
+
+
+#
+# main
+#
+
+if [[ ${WAYLAND_DISPLAY+set} ]] && command -v wl-copy wl-paste &>/dev/null; then
+	run_wl_clipboard
+fi
+
+if [[ ${DISPLAY+set} ]] && command -v xclip &>/dev/null; then
+	run_xclip
+fi
+
+if [[ ${DISPLAY+set} ]] && command -v xsel &>/dev/null; then
+	run_xsel
+fi
+
+if [[ ${TMUX+set} ]] && command -v tmux &>/dev/null; then
+	run_tmux
 fi
 
 die "No clipboard interface detected"
