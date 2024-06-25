@@ -28,6 +28,9 @@ usage() {
 _usage() {
 	cat <<EOF
 Usage: ${0##*/} [-Xforce-vcs] [FD-OPTIONS...] <PATHS...>
+Options:
+	-Xno-skip-vcs	do not apply heuristic to skip .git detection at \$HOME
+			(i.e. always honor .gitignore according to fd(1) rules)
 
 Any single-argument dashed options will be forwarded to fd(1).
 fd(1) will be started with a '.' (match anything) pattern prepended to
@@ -46,7 +49,8 @@ EOF
 __fzf_compgen_skip_vcs_at() {
 	local git_toplevel_dir
 	# do not use gitignore from $HOME
-	if git_toplevel_dir="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" \
+	if (( fd_try_skip_vcs )) \
+	   && git_toplevel_dir="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" \
 	   && [[ "$git_toplevel_dir" == "$HOME" ]]; then
 		return 0
 	fi
@@ -83,9 +87,11 @@ esac
 
 fd_opts=()
 fd_paths=()
+fd_try_skip_vcs=1
 
 while (( $# )); do
 	case "$1" in
+	-Xno-skip-vcs) fd_try_skip_vcs=0 ;;
 	-*) fd_opts+=( "$1" ) ;;
 	*) break ;;
 	esac
