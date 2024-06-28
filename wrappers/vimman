@@ -1,0 +1,3 @@
+#!/bin/bash
+
+MANPAGER="-vimman-pager" MANROFFOPT="-c" exec man "$@"
