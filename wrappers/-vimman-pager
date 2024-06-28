@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# do not recurse if :Man is invoked in vim
+unset PAGER MANPAGER
+
+# try not to leave a shell hanging around
+# https://unix.stackexchange.com/a/778258/21885
+shopt -s lastpipe
+# FIXME: this used to cause a spurious "Command terminated" in vim
+trap '' CHLD
+col -bx | exec vim \
+	-R \
+	--cmd 'let b:ruler_disable=1' \
+	-c 'au FileType man noremap <buffer>                   <SPACE> <C-D>' \
+	-c 'au FileType man noremap <buffer> <silent> <nowait> q       :q<CR>' \
+	-c 'au FileType man setlocal nolist nonumber keywordprg=:Man iskeyword+=(,)' \
+	-c '                setlocal ft=man' \
+	-
