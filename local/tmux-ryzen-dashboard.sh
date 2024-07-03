@@ -31,3 +31,4 @@ tmux resize-pane -t $pane_ryzen -x 100  # exact=98
 tmux resize-pane -t $pane_liquidctl -x 55  # exact=52
 tmux resize-pane -t $pane_shell -y '25%'
 tmux select-pane -t $pane_shell
+tmux bind-key '0' resize-pane -t $pane_ryzen -x 100 \\\; resize-pane -t $pane_liquidctl -x 55 \\\; resize-pane -t $pane_shell -y '25%' \\\; select-pane -t $pane_shell

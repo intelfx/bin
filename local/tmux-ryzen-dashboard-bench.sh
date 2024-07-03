@@ -42,3 +42,4 @@ if [[ ${bench_cmd2} ]]; then
 fi
 tmux select-pane -t $pane_shell
 tmux bind-key R respawn-pane
+tmux bind-key '0' resize-pane -t $pane_ryzen -x 100 \\\; resize-pane -t $pane_liquidctl -x 55 \\\; select-pane -t $pane_shell
