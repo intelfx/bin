@@ -2,23 +2,52 @@
 
 . lib.sh || exit
 
+
+#
+# args & usage
+#
+
 _usage() {
 	cat <<EOF
-Usage: $0 [MAJOR] [merge_arch_and_pf.sh args...]
+Usage: $0 [--lts] [MAJOR] [merge_arch_and_pf.sh args...]
 EOF
 }
 
-if ! (( $# >= 1 )); then
-	usage
+declare -A _args=(
+	[--lts]=ARG_LTS
+	[--]=ARGS
+)
+parse_args _args "$@" || usage
+
+case "${#ARGS[@]}" in
+0) usage "expected 1 or more positional arguments" ;;
+esac
+
+ARG_MAJOR="${ARGS[1]}"
+ARGS=( "${ARGS[@]:2}" )
+
+
+#
+# main
+#
+
+declare -A target
+if [[ ${ARG_LTS+set} ]]; then
+	shift
+	target[build]=build-lts
+else
+	target[build]=build
+	target[patch]=work/patch
 fi
 
-tag="v${1#v}"
+tag="v${ARG_MAJOR#v}"
 major="${tag#v}"
-shift
 
 export GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000"
-~/bin/devel/merge_arch_and_pf.sh --major "$tag" "$@"
-git branch -f build
+~/bin/devel/merge_arch_and_pf.sh --major "$tag" "${ARGS[@]}"
+if [[ ${target[build]+set} ]]; then
+	git branch -f "${target[build]}"
+fi
 
 case "$tag" in
 v5.18)
@@ -64,4 +93,6 @@ esac
 git describe --tags --exact build | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | read branch
 git branch -f "work/patch-${branch}"
 git branch -f "work/patch-${major}"
-git branch -f "work/patch"
+if [[ ${target[patch]+set} ]]; then
+	git branch -f "${target[patch]}"
+fi
