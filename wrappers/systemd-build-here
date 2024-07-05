@@ -5,4 +5,5 @@ exec sudo systemd-run-here \
 	-p Slice=system-cpu.slice \
 	-p CPUSchedulingPolicy=batch \
 	-p Nice=18 \
+	-E SSH_AUTH_SOCK \
 	"$@"
