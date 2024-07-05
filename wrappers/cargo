@@ -54,6 +54,15 @@ call_cargo() {
 
 
 #
+# shortcut
+#
+
+if [[ ${RUSTFLAGS+set} ]] || [[ ${!CARGO_*} ]]; then
+	call_cargo "$@"
+fi
+
+
+#
 # arguments
 #
 
