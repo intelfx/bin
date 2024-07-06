@@ -8,7 +8,8 @@ pass_filter="pass=ARGS_FILTER"
 pass_output="pass=ARGS_OUTPUT"
 pass_cmds="pass=ARGS_CMDS"
 declare -A JOURNALCTL_ARGS=(
-	[--system|--user]="$pass_src"
+	[--system]="ARG_SYSTEM $pass_src"
+	[--user]="ARG_USER $pass_src"
 	[-M|--machine:]="$pass_src"
 	[-m|--merge]="$pass_src"
 	[-D|--directory:]="$pass_src"
@@ -117,6 +118,13 @@ fi
 # transform --follow-all
 if [[ ${ARG_FOLLOW_ALL+set} ]]; then
 	ARGS_OUTPUT+=( --follow --no-tail )
+fi
+
+# transform --user --unit into --user-unit (for our logic only; journalctl
+# understands this natively)
+if [[ ! ${ARG_SYSTEM+set} && ${ARG_USER+set} && ${ARG_UNIT+set} ]]; then
+	ARG_USER_UNIT="$ARG_UNIT"
+	unset ARG_UNIT
 fi
 
 # handle -L/--last
