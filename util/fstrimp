@@ -58,12 +58,14 @@ MAX_TIME_STEP=60
 ARGS_FULL=( "$@" )
 ARGS=()
 MINIMUM=0
+
+shopt -s extglob
 while (( $# )); do
-	if [[ $1 == --minimum || $1 == -m ]]; then
+	if [[ $1 == --min?(imum) || $1 == -m ]]; then
 		MINIMUM="$2"
 		shift 2
-	elif [[ $1 == --minimum=* ]]; then
-		MINIMUM="${1#--minimum=}"
+	elif [[ $1 == --min?(imum)=* ]]; then
+		MINIMUM="${1#--min?(imum)=}"
 		shift 1
 	elif [[ $1 == -m* ]]; then
 		MINIMUM="${1#-m}"
