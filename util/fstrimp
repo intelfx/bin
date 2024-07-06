@@ -103,16 +103,20 @@ do_fstrim() {
 
 printf -v time_start "%(%s)T"
 
+last=0
 for step in "${STEPS[@]}"; do
 	if [[ "$MINIMUM" ]] && (( $(parse_size "$step") <= $(parse_size "$MINIMUM") )); then
-		do_fstrim "${ARGS[@]}" --minimum "$MINIMUM"
-		break
+		step="$MINIMUM"
+		last=1
 	fi
 
 	printf -v time_now "%(%s)T"
 	do_fstrim "${ARGS[@]}" --minimum "$step"
 	printf -v time_end "%(%s)T"
 
+	if (( last )); then
+		break
+	fi
 	if (( time_end - time_now > MAX_TIME_STEP )); then
 		log "step time exceeded @ $step ($((time_end - time_now))s > ${MAX_TIME_STEP}s), exiting"
 		break
