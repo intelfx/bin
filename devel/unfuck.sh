@@ -14,6 +14,7 @@ EOF
 }
 
 declare -A _args=(
+	[getopt]="+"
 	[--lts]=ARG_LTS
 	[--]=ARGS
 )
@@ -23,9 +24,8 @@ case "${#ARGS[@]}" in
 0) usage "expected 1 or more positional arguments" ;;
 esac
 
-ARG_MAJOR="${ARGS[1]}"
-ARGS=( "${ARGS[@]:2}" )
-
+ARG_MAJOR="${ARGS[0]}"
+ARGS=( "${ARGS[@]:1}" )
 
 #
 # main
