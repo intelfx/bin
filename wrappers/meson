@@ -132,15 +132,14 @@ else
 	# find whatever is in $PATH sans caching wrappers, then prepend
 	# whatever caching wrapper is set (or nothing)
 	IFS=:
-	path=( $PATH )
-	newpath=()
-	for p in "${path[@]}"; do
+	path=()
+	for p in $PATH; do
 		if ! [[ $p/ == */ccache/* || $p/ == */sccache/* ]]; then
-			newpath+=( "$p" )
+			path+=( "$p" )
 		fi
 	done
-	PATH="${newpath[*]}"
-	unset IFS path newpath
+	PATH="${path[*]}"
+	unset IFS path
 
 	if [[ $cache ]]; then
 		# we want _some_ cache; use it
