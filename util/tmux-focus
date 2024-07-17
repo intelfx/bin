@@ -1,155 +1,223 @@
 #!/bin/bash
 
+. lib.sh
+
+die "BROKEN"
+
+set -x
+
 #
 # "tmux focus mode" script
 # https://superuser.com/a/1491469
 # Originally released under CC-BY-SA 4.0 by Kamil Maciorowski
 #
 
+min() {
+	local min="$1" arg; shift
+	for arg; do min="$(( arg < min ? arg : min ))"; done
+	printf "%s" "$min"
+}
+
+max() {
+	local max="$1" arg; shift
+	for arg; do max="$(( arg > max ? arg : max ))"; done
+	printf "%s" "$max"
+}
+
 maybe_enable() {
-    if [[ $BASH_LOADABLES_PATH ]]; then
-        :
-    elif whence pkg-config &>/dev/null; then
-        BASH_LOADABLES_PATH="$(pkg-config --variable=loadablesdir bash)"
-    elif [[ -d /usr/lib/bash ]]; then
-        BASH_LOADABLES_PATH="/usr/lib/bash"
-    fi
-    if [[ -x "$BASH_LOADABLES_PATH/$1" ]]; then
-        enable -f "$BASH_LOADABLES_PATH/$1" "$1"
-    fi
+	if [[ $BASH_LOADABLES_PATH ]]; then
+		:
+	elif whence pkg-config &>/dev/null; then
+		BASH_LOADABLES_PATH="$(pkg-config --variable=loadablesdir bash)"
+	elif [[ -d /usr/lib/bash ]]; then
+		BASH_LOADABLES_PATH="/usr/lib/bash"
+	fi
+	if [[ -x "$BASH_LOADABLES_PATH/$1" ]]; then
+		enable -f "$BASH_LOADABLES_PATH/$1" "$1"
+	fi
 }
 maybe_enable sleep
 
-pane="${2:-$TMUX_PANE}"
-[ -n "$pane" ] || exit 1
-tmux has-session -t "$pane" 2>/dev/null || exit 0
+_usage() {
+	cat <<EOF
+Usage: $LIB_ARGV0 [--debug] [--pane PANE] ACTION
+       $LIB_ARGV0 [--debug] [--pane PANE] --internal ARGS...
 
-tool="$0"
-width="${TMUX_M_COLUMNS:-80}"
-step=10
-todo="${TMUX_M_COMMAND:-true}"
-action="$1"
-pattern=" '$tool' sleep "
-pattern_left="$pattern'${pane}' left"
-pattern_right="$pattern'${pane}' right"
-command_left="TMUX_M_COMMAND='$todo'$pattern_left"
-command_right="TMUX_M_COMMAND='$todo'$pattern_right"
-pane_border_style="fg=brightblack"
+Arguments:
+	ACTION		c[reate]
+			d[estroy]
+			
+EOF
+}
+
+declare -A _args=(
+	[--debug]=ARG_DEBUG
+	[--pane:]=ARG_PANE
+	[--internal]=ARG_INTERNAL
+)
+
+
+
+PANE="${2:-$TMUX_PANE}"
+[[ $PANE ]] \
+	|| die "pane not provided and \$TMUX_PANE is not set"
+tmux has-session -t "$pane" 2>/dev/null \
+	|| die "pane ${PANE@Q} does not exist"
+
+WIDTH="${TMUX_M_COLUMNS:-80}"
+STEP=10
+
+ACTION="$1"
+
+CMD_LEFT="${BASH_SOURCE@Q} sleep ${PANE@Q} left"
+CMD_LEFT="${BASH_SOURCE@Q} sleep ${PANE@Q} right"
+
+PANE_BORDER_STYLE="fg=brightblack"
 
 tmux display-message -p '#{pane_start_command}' | grep -qF "$pattern" && exit 0
 
 find_margins() {
-    pane_left="$(tmux list-panes -F "#{pane_id} #{pane_start_command}" | grep -F "$pattern_left" | head -n 1 | cut -d ' ' -f 1)"
-    pane_right="$(tmux list-panes -F "#{pane_id} #{pane_start_command}" | grep -F "$pattern_right" | head -n 1 | cut -d ' ' -f 1)"
+	local -a panes
+	tmux list-panes -F "#{pane_id} #{pane_start_command}" | readarray -t panes
+
+	pane_left=
+	pane_right=
+	for p in "${panes[@]}"; do
+		read -r id cmd <<<"$p"
+		case "$cmd" in
+			*"$pattern_left"*) [[ $pane_left ]] || pane_left="$id" ;;
+			*"$pattern_right"*) [[ $pane_right ]] || pane_right="$id" ;;
+		esac
+	done
 }
 
 find_geometry() {
-    [[ -n "$pane_left" ]] && width_left="$(tmux display-message -p -t "$pane_left" '#{pane_width}')" || width_left=0
-    [[ -n "$pane_right" ]] && width_right="$(tmux display-message -p -t "$pane_right" '#{pane_width}')" || width_right=0
+	if [[ $pane_left ]]
+	then width_left="$(tmux display-message -p -t "$pane_left" '#{pane_width}')"
+	else width_right=0
+	fi
+	if [[ $pane_right ]]
+	then width_right="$(tmux display-message -p -t "$pane_right" '#{pane_width}')"
+	else width_right=0
+	fi
 
-    border=0
-    [[ "$width_left" -gt 0 ]] && border=$((border+1))
-    [[ "$width_right" -gt 0 ]] && border=$((border+1))
+	border=0
+	if (( width_left > 0 ))
+	then (( border += 1 ))
+	fi
+	if (( width_right > 0 ))
+	then (( border += 1 ))
+	fi
 
-    width_center="$(tmux display-message -t "$pane" -p '#{pane_width}')"
-    width_all="$((width_center+width_left+width_right+border))"
+	width_center="$(tmux display-message -t "$pane" -p '#{pane_width}')"
+	width_all="$((width_center+width_left+width_right+border))"
 
-    [[ "$((width+5))" -ge "$width_all" ]] && width="$width_all"
+	if (( width + 5 >= width_all )); then
+		width="$width_all"
+	fi
 }
 
 destroy() {
-    [[ -n "$pane_left" ]] && [[ "$pane_left" != "$TMUX_PANE" ]] && tmux kill-pane -t "$pane_left"
-    [[ -n "$pane_right" ]] && [[ "$pane_right" != "$TMUX_PANE" ]] && tmux kill-pane -t "$pane_right"
-    [[ "$pane_left" = "$TMUX_PANE" ]] || [[ "$pane_right" = "$TMUX_PANE" ]] && tmux kill-pane -t "$TMUX_PANE"
-    # reenable borders, status bar
-    local option
-    for option in pane-{,active-}border-style status; do
-        tmux set -p -t "$pane" -U "$option" 
-    done
-    true
+	# destroy margins
+	for p in "$pane_left" "$pane_right"; do
+		if [[ $p && $p != $TMUX_PANE ]]; then
+			tmux kill-pane -t "$p"
+		fi
+	done
+	#[[ "$pane_left" = "$TMUX_PANE" ]] || [[ "$pane_right" = "$TMUX_PANE" ]] && tmux kill-pane -t "$TMUX_PANE"
+	# resize to original
+	tmux resize-pane -t "$pane" -x "$width_all"
+	# reenable borders, status bar
+	local option
+	for option in pane-{,active-}border-style status; do
+		tmux set -p -t "$pane" -U "$option" 
+	done
 }
 
-
 create() {
-    # disable borders (set invisible)
-    local option
-    for option in pane-{,active-}border-style; do
-        tmux set -p -t "$pane" "$option" "$pane_border_style"
-    done
-    # disable the status bar
-    tmux set -p -t "$pane" status off
+	# disable borders (set invisible)
+	local option
+	for option in pane-{,active-}border-style; do
+		tmux set -p -t "$pane" "$option" "$pane_border_style"
+	done
+	# disable the status bar
+	tmux set -p -t "$pane" status off
 
-    width_left=$(( (width_all-width-2)/2 ))
-    [[ "$width_left" -gt 2 ]] || width_left=2
-    if [[ -n "$pane_left" ]]; then
-        tmux resize-pane -t "$pane_left" -x "$width_left"
-    else
-        tmux split-window -hdbl "$width_left" -t "$pane" "$command_left"
-    fi
+	width_left=$(( (width_all - width - 2) / 2 ))
+	width_left="$(max "$width_left" 2)"
+	if [[ "$pane_left" ]]
+	then tmux resize-pane -t "$pane_left" -x "$width_left"
+	else tmux split-window -hdbl "$width_left" -t "$pane" "$command_left"
+	fi
 
-    width_right=$(( width_all-width-width_left-2 ))
-    [[ "$width_right" -gt 2 ]] || width_right=2
-    if [[ -n "$pane_right" ]]; then
-        tmux resize-pane -t "$pane_right" -x "$width_right"
-    else
-        tmux split-window -hdl "$width_right" -t "$pane" "$command_right"
-    fi
+	width_right=$(( width_all - width - width_left - 2 ))
+	width_right="$(max "$width_right" 2)"
+	if [[ "$pane_right" ]]
+	then tmux resize-pane -t "$pane_right" -x "$width_right"
+	else tmux split-window -hdl "$width_right" -t "$pane" "$command_right"
+	fi
 }
 
 equalize() {
-    width="$width_center"
-    [[ "$width" -lt "$width_all" ]] && create
+	width="$width_center"
+	if (( width < width_all )); then
+		create
+	fi
 }
 
 verify() {
-    tmux has-session -t "$pane" 2>/dev/null || destroy
+	if ! tmux has-session -t "$pane" 2>/dev/null; then
+		destroy
+		return 1
+	fi
+	return 0
 }
 
 resize() {
-    width="$((width_center${1}))"
-    if [[ "$((width+5))" -ge "$width_all" ]]; then
-        destroy
-    else
-        create
-    fi
+	local expr_chunk="$1"
+	width="$(( width_center ${expr_chunk} ))"
+
+	if (( width + 5 > width_all )); then
+		destroy
+	else 
+		create
+	fi
 }
 
 main() {
-    find_margins
-    find_geometry
-    case "$action" in
-        sleep )
-            local _todo_cmd _todo_opt
-            if [[ $todo != true ]]; then
-                _todo_cmd="$todo &"
-                _todo_opt="; $todo &"
-            fi
-            trap destroy INT
-            trap "verify; kill \"\$!\" 2>/dev/null $_todo_opt" WINCH
-            while true; do
-                eval $_todo_cmd
-                while sleep 1; do verify; done
-            done
-        ;;
-        ""|c* )
-            create
-        ;;
-        d* )
-            destroy
-        ;;
-        e* )
-            equalize
-        ;;
-        + )
-            resize "+$step"
-        ;;
-        - )
-            resize "-step"
-        ;;
-        +*|-* )
-            resize "$action"
-        ;;
-    esac
+	find_margins
+	find_geometry
+	case "$action" in
+		sleep)
+			local _todo_cmd _todo_opt
+			if [[ $todo != true ]]; then
+				_todo_cmd="$todo &"
+				_todo_opt="; $todo &"
+			fi
+			trap destroy INT
+			trap "echo WINCH; verify; kill \"\$!\" 2>/dev/null" WINCH
+			while true; do
+				eval $_todo_cmd
+				while sleep infinity & wait; do verify; done
+			done
+			read -n 1 -s -r -p "Press any key to continue"
+			;;
+		c*|'')
+			create
+			;;
+		d*)
+			destroy
+			;;
+		e*)
+			equalize
+			;;
+		[+-])
+			resize "$action$step"
+			;;
+		[+-]?*)
+			resize "$action"
+			;;
+	esac
 }
 
 main

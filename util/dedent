@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+
+import sys
+import textwrap
+
+text = sys.stdin.read()
+text = textwrap.dedent(text)
+sys.stdout.write(text)
