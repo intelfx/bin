@@ -57,7 +57,7 @@ call_cargo() {
 # shortcut
 #
 
-if [[ ${RUSTFLAGS+set} ]] || [[ ${!CARGO_*} ]]; then
+if [[ ${RUSTFLAGS+set} ]] || [[ ${!CARGO_PROFILE_*} ]]; then
 	call_cargo "$@"
 fi
 
