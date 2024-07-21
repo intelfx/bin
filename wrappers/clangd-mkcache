@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+: "${TMP_ROOT="$(systemd-path user-state-cache)/clangd-projects"}"
+# shellcheck source=../inc/-mktempdir-main
+. -- -mktempdir-main
+
+
+#
+# main
+#
+
+setup_tmpdir "." "$TMP_ROOT"
+process_one_dir --no-subdir ".cache/clangd"
