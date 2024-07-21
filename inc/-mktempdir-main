@@ -41,8 +41,22 @@ EOF
 #
 
 process_one_dir() {
-	local srcdir="./$1"
-	local dstdir="$tmpdir/$1"
+	local no_subdir
+	while (( $# )); do
+		case "$1" in
+		--no-subdir) no_subdir=1 ;;
+		-*) die "Invalid arg: ${1@Q}" ;;
+		*) break ;;
+		esac
+		shift
+	done
+
+	local srcdir="./$1" dstdir
+	if [[ $no_subdir ]]
+	then dstdir="$tmpdir"
+	else dstdir="$tmpdir/$1"
+	fi
+
 	if [[ -d "$srcdir" && ! -L "$srcdir" ]]; then
 		if ! [[ -d "$dstdir" ]]; then
 			log "Moving ${srcdir@Q} to ${dstdir@Q}"
