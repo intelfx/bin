@@ -4,7 +4,7 @@ set -eo pipefail
 shopt -s lastpipe
 
 # shellcheck source=../inc/-mktempdir-main
-. -- -mktempdir-main || exit
+. -- -mktempdir-main
 
 
 #
