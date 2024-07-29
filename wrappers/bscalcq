@@ -1,3 +1,13 @@
 #!/bin/bash
 
-bscalc "$@" | sed -nr '1 { s/([0-9]+) .*/\1/p; q }'
+set -eo pipefail
+shopt -s lastpipe
+shopt -s extglob
+
+bscalc "$@" | readarray -t response
+case "${#response[@]}" in
+0) ;;
+1) printf "%s\n" "${response%%+([a-zA-Z ])}"; exit 0 ;;
+*) printf >&2 "%s\n" "${response[@]}" ;;
+esac
+exit 1
