@@ -23,8 +23,8 @@ Usage: $0 <onto> <branch>...
 EOF
 }
 
-if ! (( $# >= 2 )); then
-	usage "Expected 2 or more arguments"
+if ! (( $# >= 1 )); then
+	usage "Expected 1 or more arguments"
 fi
 
 BASE="$1"
@@ -32,6 +32,13 @@ BRANCHES=( "${@:2}" )
 
 if ! git_verify "$BASE"; then
 	die "Invalid base: $BASE"
+fi
+
+if ! [[ ${BRANCHES+set} ]]; then
+	if ! head="$(git symbolic-ref --short HEAD)"; then
+		die "No branches to rebase, and HEAD is not on a branch"
+	fi
+	BRANCHES+=( "$head" )
 fi
 
 rc=0
