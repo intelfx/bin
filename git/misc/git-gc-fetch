@@ -20,6 +20,15 @@ trap cleanup EXIT
 now="$(date +%s)"
 candidate_packs=0
 
+GIT_GC=0
+while (( $# )); do
+	case "$1" in
+	--gc) GIT_GC=1 ;;
+	*) break ;;
+	esac
+	shift
+done
+
 find "$GIT_DIR/objects/pack" \
 	-type f \
 	-name '*.pack' \
@@ -57,6 +66,14 @@ if (( candidate_packs < 2 )); then
 	exit
 fi
 
-git \
-	-c gc.pruneExpire=now \
-	gc --keep-largest-pack --prune=now "$@"
+if (( GIT_GC )); then
+	git \
+		-c gc.pruneExpire=now \
+		gc --keep-largest-pack --prune=now "$@"
+else
+	git \
+		repack \
+		--cruft -d -l \
+		--write-bitmap-index --write-midx \
+		"$@"
+fi
