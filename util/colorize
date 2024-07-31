@@ -59,6 +59,17 @@ function adjust_terminal() {
 	done
 }
 
+function adjust_alacritty() {
+	local theme_imports=(
+		alacritty.colors-light.yml
+		alacritty.colors-dark.yml
+	)
+	local theme_import_pattern='\<alacritty\.colors-[[:alnum:]]+\.yml\>'
+	local alacritty_conf="$config_path/alacritty/alacritty.yml"
+
+	sed -r -e "s|$theme_import_pattern|${theme_imports[$1]}|" -i "$alacritty_conf"
+}
+
 # $1: whether to enable dark (1 or 0)
 function adjust_builder() {
 	local night_mode=( false true )
@@ -126,7 +137,7 @@ esac
 shift
 
 if (( ! $# )); then
-	set -- "$@" gtk3 gedit terminal builder kde kate
+	set -- "$@" gtk3 gedit terminal builder alacritty kde kate
 fi
 
 for arg; do
