@@ -1,0 +1,132 @@
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [-v|-vv] WIMINFO-ARGS...
+EOF
+	wiminfo --help
+}
+
+
+#
+# args
+#
+
+if args=$(getopt -o '+vh' --long 'verbose,help' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+VERBOSE=0
+while :; do
+	case "$1" in
+	-h|--help) usge ;;
+	-v|--verbose) (( ++VERBOSE )) ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+
+#
+# main
+#
+
+declare -A INFO
+declare -a FIELDS
+declare -a ENTRIES
+case "$VERBOSE" in
+0) FIELDS=('Index' 'Edition ID' 'Name' '(Version)') ;;
+1) FIELDS=('Index' 'Edition ID' 'Name' '(Version)' 'Architecture' 'Languages') ;;
+*) die "expected between 0 and 1 -v/--verbose flags" ;;
+esac
+
+save_header() {
+	local k values=()
+	for k in "${FIELDS[@]}"; do
+		values+=("${k^^}")
+	done
+
+	local IFS=$'\t'
+	ENTRIES+=("${values[*]}")
+}
+
+save_image() {
+	if (( ! ${#INFO[@]} )); then
+		return
+	fi
+
+	local k ver=()
+	for k in 'Major Version' 'Minor Version' 'Build' 'Service Pack Build' 'Service Pack Level'; do
+		ver+=("${INFO["$k"]-'?'}")
+	done
+	local IFS='.'
+	INFO['(Version)']="${ver[*]}"
+	unset IFS
+
+	local k values=()
+	for k in "${FIELDS[@]}"; do
+		values+=("${INFO["$k"]-'-'}")
+	done
+	INFO=()
+
+	local IFS=$'\t'
+	ENTRIES+=("${values[*]}")
+}
+
+save() {
+	case "$SECTION" in
+	'WIM Information') ;;
+	'Available Images') save_image ;;
+	*) err "unknown section in output: ${SECTION@Q}" ;;
+	esac
+}
+
+process() {
+	save_header
+
+	wiminfo "$@" | while IFS= read -r line; do
+		if [[ $line == +(-) ]]; then
+			continue
+		elif [[ $line == *: ]]; then
+			SECTION="${line%:}"
+		elif [[ $line ]]; then
+			IFS=':' read k v <<<"$line"
+			read v <<<"$v"
+			INFO["$k"]="$v"
+		else
+			save
+		fi
+	done
+	save
+}
+
+process "$@"
+
+printf "%s\n" "${ENTRIES[@]}" | column -Lt -s $'\t'
