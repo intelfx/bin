@@ -27,7 +27,7 @@ usage() {
 
 _usage() {
 	cat <<EOF
-Usage: ${0##*/} [-Xforce-vcs] [FD-OPTIONS...] <PATHS...>
+Usage: ${0##*/} [-Xno-skip-vcs] [FD-OPTIONS...] <PATHS...>
 Options:
 	-Xno-skip-vcs	do not apply heuristic to skip .git detection at \$HOME
 			(i.e. always honor .gitignore according to fd(1) rules)
