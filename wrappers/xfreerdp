@@ -81,8 +81,8 @@ for arg; do
 	case "$arg" in
 	/u:intelfx|/u:intelfx@intelfx.name)
 		ARGS+=( /admin )
-		#ARGS+=( -sec-nla ) # xfreerdp 2.10
-		ARGS+=( /sec:nla:off ) # xfreerdp 3.0
+		ARGS+=( -sec-nla ) # xfreerdp 2.10
+		# ARGS+=( /sec:nla:off ) # xfreerdp 3.0
 		;;
 	esac
 	shift
