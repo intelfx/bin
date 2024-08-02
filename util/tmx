@@ -51,6 +51,9 @@ fi
 
 # Now build the command line to actually copy the environment to the target session.
 while IFS='=' read -d $'\0' -r name value; do
+	if [[ $name == TERM ]]; then
+		name="ORIG_TERM"
+	fi
 	ENVIRONMENT_COMMAND+=( "set-environment" "-t" "$new_session" "$name" "$value" ";" )
 done < <(env -0)
 
