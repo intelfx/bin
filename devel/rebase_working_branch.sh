@@ -27,11 +27,24 @@ if ! (( $# >= 1 )); then
 	usage "Expected 1 or more arguments"
 fi
 
-BASE="$1"
+TARGET="$1"
 BRANCHES=( "${@:2}" )
 
-if ! git_verify "$BASE"; then
-	die "Invalid base: $BASE"
+if ! git_verify "$TARGET"; then
+	die "Invalid base: ${TARGET@Q}"
+fi
+
+if ! [[ $TARGET =~ ([0-9.]+)$ ]]; then
+	die "Invalid base: ${TARGET@Q}"
+fi
+
+TARGET_VERSION="${BASH_REMATCH[1]}"
+PREFIX="${TARGET%"$TARGET_VERSION"}"
+
+log "Target ref: $TARGET"
+log "Target version: $TARGET_VERSION"
+if [[ $PREFIX ]]; then
+	log "Ref prefix: $PREFIX"
 fi
 
 if ! [[ ${BRANCHES+set} ]]; then
@@ -41,35 +54,50 @@ if ! [[ ${BRANCHES+set} ]]; then
 	BRANCHES+=( "$head" )
 fi
 
+function process_branch() {
+	local branch="$1"
+	local LIBSH_LOG_PREFIX="[$branch]"
+
+	log "Rebasing"
+
+	if ! git_verify "$branch"; then
+		err "Invalid working branch"
+		return 1
+	fi
+
+	local branch_name branch_version
+	if [[ $branch =~ (.+)-([0-9.]+)$ ]] && base="$VERSION_PREFIX${BASH_REMATCH[2]}" && git_verify "$base"; then
+		branch_version="${BASH_REMATCH[2]}"
+		branch_name="${BASH_REMATCH[1]}"
+	elif base="$(git_find_base_version "$branch")" && git_verify "$base"; then
+		branch_version="${base#"$PREFIX"}"
+		branch_name="${branch%"-$branch_version"}"
+	else
+		err "Unable to determine working branch base"
+		return 1
+	fi
+
+	local new_branch="$branch_name-$TARGET_VERSION"
+
+	log "Old branch: $branch (@ $base)"
+	log "New branch: $new_branch (@ $TARGET)"
+
+	local old_ref new_ref
+	old_ref="$(git rev-parse --verify --quiet "$branch")"
+	if new_ref="$(git rev-parse --verify --quiet "$new_branch")" \
+	&& [[ $new_ref != "$old_ref" ]]; then
+		err "New branch ($new_branch) exists, aborting"
+		return 1
+	fi
+
+	trace git checkout --detach "$base" || return
+	trace git branch -f "$new_branch" "$branch" || return
+	trace git rebase-repeatedly --onto "$TARGET" "$base" "$new_branch" || return
+}
+
 rc=0
-for BRANCH in "${BRANCHES[@]}"; do
-	if ! git_verify "$BRANCH"; then
-		die "Invalid branch to rebase: $BRANCH"
-	fi
-
-	log "Target base version: $BASE"
-	log "Branch: $BRANCH"
-
-	if ! OLD_BASE="$(git_find_base_version "$BRANCH")"; then
-		err "Unable to determine old base"
-		rc=1
-		continue
-	fi
-
-	log "Existing base version: $OLD_BASE"
-
-	NEW_BRANCH="${BRANCH%-${OLD_BASE#v}}-${BASE#v}"
-
-	log "New branch: $NEW_BRANCH"
-
-	if git_verify "$NEW_BRANCH"; then
-		err "New branch ($NEW_BRANCH) exists, aborting"
-		rc=1
-		continue
-	fi
-
-	git branch -f "$NEW_BRANCH" "$BRANCH"
-	git rebase --onto "$BASE" "$OLD_BASE" "$NEW_BRANCH"
+for b in "${BRANCHES[@]}"; do
+	process_branch "$b" || rc=1
 done
 
 exit $rc
