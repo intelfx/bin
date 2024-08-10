@@ -25,9 +25,28 @@ git_find_base_version() {
 		#--exclude 'v*.*.*' \
 }
 
+function git_find_master() {
+	local name ref
+	for name in master main; do
+		for ref in "$name@{u}" "$name"; do
+			if git_verify "$ref"; then
+				log "Using ${ref@Q} as the master ref"
+				printf "%s\t%s\n" "$name" "$ref"
+				return 0
+			fi
+		done
+	done
+	return 1
+}
+
 _usage() {
 	cat <<EOF
-Usage: $0 <onto> <branch>...
+Usage: $0 [-f|--find-tag] <onto> <branch>...
+Options:
+	-f, --find-tag		If a branch name does not end with a version,
+				use \`git describe\` to find the closest tag
+				(if not specified, master is used as the branch
+				upstream)
 EOF
 }
 
@@ -38,6 +57,7 @@ EOF
 
 declare -A _args=(
 	[-h|--help]=ARG_USAGE
+	[-f|--find-tag]=ARG_FIND_TAG
 	[--]=ARGS
 )
 
@@ -91,14 +111,24 @@ function process_branch() {
 	fi
 
 	local branch_name branch_version
-	if [[ $branch =~ (.+)-([0-9.]+)$ ]] && base="$VERSION_PREFIX${BASH_REMATCH[2]}" && git_verify "$base"; then
+	if [[ $branch =~ (.+)-([0-9.]+)$ ]] \
+	&& base="$VERSION_PREFIX${BASH_REMATCH[2]}" \
+	&& git_verify "$base"
+	then
 		branch_version="${BASH_REMATCH[2]}"
 		branch_name="${BASH_REMATCH[1]}"
-	elif base="$(git_find_base_version "$branch")" && git_verify "$base"; then
+	elif (( ARG_FIND_TAG )) \
+	  && base="$(git_find_base_version "$branch")" \
+	  && git_verify "$base"
+	then
 		branch_version="${base#"$PREFIX"}"
 		branch_name="${branch%"-$branch_version"}"
+	elif (( ! ARG_FIND_TAG )) \
+	  && git_find_master | IFS=$'\t' read -r branch_version base
+	then
+		branch_name="$branch"
 	else
-		err "Unable to determine working branch base"
+		err "Unable to determine working branch base, and unable to find master ref"
 		return 1
 	fi
 
