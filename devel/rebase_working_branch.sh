@@ -1,6 +1,14 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
 . lib.sh || exit
+
+
+#
+# functions
+#
 
 git_verify() {
 	git rev-parse --verify --quiet "$1" >/dev/null
@@ -23,12 +31,36 @@ Usage: $0 <onto> <branch>...
 EOF
 }
 
-if ! (( $# >= 1 )); then
+
+#
+# args
+#
+
+declare -A _args=(
+	[-h|--help]=ARG_USAGE
+	[--]=ARGS
+)
+
+parse_args _args "$@" || usage
+(( ! ARG_USAGE )) || usage
+
+if (( ${#ARGS[@]} > 1 )); then
+	TARGET="${ARGS[1]}"
+	BRANCHES=( "${ARGS[@]:2}" )
+elif (( ${#ARGS[@]} == 1 )); then
+	TARGET="${ARGS[1]}"
+	if ! head="$(git symbolic-ref --short HEAD)"; then
+		die "No branches to rebase, and HEAD is not on a branch"
+	fi
+	BRANCHES=( "$head" )
+else
 	usage "Expected 1 or more arguments"
 fi
 
-TARGET="$1"
-BRANCHES=( "${@:2}" )
+
+#
+# main
+#
 
 if ! git_verify "$TARGET"; then
 	die "Invalid base: ${TARGET@Q}"
@@ -45,13 +77,6 @@ log "Target ref: $TARGET"
 log "Target version: $TARGET_VERSION"
 if [[ $PREFIX ]]; then
 	log "Ref prefix: $PREFIX"
-fi
-
-if ! [[ ${BRANCHES+set} ]]; then
-	if ! head="$(git symbolic-ref --short HEAD)"; then
-		die "No branches to rebase, and HEAD is not on a branch"
-	fi
-	BRANCHES+=( "$head" )
 fi
 
 function process_branch() {
