@@ -90,7 +90,7 @@ function process_branch() {
 		return 1
 	fi
 
-	trace git checkout --detach "$base" || return
+	trace git checkout --detach "$TARGET" || return
 	trace git branch -f "$new_branch" "$branch" || return
 	trace git rebase-repeatedly --onto "$TARGET" "$base" "$new_branch" || return
 }
