@@ -1,5 +1,9 @@
 #!/bin/bash
 
+vars=()
+if [[ -e version ]]; then vars+=(
+	KERNELRELEASE="$(< version)"
+); fi
 
 exec make \
 	KCFLAGS="-ffile-prefix-map=$PWD=." \
@@ -7,5 +11,6 @@ exec make \
 	KBUILD_BUILD_TIMESTAMP="$(date -Ru -d '@0')" \
 	KBUILD_BUILD_HOST=archlinux \
 	KBUILD_BUILD_USER=linux \
+	"${vars[@]}" \
 	-j$(nproc) \
 	"$@"
