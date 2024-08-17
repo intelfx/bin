@@ -53,8 +53,12 @@ v5.18)
 	bcachefs=e964adc844a80a98ddce62a2759ccd5596ec20d2
 	Trace git merge-repeatedly --no-edit "$bcachefs"
 	;;
-v5.19|v6.[0-6])
+v5.19|v6.[0-5])
 	Trace git merge-repeatedly --no-edit "bcachefs-hist/$major"
+	;;
+v6.6)
+	Trace git merge-repeatedly --no-edit work/minmax-6.6
+	Trace git merge-repeatedly --no-edit bcachefs/6.6
 	;;
 esac
 
