@@ -92,7 +92,7 @@ v6.6)
 	;;
 esac
 
-git describe --tags --exact build | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | read branch
+git describe --tags --exact "${target[build]}" | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | read branch
 Trace git branch -f "work/patch-${branch}"
 Trace git branch -f "work/patch-${major}"
 if [[ ${target[patch]+set} ]]; then
