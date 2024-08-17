@@ -51,10 +51,10 @@ fi
 case "$tag" in
 v5.18)
 	bcachefs=e964adc844a80a98ddce62a2759ccd5596ec20d2
-	git merge-repeatedly "$bcachefs"
+	Trace git merge-repeatedly --no-edit "$bcachefs"
 	;;
 v5.19|v6.[0-6])
-	git merge-repeatedly "bcachefs-hist/$major"
+	Trace git merge-repeatedly --no-edit "bcachefs-hist/$major"
 	;;
 esac
 
@@ -88,7 +88,7 @@ v6.4)
 	#git cherry-pick --no-edit 439a09791f0802a2b89db85cff831d511ed3547d  # mm: vmalloc: include gfp.h for alloc_hooks()
 	;;
 v6.6)
-	git merge-repeatedly work/i915-fastboot-revert-6.6
+	Trace git merge-repeatedly --no-edit work/i915-fastboot-revert-6.6
 	;;
 esac
 
