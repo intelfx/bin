@@ -17,11 +17,12 @@
 #
 
 cd "$HOME"
-respawn_helper="$HOME/bin/misc/tmux-respawn-helper"
+SCRIPT_DIR="${BASH_SOURCE%/*}"
+respawn_helper="$SCRIPT_DIR/../misc/tmux-respawn-helper"
 
 if [[ -e bench.sh ]]; then
   bench_cmd1=(sleep infinity)
-  bench_cmd2=(./bench.sh)
+  bench_cmd2=("$PWD/bench.sh")
 else
   bench_cmd1=()
   bench_cmd2=()
