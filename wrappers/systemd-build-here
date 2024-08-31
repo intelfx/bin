@@ -21,6 +21,7 @@ for var in "${vars[@]}"; do
 	args+=( -E "$var" )
 done
 
+set -x
 exec systemd-run-here \
 	-p User=$(id -un) \
 	-p Slice=system-cpu.slice \
