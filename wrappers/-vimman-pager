@@ -14,5 +14,5 @@ col -bx | exec vim \
 	-c 'au FileType man noremap <buffer>                   <SPACE> <C-D>' \
 	-c 'au FileType man noremap <buffer> <silent> <nowait> q       :q<CR>' \
 	-c 'au FileType man setlocal nolist nonumber keywordprg=:Man iskeyword+=(,)' \
-	-c '                setlocal ft=man' \
+	-c '                setlocal nomodifiable buftype=nofile ft=man' \
 	-
