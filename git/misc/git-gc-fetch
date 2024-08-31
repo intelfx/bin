@@ -74,6 +74,6 @@ else
 	git \
 		repack \
 		--cruft -d -l \
-		--write-bitmap-index \
+		--write-bitmap-index --write-midx \
 		"$@"
 fi
