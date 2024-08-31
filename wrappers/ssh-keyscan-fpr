@@ -1,0 +1,34 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+Usage: $0 [ARGS...]
+EOF
+}
+
+
+#
+# args
+#
+
+declare -A _args=(
+	[getopt]="+"
+	[-h|--help]=ARG_USAGE
+	[--]=ARGS
+)
+parse_args _args "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
+
+#
+# main
+#
+
+ssh-keyscan -q "${ARGS[@]}" | while IFS= read -r line; do
+	if [[ $line == \#* ]]; then
+		printf >&2 "%s\n" "$line"
+	else
+		ssh-keygen -l -f - <<<"$line"
+	fi
+done
