@@ -2,17 +2,35 @@
 
 . lib.sh || exit
 
-ARGS=$(getopt -o '-P:b:' --long 'prefix:,branch:,prefix-any' -n "${0##*/}" -- "$@") || exit
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} -b TARGET-BRANCH [-P PREFIX | --prefix-any] REV-LIST -- FILE...
+
+Rewrites revisions in REV-LIST, preserving only named FILEs and stripping
+\`PREFIX/\` from each FILE. REV-LIST must contain at least one ref (i.e.
+\`master~10..master\` - OK, \`9778601\` - not OK).
+
+The \`--\` must be present to delimit REV-LIST from FILEs if the FILEs are not
+present in the current working tree.
+
+The rewritten tip is assigned to TARGET-BRANCH.
+EOF
+}
+
+ARGS=$(getopt -o '-P:b:h' --long 'prefix:,branch:,prefix-any,help' -n "${0##*/}" -- "$@") || exit
 eval set -- "$ARGS"
 unset ARGS
 
 ARG_PREFIX=
-ARG_PREIX_ANY=
+ARG_PREFIX_ANY=
 ARG_BRANCH=
 ARGS=()
 
 while (( $# )); do
 	case "$1" in
+	-h|--help)
+		usage
+		;;
 	-P|--prefix)
 		ARG_PREFIX="$2"
 		shift 2
@@ -34,11 +52,13 @@ done
 
 set -- "${ARGS[@]}"
 
-[[ "$ARG_BRANCH" ]] || die "missing required option: -b/--branch"
+[[ "$ARG_BRANCH" ]] || usage "missing required option: -b/--branch"
 if [[ "$ARG_PREFIX" && "$ARG_PREFIX_ANY" ]]; then
-	die "invalid options: -P/--prefix and --prefix-any cannot be used together"
+	usage "invalid options: -P/--prefix and --prefix-any cannot be used together"
 elif ! [[ "$ARG_PREFIX" || "$ARG_PREFIX_ANY" ]]; then
-	die "invalid options: one of -P/--prefix or --prefix-any is required"
+	# usage "invalid options: one of -P/--prefix or --prefix-any is required"
+	warn "Neither -P/--prefix nor --prefix-any specified; assuming \`--prefix /\`"
+	PREFIX=/
 fi
 
 cleanup() {
@@ -66,7 +86,7 @@ mangle_filenames() {
 }
 
 #trace git branch -f "$ARG_BRANCH" "$(git rev-list -1 "${ARGS[@]}")"
-git fast-export --refspec 'refs/heads/*:refs/exported/*' "${ARGS[@]}" \
+git fast-export --refspec 'refs/heads/*:refs/exported/*' -- "${ARGS[@]}" \
 	| mangle_filenames \
 	| tee git-fast-export-stream \
 	| git fast-import
