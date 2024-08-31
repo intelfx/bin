@@ -6,7 +6,7 @@ if [[ -e version ]]; then vars+=(
 ); fi
 
 exec make \
-	KCFLAGS="-ffile-prefix-map=$PWD=." \
+	KCFLAGS="-ffile-prefix-map=$PWD=. -ffile-prefix-map=./=" \
 	SOURCE_DATE_EPOCH=0 \
 	KBUILD_BUILD_TIMESTAMP="$(date -Ru -d '@0')" \
 	KBUILD_BUILD_HOST=archlinux \
