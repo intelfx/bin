@@ -1,9 +1,30 @@
 #!/bin/bash
 
+IFS=':'
+read -ra path <<<"$PATH"
+ipath=()
+for p in "${path[@]}"; do
+	if [[ $p == /usr/* ]]; then ipath+=("$p"); fi
+done
+IPATH="${ipath[*]}"
+unset IFS
+
+vars=(
+	SSH_AUTH_SOCK
+	"${!CCACHE_@}"
+	"${!DISTCC_@}"
+	PATH="$IPATH"
+)
+
+args=()
+for var in "${vars[@]}"; do
+	args+=( -E "$var" )
+done
+
 exec sudo systemd-run-here \
 	-p User=$(id -un) \
 	-p Slice=system-cpu.slice \
 	-p CPUSchedulingPolicy=batch \
 	-p Nice=18 \
-	-E SSH_AUTH_SOCK \
+	"${args[@]}" \
 	"$@"
