@@ -21,7 +21,7 @@ for var in "${vars[@]}"; do
 	args+=( -E "$var" )
 done
 
-exec sudo systemd-run-here \
+exec systemd-run-here \
 	-p User=$(id -un) \
 	-p Slice=system-cpu.slice \
 	-p CPUSchedulingPolicy=batch \
