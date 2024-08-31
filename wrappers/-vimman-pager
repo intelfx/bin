@@ -7,7 +7,7 @@ unset PAGER MANPAGER
 # https://unix.stackexchange.com/a/778258/21885
 shopt -s lastpipe
 # FIXME: this used to cause a spurious "Command terminated" in vim
-trap '' CHLD
+# trap '' CHLD
 col -bx | exec vim \
 	-R \
 	--cmd 'let b:ruler_disable=1' \
