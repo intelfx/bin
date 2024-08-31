@@ -1,0 +1,48 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [PID...]
+EOF
+}
+
+
+#
+# args
+#
+
+if ! (( $# )); then
+	usage "expected at least 1 positional argument"
+fi
+
+
+#
+# main
+#
+
+printf "%s\n" "$@" | exec xargs ps --no-heading -Lo tid

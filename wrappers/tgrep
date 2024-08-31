@@ -1,0 +1,3 @@
+#!/bin/bash
+
+pgrep "$@" | xargs ps --no-heading -Lo tid
