@@ -45,6 +45,13 @@ find "$GIT_DIR/objects/pack" \
 
 	human_size="$(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1)"
 	human_mtime="$(date -d "@$mtime")"
+
+	cruft="${pack%.pack}.mtimes"
+	if [[ -e $cruft ]]; then
+		echo "Skipping cruft pack: ${pack##*/} @ $human_size ($human_mtime)"
+		continue
+	fi
+
 	if (( mtime > now - RECENT_PACK_SEC )); then
 		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
 		(( ++candidate_packs ))
