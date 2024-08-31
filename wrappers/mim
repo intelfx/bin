@@ -1,0 +1,11 @@
+#!/bin/bash
+
+export LD_PRELOAD=/usr/lib/libmimalloc.so
+export MIMALLOC_VERBOSE=1
+export MIMALLOC_ALLOW_LARGE_OS_PAGES=1
+export MIMALLOC_RESERVE_HUGE_OS_PAGES=0
+export MIMALLOC_EAGER_COMMIT_DELAY=0
+# Don't use 1G huge pages...
+# (64 MiB)
+export MIMALLOC_ARENA_RESERVE=67108864
+exec "$@"
