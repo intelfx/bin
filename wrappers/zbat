@@ -1,0 +1,92 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+declare -A EXTENSIONS=(
+	[gz]="zcat"
+	[Z]="zcat"
+	[bz2]="bzcat"
+	[xz]="xzcat"
+	[lz]="xzcat"
+	[lzma]="xzcat"
+	[zst]="zstdcat"
+	[zstd]="zstdcat"
+)
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} FILE.EXT
+Supported extensions: ${!EXTENSIONS[*]}
+EOF
+}
+
+
+#
+# args
+#
+
+if args=$(getopt -o 'h' --long 'help' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+while :; do
+	case "$1" in
+	-h|--help) usage ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+case "$#" in
+1) file="$1" ;;
+*) usage "wrong number of positional arguments" ;;
+esac
+
+
+#
+# main
+#
+
+filename="$(basename "$file")"
+
+if [[ $filename == *.* ]] \
+&& ext="${filename##*.}" \
+&& [[ ${EXTENSIONS[$ext]+set} ]]; then
+	decompressor="${EXTENSIONS[$ext]}"
+
+	if [[ -t 0 && -t 1 ]]; then
+		shopt -s lastpipe
+		"$decompressor" "$file" | exec bat --file-name "${file%.$ext}"
+	else
+		exec "$decompressor" "$file"
+	fi
+else
+	die "Unknown file type: ${file@Q}"
+fi
