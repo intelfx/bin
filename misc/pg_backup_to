@@ -169,7 +169,9 @@ sudo systemd-run \
 
 
 dumpall() {
-	find "$ARG_PGROOT" -type f -name '*.conf' -printf '%P\n' | readarray -t configs
+	# find(1) bails if $PWD is inaccessible to the current user, which it
+	# might become after changing user to postgres
+	sudo -u postgres env -C / find "$ARG_PGROOT" -type f -name '*.conf' -printf '%P\n' | readarray -t configs
 
 	if ! [[ ${configs+set} ]]; then
 		die "No .conf files found under $ARG_PGROOT"
