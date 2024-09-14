@@ -1,3 +1,14 @@
 #!/bin/bash
 
-exec ssh -oBatchMode=yes -oStrictHostKeyChecking=accept-new "$@"
+ssh_args=(
+	-oBatchMode=yes
+	-oStrictHostKeyChecking=accept-new
+)
+
+if [[ $1 == -i* ]]; then
+	ssh_args+=(
+		-oIdentitiesOnly=yes
+	)
+fi
+
+exec ssh "${ssh_args[@]}" "$@"
