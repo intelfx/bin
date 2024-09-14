@@ -11,7 +11,7 @@ _usage() {
 Usage: pg_backup_to [-D|--directory POSTGRES-ROOT] [-p|--port POSTGRES-PORT]
                     [ [-o|--output OUTPUT-FILE] | [-O|--output-dir OUTPUT-DIR] ]
                     [-d|--databases DATABASES]
-                    [-c|--compress COMPRESSOR-CMDLINE]
+                    [[-c|--compress COMPRESSOR-CMDLINE] | [-N|--no-compress]]
                     [--] [POSTGRES-ROOT]
 EOF
 }
