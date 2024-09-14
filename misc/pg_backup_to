@@ -138,8 +138,10 @@ systemd_cleanup() {
 
 		case "$(systemctl is-active "$u")" in
 		active) trace sudo systemctl stop "$u" ;;
-		failed) trace sudo systemctl status "$u" ;;
-		inactive) ;;
+		esac
+
+		case "$(systemctl is-active "$u")" in
+		failed) trace sudo systemctl status -n0 "$u" ;;
 		esac
 
 		trace sudo systemctl reset-failed "$u" 2>/dev/null
