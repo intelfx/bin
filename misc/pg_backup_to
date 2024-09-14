@@ -71,7 +71,7 @@ if [[ ${ARG_NOCOMPRESS+set} ]]; then
 	COMPRESS_ARGS=()
 	EXTENSION=""
 elif [[ "$ARG_COMPRESS" ]]; then
-	COMPRESS_ARGS=( $ARG_COMPRESS )
+	read -ra COMPRESS_ARGS <<<"$ARG_COMPRESS"
 	case "$(basename "${COMPRESS_ARGS[0]}")" in
 	gzip|pigz)
 		EXTENSION=".gz" ;;
