@@ -72,7 +72,7 @@ if [[ ${ARG_NOCOMPRESS+set} ]]; then
 	EXTENSION=""
 elif [[ "$ARG_COMPRESS" ]]; then
 	COMPRESS_ARGS=( $ARG_COMPRESS )
-	case "$(basename "${ARG_COMPRESS[0]}")" in
+	case "$(basename "${COMPRESS_ARGS[0]}")" in
 	gzip|pigz)
 		EXTENSION=".gz" ;;
 	xz|pixz)
