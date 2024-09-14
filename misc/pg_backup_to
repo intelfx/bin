@@ -111,7 +111,7 @@ if [[ ${COMPRESS_ARGS+set} ]]; then
 	COMPRESS_LINE="${COMPRESS_ARGS[*]@Q} -o"
 else
 	log "Compression: disabled"
-	COMPRESS_LINE="cat >"
+	COMPRESS_LINE="pv -tbar >"
 fi
 
 
