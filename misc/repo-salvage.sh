@@ -43,10 +43,12 @@ log "/etc/pacman.conf - $ok cache directories read, $rej cache directories rejec
 ok=0
 rej=0
 (
+	set +e
 	. /etc/makepkg.conf >&2
-	echo "$PKGDEST"
-) | read dir
-cache_dir "$dir"
+	[[ $PKGDEST ]] && printf "%s\n" "$PKGDEST"
+) | while read dir; do
+	cache_dir "$dir"
+done
 log "/etc/makepkg.conf - $ok cache directories read, $rej cache directories rejected"
 
 declare -A PKG_VERSIONS
