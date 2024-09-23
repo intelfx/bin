@@ -21,7 +21,7 @@ GTK_THEME=Adwaita # Arc
 function adjust_gtk3() {
 	local gtk3_theme=( Adwaita Adwaita-dark ) #( Arc Arc-Dark )
 	#local shell_theme=( Adwaita Adwaita ) #( Arc Arc-Dark )
-	local color_scheme=( default prefer-dark )
+	local color_scheme=( prefer-light prefer-dark )
 	local icon_theme=( 'Papirus-Light' 'Papirus-Dark' )
 
 	dconf write /org/gnome/desktop/interface/color-scheme "'${color_scheme[$1]}'"
