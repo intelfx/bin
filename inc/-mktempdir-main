@@ -93,7 +93,7 @@ setup_tmpdir() {
 # args
 #
 
-: "${TMP_ROOT="$HOME/tmp/big/build"}"
+: "${TMP_ROOT="$HOME/tmp/big/offload"}"
 
 if args=$(getopt -o 'd:' --long 'dir:' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
