@@ -35,7 +35,7 @@ cache_dir() {
 
 ok=0
 rej=0
-cat /etc/pacman.conf | sed -nr 's|^CacheDir\s*=\s*(.+)$|\1|p' | while read dir; do
+pacman-conf CacheDir | while read dir; do
 	cache_dir "$dir"
 done
 log "/etc/pacman.conf - $ok cache directories read, $rej cache directories rejected"
