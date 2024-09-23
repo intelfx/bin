@@ -17,11 +17,12 @@ The rewritten tip is assigned to TARGET-BRANCH.
 EOF
 }
 
-ARGS=$(getopt -o '-P:b:h' --long 'prefix:,branch:,prefix-any,help' -n "${0##*/}" -- "$@") || exit
+ARGS=$(getopt -o '-P:b:h' --long 'root,prefix:,branch:,prefix-any,help' -n "${0##*/}" -- "$@") || exit
 eval set -- "$ARGS"
 unset ARGS
 
 ARG_PREFIX=
+ARG_PREFIX_ROOT=
 ARG_PREFIX_ANY=
 ARG_BRANCH=
 ARGS=()
@@ -34,6 +35,10 @@ while (( $# )); do
 	-P|--prefix)
 		ARG_PREFIX="$2"
 		shift 2
+		;;
+	--root)
+		ARG_PREFIX_ROOT=1
+		shift
 		;;
 	--prefix-any)
 		ARG_PREFIX_ANY=1
@@ -52,13 +57,13 @@ done
 
 set -- "${ARGS[@]}"
 
-[[ "$ARG_BRANCH" ]] || usage "missing required option: -b/--branch"
-if [[ "$ARG_PREFIX" && "$ARG_PREFIX_ANY" ]]; then
+[[ $ARG_BRANCH ]] || usage "missing required option: -b/--branch"
+if [[ $ARG_PREFIX && $ARG_PREFIX_ANY ]]; then
 	usage "invalid options: -P/--prefix and --prefix-any cannot be used together"
-elif ! [[ "$ARG_PREFIX" || "$ARG_PREFIX_ANY" ]]; then
+elif ! [[ $ARG_PREFIX || $ARG_PREFIX_ANY || $ARG_PREFIX_ROOT ]]; then
 	# usage "invalid options: one of -P/--prefix or --prefix-any is required"
-	warn "Neither -P/--prefix nor --prefix-any specified; assuming \`--prefix /\`"
-	PREFIX=/
+	warn "Neither -P/--prefix nor --prefix-any specified; assuming \`--root\`"
+	ARG_PREFIX_ROOT=1
 fi
 
 cleanup() {
@@ -72,7 +77,7 @@ if git for-each-ref --format '%(refname)' 'refs/exported/*' | grep -q .; then
 fi
 
 mangle_filenames() {
-	if [[ "$ARG_PREFIX" ]]; then
+	if [[ $ARG_PREFIX_ROOT || $ARG_PREFIX ]]; then
 		sed -r \
 			-e "s|^(M) ([^ ]+) ([^ ]+) ${ARG_PREFIX}/(.+)$|\\1 \\2 \\3 \\4|" \
 			-e "s|^(D) ${ARG_PREFIX}/(.+)$|\\1 \\2|" \
