@@ -115,17 +115,21 @@ function process_branch() {
 	&& base="$VERSION_PREFIX${BASH_REMATCH[2]}" \
 	&& git_verify "$base"
 	then
+		suffix="-${BASH_REMATCH[2]}"
+		log "Using branch name suffix ${suffix@Q}"
 		branch_version="${BASH_REMATCH[2]}"
 		branch_name="${BASH_REMATCH[1]}"
 	elif (( ARG_FIND_TAG )) \
 	  && base="$(git_find_base_version "$branch")" \
 	  && git_verify "$base"
 	then
+		log "Using dynamically determined branch base ${base@Q}"
 		branch_version="${base#"$PREFIX"}"
 		branch_name="${branch%"-$branch_version"}"
 	elif (( ! ARG_FIND_TAG )) \
 	  && git_find_master | IFS=$'\t' read -r branch_version base
 	then
+		log "Could not determine working branch base, using master as base"
 		branch_name="$branch"
 	else
 		err "Unable to determine working branch base, and unable to find master ref"
