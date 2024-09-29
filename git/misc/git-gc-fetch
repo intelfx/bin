@@ -126,8 +126,12 @@ printf "%s\n" "${PACKS[@]}" \
 		continue
 	fi
 
+	# repack everything after the first candidate pack
+	if (( CANDIDATES )); then
+		repack=1
+
 	# repack all recent packs
-	if (( mtime > OLD_PACK_TIME )); then
+	elif (( mtime > OLD_PACK_TIME )); then
 		repack=1
 
 	# do not bother keeping very small packs
