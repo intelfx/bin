@@ -112,7 +112,7 @@ function process_branch() {
 
 	local branch_name branch_version
 	if [[ $branch =~ (.+)-([0-9.]+)$ ]] \
-	&& base="$VERSION_PREFIX${BASH_REMATCH[2]}" \
+	&& base="$PREFIX${BASH_REMATCH[2]}" \
 	&& git_verify "$base"
 	then
 		suffix="-${BASH_REMATCH[2]}"
