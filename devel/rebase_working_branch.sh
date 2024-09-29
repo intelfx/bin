@@ -65,10 +65,10 @@ parse_args _args "$@" || usage
 (( ! ARG_USAGE )) || usage
 
 if (( ${#ARGS[@]} > 1 )); then
-	TARGET="${ARGS[1]}"
-	BRANCHES=( "${ARGS[@]:2}" )
+	TARGET="${ARGS[0]}"
+	BRANCHES=( "${ARGS[@]:1}" )
 elif (( ${#ARGS[@]} == 1 )); then
-	TARGET="${ARGS[1]}"
+	TARGET="${ARGS[0]}"
 	if ! head="$(git symbolic-ref --short HEAD)"; then
 		die "No branches to rebase, and HEAD is not on a branch"
 	fi
