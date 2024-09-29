@@ -1,14 +1,82 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/}
+EOF
+}
+
+
 #
 # git-gc-fetch -- `git gc` after fetching many redundant packs
 #
 
-set -eo pipefail
-shopt -s lastpipe
 
-RECENT_PACK_SEC="$(( 24*3600 ))"
+#
+# args
+#
+
+now="$(date +%s)"
 SMALL_PACK_BYTES="$(( 50*1024*1024 ))"
+OLD_PACK_TIME="$(( now - 24*3600 ))"
+GIT_GC=0
+PACK_ARGS=()
+
+if args=$(getopt -o '+S:T:s:gbm' --long 'size:,time:,seconds:,gc,bitmap,midx' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+while :; do
+	case "$1" in
+	-S|--size) shift; SMALL_PACK_BYTES="$(bscalcq -b "$1")" ;;
+	-T|--time) shift; OLD_PACK_TIME="$(date -d "$1" +%s)" ;;
+	-s|--seconds) shift; OLD_PACK_TIME="$(( now - "$1" ))" ;;
+	-g|--gc) GIT_GC=1 ;;
+	-b|--bitmap) PACK_ARGS+=( --write-bitmap-index ) ;;
+	-m|--midx) PACK_ARGS+=( --write-midx ) ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+# case "$#" in
+# 0) ;;
+# *) usage "wrong number of positional arguments" ;;
+# esac
+
+
+#
+# main
+#
 
 GIT_DIR="$(git rev-parse --git-dir)"
 
@@ -17,17 +85,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-now="$(date +%s)"
-candidate_packs=0
-
-GIT_GC=0
-while (( $# )); do
-	case "$1" in
-	--gc) GIT_GC=1 ;;
-	*) break ;;
-	esac
-	shift
-done
+declare -a PACKS
 
 find "$GIT_DIR/objects/pack" \
 	-type f \
@@ -38,10 +96,26 @@ find "$GIT_DIR/objects/pack" \
 	# Sometimes, `git fetch` touches old packs for no good reason, breaking
 	# this logic.
 	idx="${pack%.pack}.idx"
-	size="$(stat -c '%s' "$pack")"
 	mtime_pack="$(stat -c '%Y' "$pack")"
 	mtime_idx="$(stat -c '%Y' "$idx")"
 	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
+
+	PACKS+=("$mtime"$'\t'"$pack")
+done
+
+if ! [[ ${PACKS+set} ]]; then
+	echo "Nothing to pack"
+	exit
+fi
+
+CANDIDATES=0
+
+printf "%s\n" "${PACKS[@]}" \
+| sort -n -t $'\t' -k1 \
+| while read -r mtime pack; do
+
+	idx="${pack%.pack}.idx"
+	size="$(stat -c '%s' "$pack")"
 
 	human_size="$(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1)"
 	human_mtime="$(date -d "@$mtime")"
@@ -52,23 +126,29 @@ find "$GIT_DIR/objects/pack" \
 		continue
 	fi
 
-	if (( mtime > now - RECENT_PACK_SEC )); then
-		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
-		(( ++candidate_packs ))
-		continue
-	fi
+	# repack all recent packs
+	if (( mtime > OLD_PACK_TIME )); then
+		repack=1
+
 	# do not bother keeping very small packs
-	if (( size < SMALL_PACK_BYTES )); then
-		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
-		(( ++candidate_packs ))
-		continue
+	elif (( size < SMALL_PACK_BYTES )); then
+		repack=1
+
+	# keep the rest
+	else
+		repack=0
 	fi
 
-	echo "Keeping pack: ${pack##*/} @ $human_size ($human_mtime)"
-	touch "${pack%.pack}.keep"
+	if (( repack )); then
+		echo "Repacking: ${pack##*/} @ $human_size ($human_mtime)"
+		(( ++CANDIDATES ))
+	else
+		echo "Keeping pack: ${pack##*/} @ $human_size ($human_mtime)"
+		touch "${pack%.pack}.keep"
+	fi
 done
 
-if (( candidate_packs < 2 )); then
+if (( CANDIDATES < 2 )); then
 	echo "Nothing to repack"
 	exit
 fi
@@ -81,6 +161,6 @@ else
 	git \
 		repack \
 		--cruft -d -l \
-		--write-bitmap-index --write-midx \
+		"${PACK_ARGS[@]}" \
 		"$@"
 fi
