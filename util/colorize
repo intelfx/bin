@@ -101,6 +101,15 @@ function adjust_kate() {
 	sed -re "s|^Schema=.*|Schema=${schema[$1]}|" -i "$config_path/katepartrc"
 }
 
+function adjust_delta() {
+	local gitconfig="$HOME/.gitconfig.private"
+
+	local flags=( "delta.dark" "delta.light" )
+
+	git config --file "$gitconfig"         "${flags[$((1 - $1))]}" true
+	git config --file "$gitconfig" --unset "${flags[$((    $1))]}"
+}
+
 #function adjust_stext() {
 #	local stext_prefs="$config_path/sublime-text-3/Packages/User/Preferences.sublime-settings"
 #	local schema=(
@@ -137,7 +146,7 @@ esac
 shift
 
 if (( ! $# )); then
-	set -- "$@" gtk3 gedit terminal builder alacritty kde kate
+	set -- "$@" gtk3 gedit terminal builder alacritty kde kate delta
 fi
 
 for arg; do
