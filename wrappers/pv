@@ -2,7 +2,7 @@
 #
 # Status output if running on terminal
 #
-if [[ -t 2 && -t 1 && -t 0 ]]; then
+if [[ -t 2 ]]; then
 	exec /usr/bin/pv -ctebar "$@"
 else
 	exec /usr/bin/pv "$@"
