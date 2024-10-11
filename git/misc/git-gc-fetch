@@ -171,4 +171,7 @@ else
 		--depth=50 --window=1000 \
 		"${PACK_ARGS[@]}" \
 		"$@"
+	git \
+		commit-graph \
+		write
 fi
