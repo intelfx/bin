@@ -1,0 +1,5 @@
+#!/bin/bash
+
+rg -uuu --no-heading --no-line-number --color=always "$@" \
+	| sort -t: -k1 \
+	| column -s: -t -l2
