@@ -45,9 +45,10 @@ now="$(date +%s)"
 SMALL_PACK_BYTES="$(( 50*1024*1024 ))"
 OLD_PACK_TIME="$(( now - 24*3600 ))"
 GIT_GC=0
+FORCE=0
 PACK_ARGS=()
 
-if args=$(getopt -o '+S:T:s:gbm' --long 'size:,time:,seconds:,gc,bitmap,midx' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o '+S:T:s:gbmf' --long 'size:,time:,seconds:,gc,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -62,6 +63,7 @@ while :; do
 	-g|--gc) GIT_GC=1 ;;
 	-b|--bitmap) PACK_ARGS+=( --write-bitmap-index ) ;;
 	-m|--midx) PACK_ARGS+=( --write-midx ) ;;
+	-f|--force) FORCE=1 ;;
 	--) shift; break ;;
 	*) die "getopt error" ;;
 	esac
@@ -152,7 +154,7 @@ printf "%s\n" "${PACKS[@]}" \
 	fi
 done
 
-if (( CANDIDATES < 2 )); then
+if (( !FORCE && CANDIDATES < 2 )); then
 	echo "Nothing to repack"
 	exit
 fi
