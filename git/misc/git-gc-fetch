@@ -162,11 +162,13 @@ fi
 if (( GIT_GC )); then
 	git \
 		-c gc.pruneExpire=now \
+		-c pack.depth=50 -c pack.window=1000 \
 		gc --keep-largest-pack --prune=now "$@"
 else
 	git \
 		repack \
 		--cruft -d -l \
+		--depth=50 --window=1000 \
 		"${PACK_ARGS[@]}" \
 		"$@"
 fi
