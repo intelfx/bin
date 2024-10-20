@@ -80,6 +80,9 @@ for arg; do
 		# ARGS+=( -sec-nla ) # xfreerdp 2.10
 		ARGS+=( /sec:nla:off /p: ) # xfreerdp 3.0
 		;;
+	-decorations)
+		ARGS+=( /floatbar:show:always )
+		;;
 	esac
 done
 
