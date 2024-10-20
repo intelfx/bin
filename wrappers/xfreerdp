@@ -85,7 +85,6 @@ for arg; do
 		# ARGS+=( /sec:nla:off ) # xfreerdp 3.0
 		;;
 	esac
-	shift
 done
 
 set -x
