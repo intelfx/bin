@@ -86,15 +86,17 @@ if ! git_verify "$TARGET"; then
 	die "Invalid base: ${TARGET@Q}"
 fi
 
-if ! [[ $TARGET =~ ([0-9.]+)$ ]]; then
+if ! [[ $TARGET =~ ([0-9.]+(-rc[0-9.]+)?)$ ]]; then
 	die "Invalid base: ${TARGET@Q}"
 fi
 
 TARGET_VERSION="${BASH_REMATCH[1]}"
 PREFIX="${TARGET%"$TARGET_VERSION"}"
+TARGET_SUFFIX="${TARGET_VERSION%%-rc*}"
 
 log "Target ref: $TARGET"
 log "Target version: $TARGET_VERSION"
+log "Target suffix: $TARGET_SUFFIX"
 if [[ $PREFIX ]]; then
 	log "Ref prefix: $PREFIX"
 fi
@@ -136,7 +138,7 @@ function process_branch() {
 		return 1
 	fi
 
-	local new_branch="$branch_name-$TARGET_VERSION"
+	local new_branch="$branch_name-$TARGET_SUFFIX"
 
 	log "Old branch: $branch (@ $base)"
 	log "New branch: $new_branch (@ $TARGET)"
