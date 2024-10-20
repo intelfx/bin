@@ -39,7 +39,7 @@ OPTIONS_FASTEST=(
 	/bpp:8
 	+compression
 	/compression-level:2
-	/codec-cache:rfx
+	#/codec-cache:rfx  # freerdp 2.x
 	#+bitmap-cache  # freerdp 2.x
 	#+glyph-cache  # freerdp 2.x
 	#+offscreen-cache  # freerdp 2.x
@@ -77,8 +77,8 @@ for arg; do
 	case "$arg" in
 	/u:intelfx|/u:intelfx@intelfx.name)
 		ARGS+=( /admin )
-		ARGS+=( -sec-nla ) # xfreerdp 2.10
-		# ARGS+=( /sec:nla:off ) # xfreerdp 3.0
+		# ARGS+=( -sec-nla ) # xfreerdp 2.10
+		ARGS+=( /sec:nla:off /p: ) # xfreerdp 3.0
 		;;
 	esac
 done
