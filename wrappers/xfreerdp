@@ -2,14 +2,10 @@
 
 SCRIPT_NAME="${0##*/}"
 case "$SCRIPT_NAME" in
-#xfreerdp)
-#	APP_NAME="$BUILD_DIR/client/X11/xfreerdp" ;;
-#wlfreerdp)
-#	APP_NAME="$BUILD_DIR/client/Wayland/wlfreerdp" ;;
-#sdlfreerdp)
-#	APP_NAME="$BUILD_DIR/client/SDL/sdl-freerdp" ;;
+sdlfreerdp)
+	SCRIPT_NAME="sdl-freerdp" ;&
 xfreerdp|wlfreerdp)
-	APP_NAME="/usr/bin/$SCRIPT_NAME" ;;
+	APP_NAME="/usr/bin/${SCRIPT_NAME}3" ;;
 *)
 	APP_NAME="/usr/bin/xfreerdp" ;;
 esac
