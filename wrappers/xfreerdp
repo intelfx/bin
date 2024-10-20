@@ -88,4 +88,5 @@ for arg; do
 	shift
 done
 
+set -x
 exec "$APP_NAME" "${OPTIONS[@]}" "${ARGS[@]}"
