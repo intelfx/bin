@@ -2,6 +2,7 @@
 
 set -eo pipefail
 shopt -s lastpipe
+shopt -s nullglob
 
 log() {
 	echo ":: $*" >&2
@@ -91,16 +92,20 @@ declare -a PACKS
 
 find "$GIT_DIR/objects/pack" \
 	-type f \
-	-name '*.pack' \
+	\( -name '*.pack' -or -name 'tmp_pack_*' \) \
 | while read pack; do
+
+	mtime="$(stat -c '%Y' "$pack")"
 
 	# HACK: use the older of .pack and .idx mtimes.
 	# Sometimes, `git fetch` touches old packs for no good reason, breaking
 	# this logic.
-	idx="${pack%.pack}.idx"
-	mtime_pack="$(stat -c '%Y' "$pack")"
-	mtime_idx="$(stat -c '%Y' "$idx")"
-	mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
+	if [[ $pack == *.pack ]]; then
+		idx="${pack%.pack}.idx"
+		mtime_pack="$mtime"
+		mtime_idx="$(stat -c '%Y' "$idx")"
+		mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
+	fi
 
 	PACKS+=("$mtime"$'\t'"$pack")
 done
@@ -121,6 +126,13 @@ printf "%s\n" "${PACKS[@]}" \
 
 	human_size="$(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1)"
 	human_mtime="$(date -d "@$mtime")"
+
+	if [[ $pack == */tmp_pack_* ]]; then
+		echo "Temporary pack, forcing: ${pack##*/} @ $human_size ($human_mtime)"
+		(( ++CANDIDATES ))
+		FORCE=1
+		continue
+	fi
 
 	cruft="${pack%.pack}.mtimes"
 	if [[ -e $cruft ]]; then
@@ -175,3 +187,5 @@ else
 		commit-graph \
 		write
 fi
+
+rm -vf "$GIT_DIR/objects/pack"/tmp_pack_*
