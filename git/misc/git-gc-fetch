@@ -46,10 +46,11 @@ now="$(date +%s)"
 SMALL_PACK_BYTES="$(( 50*1024*1024 ))"
 OLD_PACK_TIME="$(( now - 24*3600 ))"
 GIT_GC=0
+GIT_GC_NO_PRUNE=0
 FORCE=0
 PACK_ARGS=()
 
-if args=$(getopt -o '+S:T:s:gbmf' --long 'size:,time:,seconds:,gc,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o '+S:T:s:gGbmf' --long 'size:,time:,seconds:,gc,gc-no-prune,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -62,6 +63,7 @@ while :; do
 	-T|--time) shift; OLD_PACK_TIME="$(date -d "$1" +%s)" ;;
 	-s|--seconds) shift; OLD_PACK_TIME="$(( now - "$1" ))" ;;
 	-g|--gc) GIT_GC=1 ;;
+	-G|--gc-no-prune) GIT_GC_NO_PRUNE=1 ;;
 	-b|--bitmap) PACK_ARGS+=( --write-bitmap-index ) ;;
 	-m|--midx) PACK_ARGS+=( --write-midx ) ;;
 	-f|--force) FORCE=1 ;;
@@ -173,9 +175,19 @@ fi
 
 if (( GIT_GC )); then
 	git \
-		-c gc.pruneExpire=now \
 		-c pack.depth=50 -c pack.window=1000 \
+		-c gc.writeCommitGraph=true \
+		-c gc.pruneExpire=now \
 		gc --keep-largest-pack --prune=now "$@"
+elif (( GIT_GC_NO_PRUNE )); then
+	git \
+		-c pack.depth=50 -c pack.window=1000 \
+		-c gc.writeCommitGraph=true \
+		-c gc.cruftPacks=true \
+		-c gc.pruneExpire=never \
+		-c gc.reflogExpire=never \
+		-c gc.reflogExpireUnreachable=never \
+		gc --keep-largest-pack --no-prune "$@"
 else
 	git \
 		repack \
