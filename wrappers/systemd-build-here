@@ -23,7 +23,7 @@ done
 
 set -x
 exec systemd-run-here \
-	-p User=$(id -un) \
+	-p User="${SUDO_USER-$(id -un)}" \
 	-p Slice=system-cpu.slice \
 	-p CPUSchedulingPolicy=batch \
 	-p Nice=18 \
