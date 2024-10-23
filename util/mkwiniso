@@ -74,7 +74,7 @@ exec mkisofs \
 	-eltorito-alt-boot \
 	-eltorito-platform efi \
 	-no-emul-boot \
-	-eltorito-boot "$(find_ipath "$SOURCE_DIR_ABS" efi/microsoft/boot/efisys.bin)" \
+	-eltorito-boot "$(find_ipath "$SOURCE_DIR_ABS" efi/microsoft/boot/efisys.bin boot/efisys_prompt.bin)" \
 	-iso-level 4 \
 	-udf \
 	-output "$DEST_FILE_ABS" \
