@@ -55,15 +55,26 @@ if [[ $ISO_LABEL ]]; then
 	)
 fi
 
+find_ipath() (
+	local where="$1" what=("${@:2}")
+	local arg find_args=()
+	cd "$where"
+	for arg in "${what[@]}"; do
+		find_args+=( -ipath "./$arg" -or )
+	done
+	unset find_args[-1]
+	find \( "${find_args[@]}" \) -printf '%P\n' | head -n1
+)
+
 exec mkisofs \
 	"${mkisofs_args[@]}" \
 	-no-emul-boot \
-	-eltorito-boot "boot/etfsboot.com" \
+	-eltorito-boot "$(find_ipath "$SOURCE_DIR_ABS" boot/etfsboot.com)" \
 	-boot-load-seg 0 \
 	-eltorito-alt-boot \
 	-eltorito-platform efi \
 	-no-emul-boot \
-	-eltorito-boot "efi/microsoft/boot/efisys.bin" \
+	-eltorito-boot "$(find_ipath "$SOURCE_DIR_ABS" efi/microsoft/boot/efisys.bin)" \
 	-iso-level 4 \
 	-udf \
 	-output "$DEST_FILE_ABS" \
