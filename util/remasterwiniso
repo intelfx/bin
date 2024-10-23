@@ -76,6 +76,24 @@ if ! (( ${#ARG_FILES[@]} )); then
 	ARG_FILES=(.)
 fi
 
+process_image() {
+	log "Recompressing single file: $1"
+
+	local file="$1" stem="${1%.*}" args ext
+	if [[ ! $SKIP_WIMBOOT && $1 == boot.* ]]; then
+		args=( "${WIMOPTIMIZE_ARGS_WIM[@]}" )
+		ext="wim"
+	else
+		args=( "${WIMOPTIMIZE_ARGS[@]}" )
+		ext="$EXTENSION"
+	fi
+
+	wimoptimize "${args[@]}" "$file"
+	if [[ "$1" != "$stem.$ext" ]]; then
+		mv -v "$file" "$stem.$ext"
+	fi
+}
+
 process_dir() {
 	log "Recompressing directory: $1"
 
@@ -133,11 +151,19 @@ for file in "${ARG_FILES[@]}"; do
 			err "Failed to process directory: $file"
 			(( ++errs ))
 		fi
-	else
+	elif [[ "${file,,}" == *.iso ]]; then
 		if ! process_iso "$file"; then
 			err "Failed to process ISO file: $file"
 			(( ++errs ))
 		fi
+	elif [[ "${file,,}" == *.wim || "${file,,}" == *.esd ]]; then
+		if ! process_image "$file"; then
+			err "Failed to process WIM file: $file"
+			(( ++errs ))
+		fi
+	else
+		err "Unknown item: $file"
+		(( ++errs ))
 	fi
 done
 
