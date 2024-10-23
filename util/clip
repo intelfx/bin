@@ -157,9 +157,13 @@ fi
 unset tmpfile
 
 into_file() {
-	# if input is stdin or not a regular file, copy data via cat(1)
-	# NOTE: also handles the stdin case (unset $file fails `-f`)
-	if [[ ! -f ${file} ]]; then
+	# if input is not a regular file, copy data via cat(1)
+	if [[ -f ${file-/dev/stdin} ]]; then
+		# if input is a regular file connected to stdin, resolve it
+		if [[ ! ${file+set} ]]; then
+			file="$(realpath -qe /dev/stdin)" || die "internal error"
+		fi
+	else
 		# at most one tmpfile
 		[[ ! ${tmpfile+set} ]] || die "internal error"
 		trap 'trace rm -f -- "$tmpfile"' EXIT
