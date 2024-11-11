@@ -1,7 +1,0 @@
-#!/bin/sh
-
-# Script version of my very useful alias `r-put` that rsyncs files into the destination
-# preserving only times (i. e. applying correct perms/ACLs for the destination).
-# "Move" variant (i.e. delete files from src/ after copying to dest/)
-
-exec rsync -r --partial --no-i-r -ltDH --chmod=ugo=rwX --remove-source-files "$@"
