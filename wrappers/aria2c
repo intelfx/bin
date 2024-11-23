@@ -3,4 +3,6 @@
 exec /usr/bin/aria2c \
 	--file-allocation=trunc \
 	--enable-mmap=false \
+	--remote-time=true \
+	--stderr=true \
 	"$@"
