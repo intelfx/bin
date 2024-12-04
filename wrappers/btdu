@@ -21,6 +21,7 @@ parse_args ARGS "$@" || exec /usr/bin/btdu "$@"
 [[ ${ARGS_PATH+set} ]] || exec /usr/bin/btdu "$@"
 
 if ! [[ ${BTDU_UNSHARED+set} ]]; then
+	set -x
 	BTDU_UNSHARED=1 exec unshare --mount -- "$0" "$@"
 fi
 
@@ -39,4 +40,5 @@ for p in "${ARGS_PATH[@]}"; do
 	fi
 done
 
-/usr/bin/btdu "${ARGS_PASS[@]}" "${ARGS_PATH_ROOTS[@]}"
+set -x
+exec /usr/bin/btdu "${ARGS_PASS[@]}" "${ARGS_PATH_ROOTS[@]}"
