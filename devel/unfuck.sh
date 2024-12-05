@@ -1,7 +1,9 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
 
+. lib.sh || exit
 
 #
 # args & usage
@@ -31,34 +33,49 @@ ARGS=( "${ARGS[@]:1}" )
 # main
 #
 
+export GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000"
+
 declare -A target
+target[base_prefix]=base/base-
+target[patch_prefix]=my/my-
 if [[ ${ARG_LTS+set} ]]; then
-	target[build]=build-lts
+	target[base]=base/lts
+	target[patch]=my/lts
 else
-	target[build]=build
-	target[patch]=work/patch
+	target[base]=base/latest
+	target[patch]=my/latest
 fi
 
 tag="v${ARG_MAJOR#v}"
 major="${tag#v}"
 
-export GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000"
 Trace ~/bin/devel/merge_arch_and_pf.sh --major "$tag" "${ARGS[@]}"
-if [[ ${target[build]+set} ]]; then
-	Trace git branch -f "${target[build]}"
-fi
+Trace git describe --tags --exact HEAD \
+	| grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' \
+	| IFS= read -r minor
+
+Trace git branch -f "${target[base_prefix]}${major}"
+Trace git branch -f "${target[base_prefix]}${minor}"
+Trace git branch -f "${target[base]}"
+
+function make_merge() {
+	Trace git merge-repeatedly --ff --no-edit "$@"
+}
 
 case "$tag" in
 v5.18)
-	bcachefs=e964adc844a80a98ddce62a2759ccd5596ec20d2
-	Trace git merge-repeatedly --no-edit "$bcachefs"
+	make_merge \
+		e964adc844a80a98ddce62a2759ccd5596ec20d2
 	;;
 v5.19|v6.[0-5])
-	Trace git merge-repeatedly --no-edit "bcachefs-hist/$major"
+	make_merge \
+	       "bcachefs-hist/$major"
 	;;
 v6.6)
-	Trace git merge-repeatedly --no-edit work/minmax-6.6
-	Trace git merge-repeatedly --no-edit bcachefs/6.6
+	make_merge \
+		work/minmax-${major}
+	make_merge \
+		bcachefs/${major}
 	;;
 esac
 
@@ -91,14 +108,70 @@ v6.4)
 	#git cherry-pick --no-edit 616cf8265a8d40320df89e763956fa2c043b05c2  # accel/ivpu: deconflict ->alloc_pages() with same-named #define coming through bcachefs
 	#git cherry-pick --no-edit 439a09791f0802a2b89db85cff831d511ed3547d  # mm: vmalloc: include gfp.h for alloc_hooks()
 	;;
+
+	# historical branches
+	# make_merge \
+		#work/btrfs-6.10 \
+		#work/btrfs-metadata-fix-v1r3-6.7 \
+		#work/amd-prefcore-v9-6.5 \
+		#work/gvt-vfio-locking-6.1 \
+		#work/amd-pstate-epp-6.1 \
+		#work/bcachefs-zstd-5.15 \
+		#work/amd-pstate-5.15-v4 \  # in -pf
+		#work/btrfs-read-policy \
+		#work/amd-energy-support-all-cpus-5.13 \  # superseded
+		#work/amd-energy-restore-permissions-5.12 \  # superseded
+		#work/no-udp-tso-5.9 \  # fixed
+		#work/hid-logitech-mx-master-3 \  # merged
+		#work/pci-reenable-aspm \  # merged
+		#work/acpi-turn-off-5.11 \  # merged
+		#bcachefs/5.5 \
+		#work/cve-2019-14615-revert-5.5 \
+		#work/bug112315-i915-kbl-rc6-5.4 \
+		#work/bug111594-i915-guc-rc6-5.4 \
+
 v6.6)
-	Trace git merge-repeatedly --no-edit work/i915-fastboot-revert-6.6
+	# conflicts
+	make_merge \
+		work/i915-fastboot-revert-6.6
+	make_merge \
+		work/em7565-ids-6.6
+	# main
+	make_merge \
+		work/iwlwifi-lar-v2-6.6 \
+		work/amd-energy-6.6 \
+		work/btrfs-remove-ghost-subvolume-6.6 \
+		work/btrfs-allocation-hint-6.6 \
+		work/tsc-directsync-6.6 \
+		work/no-jobserver-exec-6.6 \
+		work/gvt-failsafe-6.6 \
+		work/gvt-workaround-6.6 \
+		work/i915-fastboot-revert-6.6 \
+		work/kbuild-6.6 \
+		work/em7565-ids-6.6 \
+	;;
+v6.11)
+	# conflicts
+	make_merge \
+		work/em7565-ids-6.10
+	# main
+	make_merge \
+		work/iwlwifi-lar-v2-6.10 \
+		work/amd-energy-6.11 \
+		work/btrfs-remove-ghost-subvolume-6.10 \
+		work/btrfs-allocation-hint-6.10 \
+		work/tsc-directsync-6.10 \
+		work/no-jobserver-exec-6.10 \
+		work/gvt-failsafe-6.10 \
+		work/gvt-workaround-6.10 \
+		work/i915-fastboot-revert-6.10 \
+		work/kbuild-6.10 \
+		work/em7565-ids-6.10 \
+		work/zswap-writeback-6.11 \
+		work/acpi-osc-6.11 \
 	;;
 esac
 
-git describe --tags --exact "${target[build]}" | grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' | read branch
-Trace git branch -f "work/patch-${branch}"
-Trace git branch -f "work/patch-${major}"
-if [[ ${target[patch]+set} ]]; then
-	Trace git branch -f "${target[patch]}"
-fi
+Trace git branch -f "${target[patch_prefix]}${minor}"
+Trace git branch -f "${target[patch_prefix]}${major}"
+Trace git branch -f "${target[patch]}"
