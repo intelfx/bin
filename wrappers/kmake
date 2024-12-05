@@ -5,8 +5,9 @@ if [[ -e version ]]; then vars+=(
 	KERNELRELEASE="$(< version)"
 ); fi
 
+	# KCFLAGS="-ffile-prefix-map=$PWD=. -ffile-prefix-map=./=" \
 exec make \
-	KCFLAGS="-ffile-prefix-map=$PWD=. -ffile-prefix-map=./=" \
+	KCFLAGS="-ffile-prefix-map=$PWD=." \
 	SOURCE_DATE_EPOCH=0 \
 	KBUILD_BUILD_TIMESTAMP="$(date -Ru -d '@0')" \
 	KBUILD_BUILD_HOST=archlinux \
