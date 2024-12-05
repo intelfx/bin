@@ -43,7 +43,7 @@ EOF
 #
 
 now="$(date +%s)"
-SMALL_PACK_BYTES="$(( 50*1024*1024 ))"
+SMALL_PACK_BYTES="$(( 100*1024*1024 ))"
 OLD_PACK_TIME="$(( now - 24*3600 ))"
 GIT_GC=0
 GIT_GC_NO_PRUNE=0
