@@ -1,4 +1,6 @@
 #!/bin/bash
 
 set -x
-exec systemd-run --pty --same-dir --wait --collect --service-type=exec "$@"
+exec systemd-run \
+	--pty --same-dir --wait --collect --service-type=exec \
+	"$@"
