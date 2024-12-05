@@ -169,6 +169,8 @@ v6.11)
 		work/em7565-ids-6.10 \
 		work/zswap-writeback-6.11 \
 		work/acpi-osc-6.11 \
+		work/cddl-6.11 \
+		work/zfs-6.11 \
 	;;
 esac
 
