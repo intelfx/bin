@@ -6,6 +6,7 @@ shopt -s nullglob
 SCRIPT_DIR="$HOME/build/my/proton-ge"
 SOURCE_DIR="$SCRIPT_DIR/proton-ge-custom"
 BUILD_DIR="/mnt/ssd/Scratch/proton-ge"
+CCACHE_DIR="/mnt/ssd/Cache/ccache-proton-ge"
 
 CMD=()
 ARGS=()
@@ -93,9 +94,18 @@ mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 "$SOURCE_DIR/configure.sh" "${CMD[@]}" "${ARGS[@]}"
+
+CCACHE_CONFIGPATH="$CCACHE_DIR/ccache.conf"
+mkdir -p "$CCACHE_DIR"
+cat >"$CCACHE_CONFIGPATH" <<EOF
+cache_dir = $CCACHE_DIR
+max_size = 100G
+EOF
+
 sed -r "/^ENABLE_CCACHE := 1/{
 aexport CCACHE_BASEDIR := $BUILD_DIR
-aexport CCACHE_CONFIGPATH := $SCRIPT_DIR/ccache.conf
+aexport CCACHE_CONFIGPATH := $CCACHE_CONFIGPATH
+aexport CCACHE_DIR := $CCACHE_DIR
 }" -i Makefile
 
 # newer Makefiles do not use offline tarballs -- sunrise by hand
