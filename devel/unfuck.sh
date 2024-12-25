@@ -173,6 +173,27 @@ v6.11)
 		work/cddl-6.11 \
 		work/zfs-6.11 \
 	;;
+
+v6.12)
+	# main
+	make_merge \
+		work/iwlwifi-lar-v2-6.12 \
+		work/amd-energy-6.12 \
+		work/btrfs-remove-ghost-subvolume-6.12 \
+		work/btrfs-allocation-hint-6.12 \
+		work/tsc-directsync-6.12 \
+		work/no-jobserver-exec-6.12 \
+		work/gvt-failsafe-6.12 \
+		work/gvt-workaround-6.12 \
+		work/i915-fastboot-revert-6.12 \
+		work/kbuild-6.12 \
+		work/em7565-ids-6.12 \
+		work/zswap-writeback-6.12 \
+		work/acpi-osc-6.12 \
+		work/fs-6.12 \
+		work/cddl-6.12 \
+		work/zfs-6.12 \
+	;;
 esac
 
 Trace git branch -f "${target[patch_prefix]}${minor}"
