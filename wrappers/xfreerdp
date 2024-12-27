@@ -23,12 +23,11 @@ OPTIONS=(
 )
 
 OPTIONS_BEST=(
-	/network:auto
+	/network:lan
 
-	# XXX: for some reason Win10 prefers progressive to avc, so do not advertise it
-	# XXX: order matters with freerdp 2.10 (not in master)
-	/gfx:rfx,avc420,avc444
-	/rfx-mode:video
+	# AVC420 is preferred to AVC444, so don't
+	/gfx:avc420:off,avc444:on,rfx:on,progressive:on
+	# /rfx-mode:video
 	/gdi:hw
 )
 
@@ -49,10 +48,9 @@ OPTIONS_FASTEST=(
 	/cache:codec:rfx,bitmap:on,glyph:on,offscreen:on  # freerdp 3.0
 	/network:modem
 
-	# XXX: for some reason Win10 prefers progressive to avc, so do not advertise it
-	# XXX: order matters with freerdp 2.10 (not in master)
-	/gfx:rfx,avc420,avc444
-	/rfx-mode:video
+	# AVC420 is preferred to AVC444, so don't
+	/gfx:avc420:off,avc444:on,rfx:on,progressive:on
+	# /rfx-mode:video
 	/gdi:hw
 
 	#/rfx # RemoteFxCodec
