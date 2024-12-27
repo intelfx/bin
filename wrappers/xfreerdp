@@ -22,6 +22,21 @@ OPTIONS=(
 	+auto-reconnect
 )
 
+OPTIONS_ENERGY_EFFICIENT=(
+	-aero
+	-themes
+	-wallpaper
+	-fonts
+	-window-drag
+	-menu-anims
+	/bpp:8
+	/cache:codec:rfx,bitmap:on,glyph:on,offscreen:on
+	/network:lan
+
+	/gfx:avc420:off,avc444:off,rfx:on,progressive:on
+	/gdi:hw
+)
+
 OPTIONS_BEST=(
 	/network:lan
 
@@ -71,6 +86,8 @@ for arg; do
 		ARGS+=( "${OPTIONS_BEST[@]}" ) ;;
 	/fast|/fastest|/worst)
 		ARGS+=( "${OPTIONS_FASTEST[@]}" ) ;;
+	/power|/laptop)
+		ARGS+=( "${OPTIONS_ENERGY_EFFICIENT[@]}" ) ;;
 	*)
 		ARGS+=( "$arg" ) ;;
 	esac
