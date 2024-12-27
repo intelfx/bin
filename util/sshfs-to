@@ -13,12 +13,19 @@ SSH_ARGS=(
 
 SSHFS_ARGS=(
 	"${SSH_ARGS[@]}"
-	-o reconnect
+	-o allow_root
 	-o idmap=user
 	-o transform_symlinks
-	-o dir_cache=yes
+	-o reconnect
 	-o max_conns=8
-	-o allow_root
+	-o dir_cache=yes
+	-o dcache_max_size=$((1024*1024))
+	-o dcache_timeout=600
+	-o dcache_stat_timeout=600
+	-o dcache_link_timeout=600
+	-o dcache_dir_timeout=600
+	-o dcache_clean_interval=60
+	-o dcache_min_clean_interval=10
 )
 
 if [[ "$TARGET" =~ ([^@]+@)?([^:]*)(:.+)? ]]; then
