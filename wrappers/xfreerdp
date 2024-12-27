@@ -73,18 +73,38 @@ for arg; do
 	*)
 		ARGS+=( "$arg" ) ;;
 	esac
+	case "$arg" in
+	/v:*) ARG_HOST="${arg#"/v:"}" ;;
+	/u:*) ARG_USER="${arg#"/u:"}" ;;
+	/p:*) ARG_PASS_SET=1 ;;
+	esac
 	# augment some args
 	case "$arg" in
 	/u:intelfx|/u:intelfx@intelfx.name)
 		ARGS+=( /admin )
-		# ARGS+=( -sec-nla ) # xfreerdp 2.10
-		ARGS+=( /sec:nla:off /p: ) # xfreerdp 3.0
+		ARG_NO_NLA=1
 		;;
 	-decorations)
 		ARGS+=( /floatbar:show:always )
 		;;
 	esac
 done
+
+if [[ ! $ARG_PASS_SET && $ARG_HOST && $ARG_USER ]]; then
+	if [[ -e ~/.password-store/misc/rdp/$ARG_HOST/$ARG_USER.gpg ]]; then
+		ARG_PASS_COMMAND=(pass "misc/rdp/$ARG_HOST/$ARG_USER")
+	fi
+fi
+
+if [[ $ARG_PASS_SET ]]; then
+	:
+elif [[ $ARG_PASS_COMMAND ]]; then
+	exec < <(set -x; exec "${ARG_PASS_COMMAND[@]}")
+	ARGS+=( /auth-pkg-list:'ntlm,!kerberos' /d: /from-stdin )
+elif [[ $ARG_NO_NLA ]]; then
+	# ARGS+=( -sec-nla ) # xfreerdp 2.10
+	ARGS+=( /sec:nla:off /d: /p: ) # xfreerdp 3.0
+fi
 
 set -x
 exec "$APP_NAME" "${OPTIONS[@]}" "${ARGS[@]}"
