@@ -5,8 +5,9 @@ shopt -s nullglob
 
 SCRIPT_DIR="$HOME/build/my/proton-ge"
 SOURCE_DIR="$SCRIPT_DIR/proton-ge-custom"
-BUILD_DIR="/mnt/ssd/Scratch/proton-ge"
-CCACHE_DIR="/mnt/ssd/Cache/ccache-proton-ge"
+BUILD_DIR="/mnt/local/Scratch/build/proton-ge"
+CCACHE_DIR="/mnt/local/Cache/proton-ge/ccache"
+SCCACHE_DIR="/mnt/local/Cache/proton-ge/sccache"  # TODO: unused
 
 CMD=()
 ARGS=()
@@ -63,12 +64,14 @@ if ! [[ -d "$PATCH_DIR" ]]; then
 	die "Patch directory does not exist: $PATCH_DIR"
 fi
 
-shopt -s nullglob
-set -x
+
 (
+	set -x
+	shopt -s nullglob
+
+	mkdir -p "$BUILD_DIR"
 	cd "$SOURCE_DIR"
-	git reset --hard; git clean -fxd
-	git submodule foreach --recursive 'git reset --hard; git clean -fxd'
+	git nuke
 	git submodule update --init --recursive --progress
 
 	if [[ -e ./patches/protonprep-valve-staging.sh ]]; then
@@ -90,9 +93,10 @@ set -x
 	done
 )
 
+set -x
+
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
-
 "$SOURCE_DIR/configure.sh" "${CMD[@]}" "${ARGS[@]}"
 
 CCACHE_CONFIGPATH="$CCACHE_DIR/ccache.conf"
@@ -121,4 +125,4 @@ cp -avu \
 	"$SOURCE_DIR/contrib"/*.tar* \
 	-t "$SCRIPT_DIR/contrib"
 
-put *.tar.* '/mnt/data/Files/shared/dist/misc/deck/proton'
+r-put *.tar.* '/mnt/data/Files/shared/dist/misc/deck/proton'
