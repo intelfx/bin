@@ -195,6 +195,7 @@ v6.12)
 		work/fs-6.12 \
 		work/cddl-6.12 \
 		work/zfs-6.12 \
+		work/cpupower-6.12 \
 	;;
 esac
 
