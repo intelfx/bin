@@ -31,7 +31,7 @@ make gitrev
 rm -rf "$KERNEL_DIR/include/zfs" "$KERNEL_DIR/fs/zfs"
 cp -R include "$KERNEL_DIR/include/zfs"
 cp -R module "$KERNEL_DIR/fs/zfs"
-cp zfs_config.h "$KERNEL_DIR/include/zfs/"
+cp zfs_config.h -t "$KERNEL_DIR/include/zfs"
 
 echo "$0: cleaning up and adding copied ZFS sources to the kernel tree ($KERNEL_DIR)" >&2
 set -x
@@ -41,7 +41,7 @@ mv -vf "$KERNEL_DIR/fs/zfs/Kbuild" "$KERNEL_DIR/fs/zfs/Makefile"
 sed -r '/zfs_gitrev\.h/d' -i "$KERNEL_DIR/include/zfs/.gitignore"
 sed -r '/Kbuild/d' -i "$KERNEL_DIR/fs/zfs/.gitignore"
 
-git -C "$KERNEL_DIR" add \
+git -C "$KERNEL_DIR" add -A \
 	fs/zfs \
 	include/zfs \
 	# EOL
