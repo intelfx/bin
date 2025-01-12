@@ -149,6 +149,8 @@ v6.6)
 		work/i915-fastboot-revert-6.6 \
 		work/kbuild-6.6 \
 		work/em7565-ids-6.6 \
+		work/cddl-6.6 \
+		work/zfs-6.6 \
 	;;
 v6.11)
 	# conflicts
