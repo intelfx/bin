@@ -1,0 +1,21 @@
+#!/bin/bash
+
+ARGS=()
+COLUMNS=()
+while (( $# )); do
+	case "$1" in
+	-o) COLUMNS+=("$2"); shift 2;;
+	-o=*) COLUMNS+=("${1#-o=}"); shift 1;;
+	-o*) COLUMNS+=("${1#-o}"); shift 1;;
+	*) ARGS+=("$1"); shift 1;;
+	esac
+done
+
+COLUMNS=(
+	"name,volsize,volblocksize,recordsize,lused,used,lrefer,refer,usedds,usedsnap,compressratio,avail"
+	"${COLUMNS[@]}"
+	"mountpoint"
+)
+
+IFS=','
+exec zfs list -o "${COLUMNS[*]}" "${ARGS[@]}"
