@@ -1,0 +1,42 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+do_findmnt() {
+	findmnt --list --noheadings --first-only --nofsroot "$@"
+}
+
+ZDB_ARGS_DEFAULT=(-d)
+ZDB_ARGS=()
+FILES=()
+
+for arg; do
+	if [[ $arg == -* ]]; then
+		ZDB_ARGS+=("$arg")
+	else
+		FILES+=("$arg")
+	fi
+done
+
+if ! [[ ${FILES+set} ]]; then
+	die "No files specified"
+fi
+
+if ! [[ ${ZDB_ARGS+set} ]]; then
+	ZDB_ARGS=("${ZDB_ARGS_DEFAULT[@]}")
+fi
+
+rc=0
+for f in "${FILES[@]}"; do
+	# make sure zfs-list does not misinterpret the file name as a dataset name
+	[[ $f == */* ]] || f="./$f"
+
+	inode="$(stat -c '%i' "$f")" || { rc=1; continue; }
+	dataset="$(zfs list -Hpo name "$f")" || { rc=1; continue; }
+	# dataset="$(do_findmnt -o SOURCE --target "$f")" || { rc=1; continue; }
+	# mountpoint="$(do_findmnt -o TARGET --target "$f")" || { rc=1; continue; }
+	set -x
+	zdb "${ZDB_ARGS[@]}" "$dataset" "$inode" || rc=$?
+	{ set +x; } &>/dev/null
+done
+exit "$rc"
