@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec tmux capture-pane -S- -E- -p
