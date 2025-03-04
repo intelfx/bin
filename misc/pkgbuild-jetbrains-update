@@ -1,17 +1,27 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
 . lib.sh || exit
 
 _usage() {
 	cat <<EOF
-Usage: $0 [PKGBUILD-DIR]
+Usage: $0 [-s|--stage] [-c|--commit] [PKGBUILD-DIR]
 EOF
 }
 
-case "$#" in
+declare -A _ARGS=(
+	[-s|--stage]=ARG_STAGE
+	[-c|--commit]=ARG_COMMIT
+	[--]=ARGS
+)
+parse_args _ARGS "$@" || usage
+
+case "${#ARGS[@]}" in
 0) DIR=. ;;
-1) DIR="$1" ;;
-*) usage "Expected 0 or 1 arguments, got $#" ;;
+1) DIR="${ARGS[0]}" ;;
+*) usage "Expected 0 or 1 positional arguments, got ${#ARGS[@]}" ;;
 esac
 
 [[ -d "$DIR" && -f "$DIR/PKGBUILD" ]] || usage "Invalid directory: $DIR"
@@ -19,7 +29,7 @@ cd "$DIR"
 
 declare -A filename_to_arch
 sed_expr=()
- 
+
 mksrcinfo
 cat .SRCINFO | sed -nr 's|\tsource_([^ ]+) = (.+::)?(.+)|\1 \3|p' | while read arch link; do
 	filename="${link##*/}"
@@ -39,3 +49,25 @@ done
 
 trace sed -r "${sed_expr[@]}" -i PKGBUILD
 mksrcinfo
+if (( ARG_STAGE || ARG_COMMIT )); then
+	git add PKGBUILD .SRCINFO
+fi
+if (( ARG_COMMIT )); then
+	name="$(aur srcinfo -Qr .pkgbase)"
+	ver="$(aur srcinfo -Qr .pkgver)"
+	if [[ $ver =~ ^([0-9.]+)$ ]]; then
+		msg="$name: $ver"
+	elif [[ $ver =~ ^([0-9.]+)([a-z]+)\+([0-9.]+)$ ]]; then
+		ver="${BASH_REMATCH[1]}"
+		kind="${BASH_REMATCH[2]}"
+		build="${BASH_REMATCH[3]}"
+
+		case "$kind" in
+		pre) kind=EAP ;;
+		*)   kind="${kind^^}" ;;
+		esac
+
+		msg="$name: $ver $kind $build"
+	fi
+	git commit -m "$msg"
+fi
