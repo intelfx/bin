@@ -1,12 +1,105 @@
-#!/bin/bash -e
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/}
+EOF
+}
+
+
+#
+# args
+#
+
+if args=$(getopt -o '' --long 'no-gc,no-prune' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+GC=1
+PRUNE=1
+
+while :; do
+	case "$1" in
+	--no-gc) GC=0 ;;
+	--no-prune) PRUNE=0 ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+case "$#" in
+0) ;;
+*) usage "wrong number of positional arguments" ;;
+esac
+
+
+#
+# main
+#
 
 #git reflog expire --expire=now --all
 #git repack -a -d -f --depth=250 --window=250 --unpack-unreachable=now "$@"
 #git prune --expire=now
-git \
-	-c gc.aggressiveDepth=50 \
-	-c gc.aggressiveWindow=1000 \
-	-c gc.reflogExpire=now \
-	-c gc.reflogExpireUnreachable=now \
-	-c gc.pruneExpire=now \
-	gc --aggressive --prune=now "$@"
+if (( GC && PRUNE )); then
+	set -x
+	git \
+		-c pack.depth=50 -c pack.window=1000 \
+		-c gc.aggressiveDepth=50 -c gc.aggressiveWindow=1000 \
+		-c gc.reflogExpire=now \
+		-c gc.reflogExpireUnreachable=now \
+		-c gc.pruneExpire=now \
+		-c gc.writeCommitGraph=true \
+		gc --aggressive --prune=now "$@"
+elif (( GC && !PRUNE )); then
+	set -x
+	git \
+		-c pack.depth=50 -c pack.window=1000 \
+		-c gc.aggressiveDepth=50 -c gc.aggressiveWindow=1000 \
+		-c gc.cruftPacks=true \
+		-c gc.pruneExpire=never \
+		-c gc.reflogExpire=never \
+		-c gc.reflogExpireUnreachable=never \
+		-c gc.writeCommitGraph=true \
+		gc --aggressive --no-prune "$@"
+else
+	set -x
+	git \
+		repack \
+		--cruft -d -l -fF \
+		--depth=50 --window=1000 \
+		"$@"
+	git \
+		commit-graph \
+		write
+fi
+
+rm -vf "$GIT_DIR/objects/pack"/tmp_pack_*

@@ -192,12 +192,17 @@ else
 	git \
 		repack \
 		--cruft -d -l \
-		--depth=50 --window=1000 \
+		-fF --depth=50 --window=1000 \
 		"${PACK_ARGS[@]}" \
 		"$@"
+	# git \
+	# 	multi-pack-index \
+	# 	write \
+	# 	--bitmap
 	git \
 		commit-graph \
-		write
+		write \
+		--reachable
 fi
 
 rm -vf "$GIT_DIR/objects/pack"/tmp_pack_*
