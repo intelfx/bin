@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+if (( $# )); then
+	RELEASE_TYPES_RE="$(IFS='|'; echo "$*")"
+else
+	RELEASE_TYPES_RE=".*"
+fi
+
+JQ_PROG='.
+| map({code,name,releases})
+| map(.releases |= map(select(.build)))
+| map(select(.releases | length > 0))
+| map(.releases |= (.
+	| map({type, date, majorVersion, version, build})
+	| map(select(.type | match($release_types)))
+	| sort_by(.build|split(".")|map(tonumber))
+	| reverse
+	| .[0]
+))
+| map(
+	"\(.code)\t\(.name)\t\(.releases.type)\t\(.releases.date)\t\(.releases.version)\t\(.releases.build)"
+)'
+
+COLUMNS=(CODE NAME TYPE DATE VERSION BUILD)
+{
+	(IFS=$'\t'; echo "${COLUMNS[*]}")
+	curl -fsS 'https://data.services.jetbrains.com/products' \
+		| jq \
+			--arg release_types "$RELEASE_TYPES_RE" \
+			"$JQ_PROG[]" -r
+} | column -Lt -s $'\t'
