@@ -84,7 +84,7 @@ parse_cmd() {
 	# only the first free argument is the command
 	if [[ $args_cmd ]]; then
 	       return
-	fi	       
+	fi
 	args_have_cmd=1
 	args_cmd="$1"
 	args_profile="$2"
@@ -103,7 +103,7 @@ while (( $# )); do
 	run|\
 	build|\
 	check|\
-	rustc)      parse_cmd "$1" dev ;;
+	rustc)       parse_cmd "$1" dev ;;
 	test)        parse_cmd "$1" test ;;
 	bench)       parse_cmd "$1" bench ;;
 	install)     parse_cmd "$1" release ;;
