@@ -33,6 +33,10 @@ CMD=(
 	--container-engine=podman
 )
 
+if ! grep -q 'enable-ccache' "$SOURCE_DIR/configure.sh"; then
+	unset 'CMD[0]'
+fi
+
 SOURCE_TAG="$(cd "$SOURCE_DIR" && git describe --tags --abbrev=0)"
 
 if [[ ${TAG+set} ]]; then
@@ -97,6 +101,7 @@ set -x
 
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
+declare -p CMD
 "$SOURCE_DIR/configure.sh" "${CMD[@]}" "${ARGS[@]}"
 
 CCACHE_CONFIGPATH="$CCACHE_DIR/ccache.conf"
