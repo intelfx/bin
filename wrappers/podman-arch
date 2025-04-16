@@ -1,8 +1,20 @@
 #!/bin/bash
 
 exec podman run \
-	--volume /var/cache/pacman/pkg:/var/cache/pacman/pkg:rw \
+	--volume /var/cache/pacman/pkg:/var/cache/pacman/pkg:rw,idmap \
+	--volume /var/cache/pacman/repo:/var/cache/pacman/repo:ro \
+	--volume /srv/repo:/srv/repo:ro \
 	--volume "$HOME"/bin/etc/pacman.conf:/etc/pacman.conf:ro \
 	--volume /etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist:ro \
 	--volume /etc/pacman.d/gnupg:/etc/pacman.d/gnupg:ro \
+	--volume "$HOME"/.cargo:/root/.cargo:rw \
+	--volume "$HOME"/go:/root/go:rw \
+	--volume "$HOME"/.cache/cargo:/root/.cache/cargo:rw \
+	--volume "$HOME"/.cache/go-mod:/root/.cache/go-mod:rw \
+	--volume "$HOME"/.cache/go-build:/root/.cache/go-build:rw \
+	--env GOMODCACHE=/root/.cache/go-mod \
+	--env CC --env CXX \
+	--env CFLAGS --env CXXFLAGS --env LDFLAGS \
+	--env RUSTFLAGS --env "CARGO_*" \
+	--env GOFLAGS --env "CGO_*" \
 	"$@"
