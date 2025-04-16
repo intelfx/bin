@@ -1,6 +1,29 @@
 #!/bin/bash
 
-exec podman run \
+GLOBAL_ARGS=()
+CMD=
+
+while (( $# )); do
+	case "$1" in
+	create|run)
+		CMD="$1"
+		shift
+		break
+		;;
+	*)
+		GLOBAL_ARGS+=("$1")
+		shift
+		;;
+	esac
+done
+
+if ! [[ $CMD ]]; then
+	set -x
+	exec podman "${GLOBAL_ARGS[@]}" "$@"
+fi
+
+set -x
+exec podman "${GLOBAL_ARGS[@]}" "$CMD" \
 	--volume /var/cache/pacman/pkg:/var/cache/pacman/pkg:rw,idmap \
 	--volume /var/cache/pacman/repo:/var/cache/pacman/repo:ro \
 	--volume /srv/repo:/srv/repo:ro \
