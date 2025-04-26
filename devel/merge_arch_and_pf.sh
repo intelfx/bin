@@ -42,6 +42,19 @@ git_list_parse() {
 	file="${line:3}"
 }
 
+git_maybe_tag() {
+	local tag="$1"
+
+	if ! git_verify "$tag"; then
+		log "Tagging as $tag"
+		git tag "$tag"
+	elif [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$tag")" ]]; then
+		log "Tag $tag already exists, ignoring"
+	else
+		die "Tag $tag already exists, not overwriting"
+	fi
+}
+
 makefile_get_extraversion() {
 	<Makefile sed -nr 's|^EXTRAVERSION = -([^ ]+)$|\1|p' | head -n1 | grep .
 }
@@ -239,11 +252,4 @@ log "Committing result"
 GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000" git commit --no-edit
 luntrap
 
-if ! git_verify "$final_tag"; then
-	log "Tagging as $final_tag"
-	git tag "$final_tag"
-elif [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$final_tag")" ]]; then
-	log "Tag $final_tag already exists, ignoring"
-else
-	die "Tag $final_tag already exists, not overwriting"
-fi
+git_maybe_tag "$final_tag"
