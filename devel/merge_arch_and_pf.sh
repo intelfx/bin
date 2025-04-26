@@ -55,27 +55,79 @@ git_maybe_tag() {
 	fi
 }
 
-makefile_get_extraversion() {
-	<Makefile sed -nr 's|^EXTRAVERSION = -([^ ]+)$|\1|p' | head -n1 | grep .
+makefile_get_field() {
+	local field="$1" strip_prefix="${2-""}"
+	sed -nr "s|^${field} *= *${strip_prefix}([^ ]+)$|\1|p" Makefile | head -n1 | grep .
 }
 
-merge_makefile() {
+makefile_set_field() {
+	local field="$1" value="$2"
+	sed -r "s|^(${field} *= *).*$|\1${value}|" -i Makefile
+}
+
+merge_makefile_pf() {
 	local pf_extraversion ours_extraversion
 
 	git checkout --theirs Makefile
-	if ! pf_extraversion="$(makefile_get_extraversion)"; then
+	if ! pf_extraversion="$(makefile_get_field EXTRAVERSION "-")"; then
 		die "Could not parse -pf EXTRAVERSION"
 	fi
 
 	git checkout --ours Makefile
-	if ! ours_extraversion="$(makefile_get_extraversion)"; then
-		die "Could not parse main EXTRAVERSION"
+	if ! ours_extraversion="$(makefile_get_field EXTRAVERSION "-")"; then
+		die "Could not parse ours EXTRAVERSION"
 	fi
 
-	sed -r "s|^(EXTRAVERSION = ).*$|\1-$ours_extraversion$pf_extraversion|" -i Makefile
+	makefile_set_field EXTRAVERSION "-$ours_extraversion$pf_extraversion"
 	git add Makefile
 }
 
+
+merge_pf() {
+	local pf_tag="$1"
+
+	eval "$(ltraps)"
+
+	log "Merging -pf"
+	git merge --no-ff --no-commit "$pf_tag" || true
+	ltrap 'git merge --abort'
+
+	log "Handling conflicts"
+	git_list_conflicts | while IFS='' read -r line; do
+		git_list_parse "$line"
+		case "$file" in
+		Makefile)
+			merge_makefile_pf
+			;;
+		*)
+			err "Conflict: $line"
+			(( ++conflicts ))
+			;;
+		esac
+	done
+	if (( conflicts )); then
+		if (( ARG_CONFLICTS )); then
+			err "Found conflicts, launching interactive shell"
+			err "To continue, resolve and stage conflicts and exit 0"
+			err "To abort, exit 1"
+			"$SHELL" -i
+		else
+			die "Found conflicts, exiting"
+		fi
+	fi
+
+	git_list_conflicts | while IFS='' read -r line; do
+		die "Apparently unresolved conflict: $line"
+	done
+
+	git_list_unstaged | while IFS='' read -r line; do
+		die "Apparently not staged: $line"
+	done
+
+	log "Committing result"
+	git commit --no-edit
+	luntrap
+}
 declare -A PARSE_ARGS=(
 	[--rc]="ARG_RC"
 	[-c]="ARG_CONFLICTS"
@@ -92,8 +144,19 @@ declare -A PARSE_ARGS=(
 )
 parse_args PARSE_ARGS "$@"
 
+
+#
+# main
+#
+
 log "Fetching remotes"
 git fetch -j$(nproc) --multiple stable arch pf
+
+# Make everything stable and reproducible
+export \
+	GIT_AUTHOR_DATE="@0 +0000" \
+	GIT_COMMITTER_DATE="@0 +0000" \
+	# EOL
 
 #
 # Determine patchset tips to use
@@ -217,44 +280,5 @@ if ! git merge --ff "$arch_tag"; then
 	die "Failed to merge -arch -- not fast-forward?"
 fi
 
-log "Merging -pf"
-git merge --no-ff --no-commit "$pf_tag" || true
-ltrap 'git merge --abort'
-
-log "Handling conflicts"
-git_list_conflicts | while read line; do
-	git_list_parse "$line"
-	case "$file" in
-	Makefile)
-		merge_makefile
-		;;
-	*)
-		err "Conflict: $line"
-		(( ++conflicts ))
-		;;
-	esac
-done
-if (( conflicts )); then
-	if (( ARG_CONFLICTS )); then
-		err "Found conflicts, launching interactive shell"
-		err "To continue, resolve and stage conflicts and exit 0"
-		err "To abort, exit 1"
-		"$SHELL" -i
-	else
-		die "Found conflicts, exiting"
-	fi
-fi
-
-git_list_conflicts | while read line; do
-	die "Apparently unresolved conflict: $line"
-done
-
-git_list_unstaged | while read line; do
-	die "Apparently not staged: $line"
-done
-
-log "Committing result"
-GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000" git commit --no-edit
-luntrap
-
+merge_pf "$pf_tag"
 git_maybe_tag "$final_tag"
