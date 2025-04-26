@@ -153,9 +153,12 @@ else
 	die "Failed to determine latest -pf, exiting"
 fi
 
-arch_tag="$(git tag --list "${tag}arch*" "${tag}-arch*" | grep -E -- "${tag}-?arch[0-9]+$" | sort -V | tail -n1)" || true
-git_verify "$arch_tag" || die "Failed to determine latest -arch for $tag, exiting"
-log " Latest -arch tag: $arch_tag"
+if arch_tag="$(git tag --list "${tag}*arch*" | grep -E -- "-?arch[0-9]+$" | sort -V | tail -n1)" \
+&& git_verify "$arch_tag"; then
+	log " Latest -arch tag: $arch_tag"
+else
+	die "Failed to determine latest -arch for $tag, exiting"
+fi
 
 #
 # Compute git version string
@@ -173,22 +176,24 @@ else
 fi
 
 if [[ $arch_tag =~ (arch[0-9]+)$ ]]; then
-	tag_extras+=( "${BASH_REMATCH[1]}" )
+	arch_version="${BASH_REMATCH[1]}"
 else
 	die "Failed to extract -arch version ($arch_tag)"
 fi
+tag_extras+=( "$arch_version" )
 
 pf_desc="$(git describe --tags "$pf_tag")"
 if [[ $pf_desc =~ (pf[0-9.]+)$ ]]; then
-	tag_extras+=( "${BASH_REMATCH[1]}" )
+	pf_version="${BASH_REMATCH[1]}"
 elif [[ $pf_desc =~ (pf[0-9.]+)-([0-9]+)-g.+$ ]]; then
-	tag_extras+=( "${BASH_REMATCH[1]}+${BASH_REMATCH[2]}" )
+	pf_version="${BASH_REMATCH[1]}+${BASH_REMATCH[2]}"
 elif [[ $pf_desc =~ -([0-9.]+)-g.+$ ]]; then
 	# unreleased, i. e. `--pf pf/pf-6.7`
-	tag_extras+=( "pf0+${BASH_REMATCH[1]}" )
+	pf_version="pf0+${BASH_REMATCH[1]}"
 else
 	die "Failed to extract -pf version ($pf_tag) ($pf_desc)"
 fi
+tag_extras+=( "$pf_version" )
 
 IFS=''; final_tag="$tag_base-${tag_extras[*]}"; unset IFS
 log " Final tag: $final_tag"
