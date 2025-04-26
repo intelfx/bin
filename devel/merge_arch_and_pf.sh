@@ -82,6 +82,37 @@ merge_makefile_pf() {
 	git add Makefile
 }
 
+merge_makefile_arch() {
+	local theirs_sublevel theirs_extraversion
+	local ours_sublevel ours_extraversion
+
+	git checkout --theirs Makefile
+	if ! theirs_sublevel="$(makefile_get_field SUBLEVEL "")"; then
+		die "Could not parse -arch SUBLEVEL"
+	fi
+	if ! theirs_extraversion="$(makefile_get_field EXTRAVERSION "")"; then
+		die "Could not parse -arch EXTRAVERSION"
+	fi
+
+	git checkout --ours Makefile
+	if ! ours_sublevel="$(makefile_get_field SUBLEVEL "")"; then
+		die "Could not parse ours SUBLEVEL"
+	fi
+	if ! ours_extraversion="$(makefile_get_field EXTRAVERSION "")"; then
+		die "Could not parse ours EXTRAVERSION"
+	fi
+
+	if ! [[ $theirs_extraversion == -arch* && $ours_extraversion == "" ]]; then
+		die "Invalid EXTRAVERSIONs"
+	fi
+	if ! (( theirs_sublevel <= ours_sublevel )); then
+		die "Invalid SUBLEVELs"
+	fi
+
+	makefile_set_field SUBLEVEL "$ours_sublevel"
+	makefile_set_field EXTRAVERSION "-$arch_version"
+	git add Makefile
+}
 
 merge_pf() {
 	local pf_tag="$1"
@@ -128,6 +159,71 @@ merge_pf() {
 	git commit --no-edit
 	luntrap
 }
+
+# globals: $arch_tag
+merge_arch() {
+	local arch_tag="$1"
+
+	eval "$(ltraps)"
+
+	log "Merging -arch"
+
+	if git merge-base --is-ancestor HEAD "$arch_tag"; then
+		if ! git merge --ff "$arch_tag"; then
+			die "Failed to merge -arch -- not fast-forward?"
+		fi
+		return 0
+	fi
+
+	git cherry-pick --empty=drop "..$arch_tag" || true
+	ltrap 'git cherry-pick --abort'
+
+	log "Handling conflicts"
+	git_list_conflicts | while IFS='' read -r line; do
+		git_list_parse "$line"
+		case "$file" in
+		Makefile)
+			merge_makefile_arch
+			;;
+		*)
+			err "Conflict: $line"
+			(( ++conflicts ))
+			;;
+		esac
+	done
+	if (( conflicts )); then
+		if (( ARG_CONFLICTS )); then
+			err "Found conflicts, launching interactive shell"
+			err "To continue, resolve and stage conflicts and exit 0"
+			err "To abort, exit 1"
+			"$SHELL" -i
+		else
+			die "Found conflicts, exiting"
+		fi
+	fi
+
+	git_list_conflicts | while IFS='' read -r line; do
+		die "Apparently unresolved conflict: $line"
+	done
+
+	git_list_unstaged | while IFS='' read -r line; do
+		die "Apparently not staged: $line"
+	done
+
+	if git diff-index --quiet HEAD --; then
+		die "Nothing to commit after resolving conflicts"
+	fi
+
+	git commit -m "(Not) Arch Linux kernel ${arch_tag_new}"
+
+	if git_verify CHERRY_PICK_HEAD; then
+		die "Cherry-pick in progress after committing"
+	fi
+	luntrap
+
+	git_maybe_tag "$arch_tag_new"
+}
+
 declare -A PARSE_ARGS=(
 	[--rc]="ARG_RC"
 	[-c]="ARG_CONFLICTS"
@@ -217,8 +313,13 @@ else
 fi
 
 if arch_tag="$(git tag --list "${tag}*arch*" | grep -E -- "-?arch[0-9]+$" | sort -V | tail -n1)" \
-&& git_verify "$arch_tag"; then
+&& git_verify "$arch_tag" \
+&& git merge-base --is-ancestor "$tag" "$arch_tag"; then	
 	log " Latest -arch tag: $arch_tag"
+elif arch_tag="$(git tag --list "v${major}*arch*" | grep -E -- "-?arch[1-9][0-9]*$" | sort -V | tail -n1)" \
+&& git_verify "$arch_tag"; then
+	log " Previous -arch tag: $arch_tag"
+	arch_needs_merge=1
 else
 	die "Failed to determine latest -arch for $tag, exiting"
 fi
@@ -242,6 +343,13 @@ if [[ $arch_tag =~ (arch[0-9]+)$ ]]; then
 	arch_version="${BASH_REMATCH[1]}"
 else
 	die "Failed to extract -arch version ($arch_tag)"
+fi
+if (( arch_needs_merge )); then
+	if [[ $arch_version == arch1 ]]
+	then arch_version="arch0"
+	else arch_version="${arch_version/arch/arch0.}"
+	fi
+	arch_tag_new="${tag}-${arch_version}"
 fi
 tag_extras+=( "$arch_version" )
 
@@ -274,11 +382,6 @@ eval "$(globaltraps)"
 
 log "Checking out base tag"
 git checkout -f "$tag"
-
-log "Merging -arch"
-if ! git merge --ff "$arch_tag"; then
-	die "Failed to merge -arch -- not fast-forward?"
-fi
-
+merge_arch "$arch_tag"
 merge_pf "$pf_tag"
 git_maybe_tag "$final_tag"
