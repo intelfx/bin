@@ -57,7 +57,7 @@ git_maybe_tag() {
 
 makefile_get_field() {
 	local field="$1" strip_prefix="${2-""}"
-	sed -nr "s|^${field} *= *${strip_prefix}([^ ]+)$|\1|p" Makefile | head -n1 | grep .
+	sed -nr "s|^${field} *= *(${strip_prefix}([^ ]+))?$|\2|p" Makefile | head -n1 | grep '^'
 }
 
 makefile_set_field() {
