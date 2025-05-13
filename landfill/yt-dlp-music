@@ -1,0 +1,56 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+trace() {
+	local -
+	set -x
+	"$@"
+}
+
+is_playlist() {
+	# HACK: this is for https://www.youtube.com/playlist?...
+	# FIXME better detection
+	[[ $1 == */playlist* ]]
+}
+
+process() {
+	local arg="$1"
+	local -a output_format
+
+	if is_playlist "$arg"; then
+		output_format=(
+			-o '%(playlist_index)02d - %(title)s [%(id)s].%(ext)s'
+		)
+	fi
+	trace yt-dlp \
+		"${YT_DLP_DEFAULTS[@]}" \
+		"${YT_DLP_FORMAT[@]}" \
+		"${output_format[@]}" \
+		"${YT_DLP_ARGS[@]}" \
+		"$arg"
+}
+
+YT_DLP_ARGS=()
+YT_DLP_FORMAT=(-f bestaudio)
+YT_DLP_DEFAULTS=(
+	-x
+	--embed-thumbnail --write-thumbnail
+	--embed-metadata
+	--embed-chapters
+	#--embed-info-json
+)
+
+while (( $# )); do
+	case "$1" in
+	--) shift; break ;;
+	-f) YT_DLP_FORMAT=( "$1" "$2" ); shift 2 ;;
+	-*) YT_DLP_ARGS+=( "$1" ); shift 1 ;;
+	*) break ;;
+	esac
+done
+
+for arg; do
+	process "$arg"
+done
