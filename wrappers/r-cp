@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Script version of my sligtly useful alias `r-cp` that rsyncs files into the destination
+# with sensible defaults.
+
+exec rsync -r --partial --no-i-r -aHAX "$@"
