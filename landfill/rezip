@@ -27,7 +27,7 @@ zippath="$(realpath --strip -- "$ZIPFILE")"
 
 cd "$tempdir"
 #UNZIP_DISABLE_ZIPBOMB_DETECTION=TRUE unzip -UU "$zippath"
-7zz x "$zippath"
+7z x "$zippath"
 touch -r "$zippath" .
 
 if [[ ${ZIPARGS[0]} == tar ]]; then

@@ -132,7 +132,7 @@ process_iso() {
 	work_dir="$(mktemp -d)" || return
 	ltrap "rm -rf '$work_dir'"
 
-	7zz x -o"$work_dir" "$1" || return
+	7z x -o"$work_dir" "$1" || return
 	process_dir "$work_dir" || return
 
 	local out_tmp="$(dn_slash "$out").$(bn "$out").XXXXXXXXXX.tmp"
