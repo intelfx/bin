@@ -1,5 +1,12 @@
 #!/bin/bash
 
-rg -uuu --no-heading --no-line-number --color=always . "$@" \
+# `rg` is in a pipeline and therefore cannot autodetect terminal capabilities
+# therefore, perform sunrise by hand
+color=()
+if [[ -t 1 ]]; then
+	color=(--color=always)
+fi
+
+rg -uuu --no-heading --no-line-number "${color[@]}" . "$@" \
 	| sort -t: -k1 \
 	| column -s: -t -l2
