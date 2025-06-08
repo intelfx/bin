@@ -1,0 +1,7 @@
+#!/bin/bash -e
+
+respawn_helper="$HOME/bin/misc/tmux-respawn-helper"
+CMDLINE=("$@" htop)
+
+cd /
+exec tmux neww -n "(${CMDLINE[*]})" -c "$respawn_helper" "${CMDLINE[@]}"
