@@ -1,0 +1,23 @@
+#!/bin/bash
+
+IJXL_FLAGS=()
+# IJXL_DUMP=0
+IJXL_FILES=()
+while (( $# )); do
+	case "$1" in
+	-v|--verbose) IJXL_FLAGS+=(--with-offset); shift;;
+	# -d|--dump) IJXL_DUMP=1; shift;;
+	-*) IJXL_FLAGS+=("$1"); shift;;
+	--) IJXL_FILES+=("${@:2}"); break;;
+	*) IJXL_FILES+=("$1"); shift; break;;
+	esac
+done
+IJXL_ARGS=("$@")
+
+# declare -p IJXL_FLAGS
+# declare -p IJXL_DUMP
+# declare -p IJXL_FILES
+# declare -p IJXL_ARGS
+
+set -x
+exec jxl-oxide -I "${IJXL_FLAGS[@]}" "${IJXL_ARGS[@]}"
