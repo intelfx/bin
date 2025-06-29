@@ -87,16 +87,16 @@ resetfacl_recursive() (
 	cd "$(dirname "$target")"
 	file=.
 	path_compute_acl  # parent == .
-	find "$(basename "$target")" -type d                        -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
-	find "$(basename "$target")" -not \( -type d -or -type l \) -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
+	find "$(basename "$target")" -type d                        -print0 | parallel -0 --unsafe --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
+	find "$(basename "$target")" -not \( -type d -or -type l \) -print0 | parallel -0 --unsafe --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
 )
 
 resetfacl_recursive_inside() (
 	cd "$1"
 	file=.
 	path_compute_acl  # parent == .
-	find -mindepth 1 -type d                        -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
-	find -mindepth 1 -not \( -type d -or -type l \) -print0 | parallel -0 --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
+	find -mindepth 1 -type d                        -print0 | parallel -0 --unsafe --bar -r -N1000 "setfacl --set-file=${DIR_TEMPLATES[.]}"
+	find -mindepth 1 -not \( -type d -or -type l \) -print0 | parallel -0 --unsafe --bar -r -N1000 "setfacl --set-file=${FILE_TEMPLATES[.]}"
 )
 
 ARG_RECURSIVE=0
