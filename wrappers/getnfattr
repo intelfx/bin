@@ -1,0 +1,10 @@
+#!/bin/bash
+
+xattr="$1"
+shift
+files=("$@")
+pattern='\3'
+
+shopt -s lastpipe
+getfattr -n "$xattr" "${files[@]}" 2>/dev/null \
+| exec sed -nr '/^# file:/ { N; N; s/# file: ([^\n]+)\n([^=]+)="([^"]+)"\n$/'"$pattern"'/p; }'
