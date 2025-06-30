@@ -7,7 +7,7 @@ shopt -s nullglob
 
 _usage() {
 	cat <<EOF
-Usage: $0 [--luks=<dd|clone|recreate>] <source> <destination>
+Usage: $0 [--luks=<dd|clone|recreate>] [--skip=PART[,PART...]] <source> <destination>
 EOF
 }
 
@@ -158,10 +158,12 @@ function maybe_loop() {
 
 declare -A ARGS=(
 	[--luks:]=ARG_LUKS
+	[--skip:]="ARG_SKIP append split=,"
 	[--]=DISKS
 )
 parse_args ARGS "$@" || usage "Invalid options"
 (( ${#DISKS[@]} == 2 )) || usage "Expected 2 positional arguments, got ${#DISKS[@]}"
+
 case "$ARG_LUKS" in
 dd|recreate|clone) ;;
 "") ARG_LUKS=dd ;;
@@ -184,6 +186,11 @@ fi
 
 SRC_REAL="$SRC"
 DEST_REAL="$DEST"
+
+
+if (( ${#ARG_SKIP[@]} )); then
+	log "Skipping partitions $(join ", " "${ARG_SKIP[@]}")"
+fi
 
 log "Preparing to clone $SRC to $DEST"
 maybe_truncate "$DEST" "$SRC"
@@ -313,9 +320,14 @@ function luks_clone() {
 function clone_partition() {
 	eval "$(lindent)"
 
-	local src_part="$1" dest_part="$2"
+	local idx="$1" src_part="$2" dest_part="$3"
 	local part_type="$(blkid_src TYPE)"
 	local log_msg="cloning '$src_part'"
+
+	if in_array "$idx" "${ARG_SKIP[@]}"; then
+		log "skipping clone of '$src_part' to '$dest_part'"
+		return
+	fi
 
 	log "cloning '$src_part' to '$dest_part'"
 	indent
@@ -346,7 +358,8 @@ log "Cloning partitions"
 for (( i = 0; i < ${#SRC_PART[@]}; ++i )); do
 	src_part="${SRC_PART[i]}"
 	dest_part="${DEST_PART[i]}"
-	clone_partition "$src_part" "$dest_part"
+	idx="${src_part##$SRC?(p)}"
+	clone_partition "$idx" "$src_part" "$dest_part"
 done
 
 SUCCESS=1
