@@ -1,6 +1,9 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+. lib.sh
 
 _usage() {
   cat <<EOF
