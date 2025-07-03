@@ -2,6 +2,7 @@
 
 set -eo pipefail
 shopt -s lastpipe
+shopt -s nullglob
 
 . lib.sh
 
@@ -74,12 +75,13 @@ disk_fstrim() {
 	fi
 
 	local pttype fstype
+	objtype="$(lsblk1 -o TYPE "$disk")"
 	pttype="$(lsblk1 -o PTTYPE "$disk")"
 	fstype="$(lsblk1 -o FSTYPE "$disk")"
 	local partitions=()
 
-	if [[ "$pttype" ]]; then
-		find "$disk"p[0-9]* | readarray -t partitions
+	if [[ "$objtype" == disk ]] || [[ "$pttype" && ! "$fstype" ]]; then
+		partitions=( "$disk"?(p)[0-9]* )
 		log "$rdisk: whole disk detected ($pttype), discovered ${#partitions[@]} partitions"
 	elif [[ "$fstype" ]]; then
 		partitions=( "$disk" )
