@@ -6,6 +6,9 @@ ALL=(
   Busy%
   Avg_MHz
   Bzy_MHz
+  GFXMHz
+  GFXAMHz
+
   IPC
   IRQ
   Totl%C0
@@ -19,11 +22,21 @@ ALL=(
   Pkg%pc8
   Pkg%pc9
   Pk%pc10
+  CPU%LPI
   SYS%LPI
+
+  UncMHz
+  Die%c6
+
   PkgWatt
   CorWatt
   GFXWatt
   RAMWatt
+  SysWatt
+
+  CoreThr
+  CoreTmp
+  PkgTmp
 )
 
 IFS=,
