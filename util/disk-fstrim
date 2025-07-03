@@ -216,7 +216,7 @@ declare -A ARGS=(
 )
 parse_args ARGS "$@" || usage
 (( ${#DISKS[@]} )) || usage "At least one disk is required"
-(( ARG_TRIM_FREE_SPACE || ARG_TRIM_FILESYSTEM )) || usage "At least one of -f/--filesystems and -F/--free-space is required"
+(( ARG_TRIM_FREE_SPACE || ARG_TRIM_FILESYSTEMS )) || usage "At least one of -f/--filesystems and -F/--free-space is required"
 (( ARG_TRIM_UNKNOWN )) && loud "WARNING!" "disk-fstrim will DESTROY ALL DATA on partitions it does not understand!"
 
 eval "$(globaltraps)"
