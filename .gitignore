@@ -1,2 +1,4 @@
-!/local/*.{c,cpp}
-/local
+!/local
+/local/*
+!/local/Makefile
+!/local/*.{h,c,cpp}
