@@ -1,0 +1,13 @@
+#!/bin/bash
+
+set -eo pipefail
+
+_bin="$(realpath -qe "$(dirname "$BASH_SOURCE")/..")"
+_autofsync="$_bin/local/autofsync.so"
+
+if ! [[ -x "$_autofsync" ]]; then
+	echo >&2 "autofsync: ${_autofsync@Q} does not exist"
+	exec "$@"
+fi
+
+LD_PRELOAD="$HOME/bin/local/autofsync.so" exec "$@"
