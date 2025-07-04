@@ -12,7 +12,9 @@
 	url = https://github.com/intelfx/git-autofixup
 [submodule "misc/gitlab-cloner"]
 	path = misc/gitlab-cloner
-	url = https://gitlab.com/mtcs.io/gitlab-cloner
+	url = https://github.com/intelfx/gitlab-cloner
+	# defunct upstream url:
+	# url = https://gitlab.com/mtcs.io/gitlab-cloner
 [submodule "ext/sysz"]
 	path = ext/sysz
 	url = https://github.com/joehillen/sysz
