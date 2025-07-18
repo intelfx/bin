@@ -16,9 +16,12 @@ die() {
 	exit 1
 }
 
-config_path="$(systemd-path user-configuration)"
+trace() {
+	echo "-> ${*@Q}" >&2
+	"$@"
+}
 
-GTK_THEME=Adwaita # Arc
+config_path="$(systemd-path user-configuration)"
 
 # $1: whether to enable dark (1 or 0)
 function adjust_gtk3() {
@@ -152,18 +155,25 @@ function adjust_delta() {
 #}
 
 MODE=()
-
-case "${1:-1}" in
+while (( $# )); do
+	case "$1" in
 	dark|on|1) MODE=(1) ;;
 	light|off|0) MODE=(0) ;;
-	*) die "unknown mode: '$1'" ;;
-esac
-shift
+	*) break 2 ;;
+	esac
+	shift
+done
 
-if (( ! $# )); then
-	set -- "$@" gtk3 gedit terminal builder alacritty kde kate delta
+if ! [[ ${MODE+set} ]]; then
+	die "nothing to do"
 fi
 
-for arg; do
-	"adjust_$arg" "${MODE[@]}"
+VERBS=( "$@" )
+
+if ! (( ${VERBS+set} )); then
+	compgen -A function | sed -nr 's|adjust_(.+)|\1|p' | readarray -t VERBS
+fi
+
+for arg in "${VERBS[@]}"; do
+	trace "adjust_$arg" "${MODE[@]}"
 done
