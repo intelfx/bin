@@ -75,10 +75,10 @@ function adjust_alacritty() {
 
 # $1: whether to enable dark (1 or 0)
 function adjust_builder() {
-	local night_mode=( false true )
+	local style_variant=( system system ) #( light dark )
 	local style_scheme_name=( solarized-light solarized-dark )
 
-	dconf write /org/gnome/builder/night-mode "${night_mode[$1]}"
+	dconf write /org/gnome/builder/style-variant "'${style_variant[$1]}'"
 	dconf write /org/gnome/builder/editor/style-scheme-name "'${style_scheme_name[$1]}'"
 }
 
