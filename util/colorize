@@ -111,8 +111,9 @@ function adjust_kde() {
 # $1: whether to enable dark (1 or 0)
 function adjust_kate() {
 	local schema=( "Solarized (light)" "Solarized (dark)" )
+	local kateconf="$config_path/katepartrc"
 
-	sed -re "s|^Schema=.*|Schema=${schema[$1]}|" -i "$config_path/katepartrc"
+	sed -re "s|^Schema=.*|Schema=${schema[$1]}|" -i "$kateconf"
 }
 
 function adjust_delta() {
