@@ -90,17 +90,22 @@ function adjust_builder() {
 
 # $1: whether to enable dark (1 or 0)
 function adjust_kde() {
-	local kdeglobals=( light dark )
+	local kdeglobals_variant=(
+		kdeglobals-light
+		kdeglobals-dark
+	)
 	local icon_theme=( breeze breeze-dark )
+	local kdeglobals_conf="$config_path/kdeglobals"
+	local qt5ct_conf="$config_path/qt5ct/qt5ct.conf"
 
 	# Configure Breeze
-	cp -a "$config_path/kdeglobals-${kdeglobals[$1]}" "$config_path/kdeglobals"
+	cp -a "$(dirname "$kdeglobals_conf")/${kdeglobals_variant[$1]}" "$kdeglobals_conf"
 	if command -v kbuildsycoca5 &>/dev/null; then
 		kbuildsycoca5
 	fi
 
 	# Configure qt5ct
-	sed -re "s|^icon_theme=.*|icon_theme=${icon_theme[$1]}|" -i "$config_path/qt5ct/qt5ct.conf"
+	sed -re "s|^icon_theme=.*|icon_theme=${icon_theme[$1]}|" -i "$qt5ct_conf"
 }
 
 # $1: whether to enable dark (1 or 0)
