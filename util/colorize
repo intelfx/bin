@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
 log() {
 	echo ":: $*" >&2
 }
