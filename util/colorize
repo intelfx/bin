@@ -105,12 +105,12 @@ function adjust_kate() {
 }
 
 function adjust_delta() {
+	local flags=( "delta.dark" "delta.light" )
 	local gitconfig="$HOME/.gitconfig.private"
 
-	local flags=( "delta.dark" "delta.light" )
 
 	git config --file "$gitconfig"         "${flags[$((1 - $1))]}" true
-	git config --file "$gitconfig" --unset "${flags[$((    $1))]}"
+	git config --file "$gitconfig" --unset "${flags[$((    $1))]}" ||:
 }
 
 #function adjust_stext() {
