@@ -29,8 +29,10 @@ function adjust_gtk3() {
 
 	dconf write /org/gnome/desktop/interface/color-scheme "'${color_scheme[$1]}'"
 	dconf write /org/gnome/desktop/interface/gtk-theme "'${gtk3_theme[$1]}'"
-	#dconf write /org/gnome/shell/extensions/user-theme/name "'${shell_theme[$1]}'"
-	dconf write /org/gnome/desktop/interface/icon-theme "'${icon_theme[$1]}'"
+	[[ ! ${shell_theme+set} ]] || \
+		dconf write /org/gnome/shell/extensions/user-theme/name "'${shell_theme[$1]}'"
+	[[ ! ${icon_theme+set} ]] || \
+		dconf write /org/gnome/desktop/interface/icon-theme "'${icon_theme[$1]}'"
 }
 
 # $1: whether to enable dark (1 or 0)
