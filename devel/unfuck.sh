@@ -192,7 +192,7 @@ v6.12)
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
 		work/acpi-osc-6.12 \
-		work/fs-6.12 \
+		work/fs-6.12-noop \
 		work/cddl-6.12 \
 		work/zfs-6.12 \
 		work/cpupower-6.12 \
@@ -214,7 +214,7 @@ v6.13)
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
 		work/acpi-osc-6.12 \
-		work/fs-6.13 \
+		work/fs-6.13-noop \
 		work/cddl-6.12 \
 		work/zfs-6.12 \
 		work/cpupower-6.12 \
@@ -236,7 +236,7 @@ v6.14)
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
 		work/acpi-osc-6.12 \
-		work/fs-6.14 \
+		work/fs-6.14-noop \
 		work/cddl-6.12 \
 		work/zfs-6.14 \
 		work/cpupower-6.12 \
@@ -258,7 +258,7 @@ v6.15)
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
 		work/acpi-osc-6.12 \
-		work/fs-6.15pf \
+		work/fs-6.15pf-noop \
 		work/cddl-6.15 \
 		work/zfs-6.15 \
 		work/cpupower-6.12 \
