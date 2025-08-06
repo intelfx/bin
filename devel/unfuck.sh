@@ -241,6 +241,28 @@ v6.14)
 		work/zfs-6.14 \
 		work/cpupower-6.12 \
 	;;
+
+v6.15)
+	# main
+	make_merge \
+		work/iwlwifi-lar-v2-6.12 \
+		work/amd-energy-6.12 \
+		work/btrfs-remove-ghost-subvolume-6.12 \
+		work/btrfs-allocation-hint-6.12 \
+		work/tsc-directsync-6.12 \
+		work/no-jobserver-exec-6.12 \
+		work/gvt-failsafe-6.12 \
+		work/gvt-workaround-6.12 \
+		work/i915-fastboot-revert-6.15 \
+		work/kbuild-6.12 \
+		work/em7565-ids-6.12 \
+		work/zswap-writeback-6.12 \
+		work/acpi-osc-6.12 \
+		work/fs-6.15pf \
+		work/cddl-6.15 \
+		work/zfs-6.15 \
+		work/cpupower-6.12 \
+	;;
 esac
 
 Trace git branch -f "${target[patch_prefix]}${minor}"
