@@ -185,9 +185,6 @@ v6.12)
 		work/btrfs-allocation-hint-6.12 \
 		work/tsc-directsync-6.12 \
 		work/no-jobserver-exec-6.12 \
-		work/gvt-failsafe-6.12 \
-		work/gvt-workaround-6.12 \
-		work/i915-fastboot-revert-6.12 \
 		work/kbuild-6.12 \
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
@@ -196,6 +193,9 @@ v6.12)
 		work/cddl-6.12 \
 		work/zfs-6.12 \
 		work/cpupower-6.12 \
+		# work/gvt-failsafe-6.12 \
+		# work/gvt-workaround-6.12 \
+		# work/i915-fastboot-revert-6.12 \
 	;;
 
 v6.13)
@@ -207,9 +207,6 @@ v6.13)
 		work/btrfs-allocation-hint-6.12 \
 		work/tsc-directsync-6.12 \
 		work/no-jobserver-exec-6.12 \
-		work/gvt-failsafe-6.12 \
-		work/gvt-workaround-6.12 \
-		work/i915-fastboot-revert-6.13 \
 		work/kbuild-6.12 \
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
@@ -218,6 +215,9 @@ v6.13)
 		work/cddl-6.12 \
 		work/zfs-6.12 \
 		work/cpupower-6.12 \
+		# work/gvt-failsafe-6.12 \
+		# work/gvt-workaround-6.12 \
+		# work/i915-fastboot-revert-6.13 \
 	;;
 
 v6.14)
@@ -229,9 +229,6 @@ v6.14)
 		work/btrfs-allocation-hint-6.12 \
 		work/tsc-directsync-6.12 \
 		work/no-jobserver-exec-6.12 \
-		work/gvt-failsafe-6.12 \
-		work/gvt-workaround-6.12 \
-		work/i915-fastboot-revert-6.14 \
 		work/kbuild-6.12 \
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
@@ -240,6 +237,9 @@ v6.14)
 		work/cddl-6.12 \
 		work/zfs-6.14 \
 		work/cpupower-6.12 \
+		# work/gvt-failsafe-6.12 \
+		# work/gvt-workaround-6.12 \
+		# work/i915-fastboot-revert-6.14 \
 	;;
 
 v6.15)
@@ -251,9 +251,6 @@ v6.15)
 		work/btrfs-allocation-hint-6.12 \
 		work/tsc-directsync-6.12 \
 		work/no-jobserver-exec-6.12 \
-		work/gvt-failsafe-6.12 \
-		work/gvt-workaround-6.12 \
-		work/i915-fastboot-revert-6.15 \
 		work/kbuild-6.12 \
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
@@ -262,6 +259,9 @@ v6.15)
 		work/cddl-6.15 \
 		work/zfs-6.15 \
 		work/cpupower-6.12 \
+		# work/gvt-failsafe-6.12 \
+		# work/gvt-workaround-6.12 \
+		# work/i915-fastboot-revert-6.15 \
 	;;
 esac
 
