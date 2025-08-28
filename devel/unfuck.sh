@@ -258,6 +258,7 @@ v6.15)
 		work/fs-6.15pf-noop \
 		work/cddl-6.15 \
 		work/zfs-6.15 \
+		work/pf-no-teo-6.15 \
 		# work/gvt-failsafe-6.12 \
 		# work/gvt-workaround-6.12 \
 		# work/i915-fastboot-revert-6.15 \
