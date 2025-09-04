@@ -83,7 +83,7 @@ done
 # main
 #
 
-GIT_DIR="$(git rev-parse --git-dir)"
+GIT_DIR="$(git rev-parse --git-common-dir)"
 
 cleanup() {
 	rm -f "$GIT_DIR/objects/pack"/*.keep
