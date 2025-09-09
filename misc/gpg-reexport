@@ -3,11 +3,11 @@
 . lib.sh || exit
 
 gpg_export_public() {
-	gpg --export "$@"
+	gpg --armor --export "$@"
 }
 
 gpg_export_secret() {
-	gpg --export-secret-keys "$@"
+	gpg --armor --export-secret-keys "$@"
 }
 
 eval "$(globaltraps)"
@@ -21,7 +21,7 @@ GPG_EXPORT_ARGS=( "${@:1:$#-1}" )
 if [[ $KEY_ID == *! ]]; then
 	log "Exporting subkey only: ${KEY_ID%!}"
 	gpg_export_secret() {
-		gpg --export-secret-subkeys "$@"
+		gpg --armor --export-secret-subkeys "$@"
 	}
 fi
 
