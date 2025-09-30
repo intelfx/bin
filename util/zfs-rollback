@@ -1,0 +1,63 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+. lib.sh
+
+_usage() {
+	cat <<EOF
+Usage: $0 DATASET-GLOB@SNAPSHOT...
+EOF
+}
+
+
+#
+# args
+#
+
+declare -A _args=(
+	[-h|--help]=ARG_USAGE
+	[--]=ARGS
+)
+parse_args _args "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
+
+
+#
+# main
+#
+
+declare -A DATASET_TARGETS
+declare -a ROLLBACK_TARGETS
+
+zfs list -Ho name -t snapshot \
+	| readarray -t SNAPSHOTS
+
+for g in "${ARGS[@]}"; do
+	for s in "${SNAPSHOTS[@]}"; do
+		# $g is a glob
+		if [[ "$s" == $g ]]; then
+			[[ $s == ?*@?* ]] || die "Internal error: invalid snapshot name: ${s@Q}"
+			dataset="${s%@*}"
+			snapshot="${s#*@}"
+			existing="${DATASET_TARGETS["$dataset"]}"
+			if [[ $existing ]]; then
+				die "Invalid arguments: cannot rollback ${dataset@Q} to @${existing} and @${snapshot} at the same time"
+			fi
+			DATASET_TARGETS["$dataset"]="$snapshot"
+			ROLLBACK_TARGETS+=("$s")
+		fi
+	done
+done
+
+if [[ ${ROLLBACK_TARGETS+set} ]]; then
+	log "Rolling back ${#ROLLBACK_TARGETS[@]} datasets"
+	xargs -t -r -d'\n' -n1 -P$(nproc) zfs rollback \
+		< <(printf "%s\n" "${ROLLBACK_TARGETS[@]}")
+else
+	warn "Nothing matched"
+fi
+
+
+
+
