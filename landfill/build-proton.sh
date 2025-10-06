@@ -29,13 +29,8 @@ while (( $# )); do
 done
 
 CMD=(
-	--enable-ccache
 	--container-engine=podman
 )
-
-if ! grep -q 'enable-ccache' "$SOURCE_DIR/configure.sh"; then
-	unset 'CMD[0]'
-fi
 
 SOURCE_TAG="$(cd "$SOURCE_DIR" && git describe --tags --abbrev=0)"
 
@@ -96,6 +91,11 @@ fi
 		git -C openfst apply -3 "$p"
 	done
 )
+
+if grep -q 'enable-ccache' "$SOURCE_DIR/configure.sh"; then
+	# legacy (ca. Proton-GE 8 and earlier)
+	CMD+=( --enable-ccache )
+fi
 
 set -x
 
