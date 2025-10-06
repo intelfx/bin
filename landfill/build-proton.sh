@@ -77,18 +77,15 @@ fi
 		./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
 	fi
 
-	for p in "${PATCH_DIR}"/*.patch; do
+	find "$PATCH_DIR" -type f -name '*.patch' -printf '%P\n' | while IFS='' read -r p; do
 		if [[ $p == *WIP* ]]; then
 			continue
 		fi
-		git apply -3 "$p"
-	done
 
-	for p in "${PATCH_DIR}-openfst"/*.patch; do
-		if [[ $p == *WIP* ]]; then
-			continue
-		fi
-		git -C openfst apply -3 "$p"
+		patch_subdir="$(dirname "$p")"
+		patch_name="$(basename "$p")"
+		log "applying: subdir ${patch_subdir@Q} patch ${patch_name@Q}"
+		git -C "$patch_subdir" apply -3 "$PATCH_DIR/$p"
 	done
 )
 
