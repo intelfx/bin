@@ -41,12 +41,12 @@ function adjust_gtk3() {
 	local color_scheme=( prefer-light prefer-dark )
 	local icon_theme=( 'Papirus-Light' 'Papirus-Dark' )
 
-	dconf write /org/gnome/desktop/interface/color-scheme "'${color_scheme[$1]}'"
-	dconf write /org/gnome/desktop/interface/gtk-theme "'${gtk3_theme[$1]}'"
+	gsettings set org.gnome.desktop.interface color-scheme "${color_scheme[$1]}"
+	gsettings set org.gnome.desktop.interface gtk-theme "${gtk3_theme[$1]}"
 	[[ ! ${shell_theme+set} ]] || \
-		dconf write /org/gnome/shell/extensions/user-theme/name "'${shell_theme[$1]}'"
+		gsettings set org.gnome.shell.extensions.user-theme name "${shell_theme[$1]}"
 	[[ ! ${icon_theme+set} ]] || \
-		dconf write /org/gnome/desktop/interface/icon-theme "'${icon_theme[$1]}'"
+		gsettings set org.gnome.desktop.interface icon-theme "${icon_theme[$1]}"
 }
 
 # $1: whether to enable dark (1 or 0)
@@ -55,7 +55,7 @@ function adjust_gedit() {
 
 	has gedit || return 0
 
-	dconf write /org/gnome/gedit/preferences/editor/scheme "'${scheme[$1]}'"
+	gsettings set org.gnome.gedit.preferences.editor scheme "${scheme[$1]}"
 }
 
 # $1: whether to enable dark (1 or 0)
@@ -109,8 +109,8 @@ function adjust_builder() {
 
 	has gnome-builder || return 0
 
-	dconf write /org/gnome/builder/style-variant "'${style_variant[$1]}'"
-	dconf write /org/gnome/builder/editor/style-scheme-name "'${style_scheme_name[$1]}'"
+	gsettings set org.gnome.builder style-variant "${style_variant[$1]}"
+	gsettings set org.gnome.builder.editor style-scheme-name "${style_scheme_name[$1]}"
 }
 
 # $1: whether to enable dark (1 or 0)
