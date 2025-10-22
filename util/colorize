@@ -104,7 +104,7 @@ function adjust_alacritty() {
 
 # $1: whether to enable dark (1 or 0)
 function adjust_builder() {
-	local style_variant=( system system ) #( light dark )
+	local style_variant=( default default ) #( light dark )
 	local style_scheme_name=( solarized-light solarized-dark )
 
 	has gnome-builder || return 0
