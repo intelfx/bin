@@ -90,8 +90,6 @@ for arg; do
 		;;
 
 	off)
-		echo 1 > "$SYSFS_NODE/pwm1_enable"
-		echo 0 > "$SYSFS_NODE/pwm1"
 		try_write "$arg" "$SYSFS_NODE" "pwm1_enable" "1"
 		try_write "$arg" "$SYSFS_NODE" "pwm1" "0"
 		try_write "$arg" "$SYSFS_NODE" "pwm1_enable" "1"
@@ -106,7 +104,7 @@ for arg; do
 		;;
 
 	auto)
-		echo 2 > "$SYSFS_NODE/pwm1_enable"
+		try_write "$arg" "$SYSFS_NODE" "pwm1_enable" "2"
 		;;
 
 	sleep=[0-9]*)
