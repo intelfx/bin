@@ -76,7 +76,7 @@ for arg; do
 			if (( rpm == 65535 )); then
 				die "bad rpm"
 			fi
-			if (( rpm > 5500 )); then
+			if (( rpm > 5000 )); then
 				break
 			fi
 			sleep 1
