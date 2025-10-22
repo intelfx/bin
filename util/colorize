@@ -41,12 +41,12 @@ function adjust_gtk3() {
 	local color_scheme=( prefer-light prefer-dark )
 	local icon_theme=( 'Papirus-Light' 'Papirus-Dark' )
 
-	gsettings set org.gnome.desktop.interface color-scheme "${color_scheme[$1]}"
-	gsettings set org.gnome.desktop.interface gtk-theme "${gtk3_theme[$1]}"
+	trace gsettings set org.gnome.desktop.interface color-scheme "${color_scheme[$1]}"
+	trace gsettings set org.gnome.desktop.interface gtk-theme "${gtk3_theme[$1]}"
 	[[ ! ${shell_theme+set} ]] || \
-		gsettings set org.gnome.shell.extensions.user-theme name "${shell_theme[$1]}"
+		trace gsettings set org.gnome.shell.extensions.user-theme name "${shell_theme[$1]}"
 	[[ ! ${icon_theme+set} ]] || \
-		gsettings set org.gnome.desktop.interface icon-theme "${icon_theme[$1]}"
+		trace gsettings set org.gnome.desktop.interface icon-theme "${icon_theme[$1]}"
 }
 
 # $1: whether to enable dark (1 or 0)
@@ -55,7 +55,7 @@ function adjust_gedit() {
 
 	has gedit || return 0
 
-	gsettings set org.gnome.gedit.preferences.editor scheme "${scheme[$1]}"
+	trace gsettings set org.gnome.gedit.preferences.editor scheme "${scheme[$1]}"
 }
 
 # $1: whether to enable dark (1 or 0)
@@ -66,23 +66,23 @@ function adjust_terminal() {
 	has gnome-terminal || return 0
 
 	# set defaults for new windows
-	dconf write /org/gnome/terminal/legacy/profiles:/default "'${profiles_default[$1]}'"
+	trace dconf write /org/gnome/terminal/legacy/profiles:/default "'${profiles_default[$1]}'"
 
 	# XXX: `busctl --auto-start=false tree` appears to not work (i. e. still try to activate the target service),
 	# so check availability of org.gnome.Terminal by hand
-	busctl --user --acquired --no-pager --no-legend \
+	trace busctl --user --acquired --no-pager --no-legend \
 		| grep -qw org.gnome.Terminal \
 	|| return 0
 
 	# reconfigure existing windows
 	local o objects=()
-	busctl --auto-start=false --list --user tree org.gnome.Terminal \
+	trace busctl --auto-start=false --list --user tree org.gnome.Terminal \
 		| grep '^/org/gnome/Terminal/window/' \
 		| readarray -t objects \
 	|| return 0
 
 	for o in "${objects[@]}"; do
-		busctl --auto-start=false -j --user call org.gnome.Terminal "$o" org.gtk.Actions Activate "sava{sv}" "profile" "1" "s" "${profiles_default[$1]}" "0" || true
+		trace busctl --auto-start=false -j --user call org.gnome.Terminal "$o" org.gtk.Actions Activate "sava{sv}" "profile" "1" "s" "${profiles_default[$1]}" "0" || true
 	done
 }
 
@@ -99,7 +99,7 @@ function adjust_alacritty() {
 		"$alacritty_conf" \
 	|| return 0
 
-	sed -r -e "s|$theme_import_pattern|${theme_imports[$1]}|" -i "$alacritty_conf"
+	trace sed -r -e "s|$theme_import_pattern|${theme_imports[$1]}|" -i "$alacritty_conf"
 }
 
 # $1: whether to enable dark (1 or 0)
@@ -109,8 +109,8 @@ function adjust_builder() {
 
 	has gnome-builder || return 0
 
-	gsettings set org.gnome.builder style-variant "${style_variant[$1]}"
-	gsettings set org.gnome.builder.editor style-scheme-name "${style_scheme_name[$1]}"
+	trace gsettings set org.gnome.builder style-variant "${style_variant[$1]}"
+	trace gsettings set org.gnome.builder.editor style-scheme-name "${style_scheme_name[$1]}"
 }
 
 # $1: whether to enable dark (1 or 0)
@@ -129,13 +129,13 @@ function adjust_kde() {
 	|| return 0
 
 	# Configure Breeze
-	cp -a "$(dirname "$kdeglobals_conf")/${kdeglobals_variant[$1]}" "$kdeglobals_conf"
+	trace cp -a "$(dirname "$kdeglobals_conf")/${kdeglobals_variant[$1]}" "$kdeglobals_conf"
 	if has kbuildsycoca5; then
-		kbuildsycoca5
+		trace kbuildsycoca5
 	fi
 
 	# Configure qt5ct
-	sed -re "s|^icon_theme=.*|icon_theme=${icon_theme[$1]}|" -i "$qt5ct_conf"
+	trace sed -re "s|^icon_theme=.*|icon_theme=${icon_theme[$1]}|" -i "$qt5ct_conf"
 }
 
 # $1: whether to enable dark (1 or 0)
@@ -148,7 +148,7 @@ function adjust_kate() {
 		"$kateconf" \
 	|| return 0
 
-	sed -re "s|^Schema=.*|Schema=${schema[$1]}|" -i "$kateconf"
+	trace sed -re "s|^Schema=.*|Schema=${schema[$1]}|" -i "$kateconf"
 }
 
 function adjust_delta() {
@@ -157,8 +157,8 @@ function adjust_delta() {
 
 	has delta || return 0
 
-	git config --file "$gitconfig"         "${flags[$((1 - $1))]}" true
-	git config --file "$gitconfig" --unset "${flags[$((    $1))]}" ||:
+	trace git config --file "$gitconfig"         "${flags[$((1 - $1))]}" true
+	trace git config --file "$gitconfig" --unset "${flags[$((    $1))]}" ||:
 }
 
 #function adjust_stext() {
@@ -170,7 +170,7 @@ function adjust_delta() {
 #	#local theme=( "Adaptive.sublime-theme" )
 #
 #	if [[ -e "$stext_prefs" ]]; then
-#		jq --arg schema "${schema[$1]}" '.color_scheme |= $schema' \
+#		trace jq --arg schema "${schema[$1]}" '.color_scheme |= $schema' \
 #			<"$stext_prefs" \
 #			| sponge "$stext_prefs"
 #	fi
@@ -181,7 +181,7 @@ function adjust_delta() {
 #	local theme=( "Merge.sublime-theme" "Merge Dark.sublime-theme" )
 #
 #	if [[ -e "$smerge_prefs" ]]; then
-#		jq --arg theme "${theme[$1]}" '.theme |= $theme' \
+#		trace jq --arg theme "${theme[$1]}" '.theme |= $theme' \
 #			<"$smerge_prefs" \
 #			| sponge "$smerge_prefs"
 #	fi
