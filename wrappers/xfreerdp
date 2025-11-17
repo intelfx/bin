@@ -119,7 +119,7 @@ if [[ $ARG_PASS_SET ]]; then
 	:
 elif [[ $ARG_PASS_COMMAND ]]; then
 	exec < <(set -x; exec "${ARG_PASS_COMMAND[@]}")
-	ARGS+=( /auth-pkg-list:'ntlm,!kerberos' /d: /from-stdin )
+	ARGS+=( /auth-pkg-list:'ntlm,!kerberos' /d: /from-stdin:force )
 elif [[ $ARG_NO_NLA ]]; then
 	# ARGS+=( -sec-nla ) # xfreerdp 2.10
 	ARGS+=( /sec:nla:off /d: /p: ) # xfreerdp 3.0
