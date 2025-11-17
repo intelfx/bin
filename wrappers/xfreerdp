@@ -20,6 +20,7 @@ OPTIONS=(
 	/sound:sys:pulse
 	/floatbar:show:fullscreen
 	+auto-reconnect
+	/auto-reconnect-max-retries:0
 )
 
 OPTIONS_ENERGY_EFFICIENT=(
