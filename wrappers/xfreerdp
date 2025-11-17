@@ -10,7 +10,7 @@ sdlfreerdp)
 xfreerdp|wlfreerdp)
 	APP_NAME="/usr/bin/${SCRIPT_NAME}3" ;;
 *)
-	APP_NAME="/usr/bin/xfreerdp" ;;
+	echo >&2 "$SCRIPT_NAME: unsupported"; exit 1 ;;
 esac
 
 OPTIONS=(
