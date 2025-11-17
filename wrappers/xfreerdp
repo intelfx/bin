@@ -6,7 +6,7 @@ shopt -s lastpipe
 SCRIPT_NAME="${0##*/}"
 case "$SCRIPT_NAME" in
 sdlfreerdp)
-	SCRIPT_NAME="sdl-freerdp" ;&
+	SCRIPT_NAME="sdl3-freerdp" ;&
 xfreerdp|wlfreerdp)
 	APP_NAME="/usr/bin/${SCRIPT_NAME}3" ;;
 *)
