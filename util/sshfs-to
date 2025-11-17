@@ -9,6 +9,15 @@ SSH_ARGS=(
 	"${ARGS[@]}"
 	-o BatchMode=yes
 	-o ServerAliveInterval=15
+	-o ControlMaster=auto
+	# ideally, we'd like to enable ControlPersist here to reuse the
+	# short-lived connection we open when running `whoami`.
+	# however, this makes the ssh process spawned while running `whoami`
+	# run in background indefinitely.
+	# we do not want to leave arbitrary background processes outside of the
+	# `sshfs-*.service` unit we create, so don't do this.
+	# -o ControlPersist=1
+	-o ControlPath=/home/intelfx/.ssh/sock-%C
 )
 
 SSHFS_ARGS=(
