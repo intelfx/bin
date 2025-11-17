@@ -1,4 +1,4 @@
 #!/bin/bash
 
 set -x
-exec /usr/bin/waypipe --compress=zstd=11 --allow-tiled --video=hw "$@"
+exec /usr/bin/waypipe --compress=zstd=11 --video=hw "$@"
