@@ -49,6 +49,109 @@ read -r -s -n1 _
 
 
 #
+# functions
+#
+
+_zfs_create_one() {
+    local dataset="$1" mountpoint="$2"
+    local -a options=("${@:3}")
+
+    case "$dataset" in
+    ROOT?(/*))    dataset="$DATASET_ROOT${dataset#ROOT}" ;;
+    DATA?(/*))    dataset="$DATASET_DATA${dataset#DATA}" ;;
+    SCRATCH?(/*)) dataset="$DATASET_SCRATCH${dataset#SCRATCH}" ;;
+    *)            die "zfs_create: invalid dataset: ${dataset@Q}" ;;
+    esac
+
+    case "$mountpoint" in
+    "") ;;
+    /)   options+=( -o mountpoint="$MOUNTPOINT" ) ;;
+    /?*) options+=( -o mountpoint="$MOUNTPOINT$mountpoint" ) ;;
+    *)   die "zfs_create: invalid mountpoint: ${mountpoint@Q}" ;;
+    esac
+
+    local -
+    set -x
+    zfs create -u -pp "${options[@]}" "$dataset"
+}
+
+zfs_create() {
+    local special
+    local options=()
+    local args=()
+    while (( $# )); do
+        case "$1" in
+        --docker)  special=docker ;;
+        --podman)  special=podman ;;
+        --root)    options+=( "${ZFS_OPTIONS[@]}" ) ;;
+        --os)      options+=( -o recordsize=1M -o compression=zstd-19 ) ;;
+        --big)     options+=( -o recordsize=1M ) ;;
+        -o)        options+=( "$1" "$2" ); shift ;;
+        -o?*)      options+=( "$1" ) ;;
+        -p|-pp)    options+=( "$1" ) ;;
+        --nomount) options+=( -o canmount=off ) ;;
+        -*)        die "zfs_create: invalid flag: ${1@Q}" ;;
+        *)         args+=("$1") ;;
+        esac
+        shift
+    done
+
+    local dataset mountpoint
+    case "${#args[@]}" in
+    2) mountpoint="${args[1]}" ;&
+    1) dataset="${args[0]}" ;;
+    *) die "zfs_create: invalid args, expected 1 or 2: ${args[@]@Q}" ;;
+    esac
+
+    _zfs_create_one "$dataset" "$mountpoint" "${options[@]}"
+}
+
+zfs_create_podman() {
+    local options=()
+    local args=()
+    while (( $# )); do
+        case "$1" in
+        -*) options+=("$1") ;;
+        *)  args+=("$1") ;;
+        esac
+        shift
+    done
+
+    local dataset mountpoint
+    case "${#args[@]}" in
+    2) dataset="${args[0]}"; mountpoint="${args[1]}" ;;
+    *) die "zfs_create_podman: invalid args, expected 2: ${args[@]@Q}" ;;
+    esac
+
+    zfs_create      "${options[@]}" "$dataset" "$mountpoint"
+    zfs_create --os "${options[@]}" "$dataset/images"
+    zfs_create      "${options[@]}" "$dataset/volumes"
+}
+
+zfs_create_docker() {
+    local options=()
+    local args=()
+    while (( $# )); do
+        case "$1" in
+        -*) options+=("$1") ;;
+        *)  args+=("$1") ;;
+        esac
+        shift
+    done
+
+    local dataset mountpoint
+    case "${#args[@]}" in
+    2) dataset="${args[0]}"; mountpoint="${args[1]}" ;;
+    *) die "zfs_create_docker: invalid args, expected 2: ${args[@]@Q}" ;;
+    esac
+
+    zfs_create      "${options[@]}" "$dataset" "$mountpoint"
+    zfs_create --os "${options[@]}" "$dataset/overlay2"
+    zfs_create      "${options[@]}" "$dataset/volumes"
+}
+
+
+#
 # main
 #
 
@@ -59,125 +162,46 @@ zfs destroy -R "$DATASET_SCRATCH" ||:
 zfs destroy -R "$DATASET_DATA" ||:
 zfs destroy -R "$DATASET_ROOT" ||:
 
+{ set +x; } &>/dev/null
+
 ### "ROOT" ###
-zfs create -u \
-    "${ZFS_OPTIONS[@]}" \
-    -o mountpoint="$MOUNTPOINT" \
-    "$DATASET_ROOT"
-zfs create -u \
-    -o recordsize=1M \
-    -o compression=zstd-19 \
-    -o mountpoint="$MOUNTPOINT/var/lib/flatpak" \
-    "$DATASET_ROOT/flatpak"
-zfs create -u \
-    -o recordsize=1M \
-    -o compression=zstd-19 \
-    "$DATASET_ROOT/nix"
-zfs create -u \
-    -o recordsize=1M \
-    -o compression=zstd-19 \
-    "$DATASET_ROOT/opt"
-zfs create -u \
-    -o recordsize=1M \
-    -o compression=zstd-19 \
-    "$DATASET_ROOT/usr"
-zfs create -u \
-    "$DATASET_ROOT/var"
-zfs create -u \
-    -o mountpoint="$MOUNTPOINT/etc" \
-    "$DATASET_ROOT/var/etc"
-zfs create -u \
-    -o mountpoint="$MOUNTPOINT/var/log" \
-    "$DATASET_ROOT/var/log"
-zfs create -u \
-    -o mountpoint="$MOUNTPOINT/var/tmp" \
-    "$DATASET_ROOT/var/tmp"
-zfs create -u \
-    -o recordsize=1M \
-    -o mountpoint="$MOUNTPOINT/var/lib/systemd/coredump" \
-    "$DATASET_ROOT/var/coredump"
+zfs_create --root   "ROOT"                                  "/"
+zfs_create --os     "ROOT/flatpak"                          "/var/lib/flatpak"
+zfs_create --os     "ROOT/nix"
+zfs_create --os     "ROOT/opt"
+zfs_create --os     "ROOT/usr"
+zfs_create          "ROOT/var"
+zfs_create          "ROOT/var/etc"                          "/etc"
+zfs_create          "ROOT/var/log"
+zfs_create          "ROOT/var/tmp"
+zfs_create --big    "ROOT/var/coredump"                     "/var/lib/systemd/coredump"
 
 ### "DATA" ###
-zfs create -u \
-    "${ZFS_OPTIONS[@]}" \
-    -o canmount=off \
-    "$DATASET_DATA"
-zfs create -u \
-    -o mountpoint="$MOUNTPOINT/home" \
-    "$DATASET_DATA/home"
-zfs create -u \
-    -o mountpoint="$MOUNTPOINT/root" \
-    "$DATASET_DATA/home/root"
+zfs_create --root   "DATA"                                  --nomount
+zfs_create          "DATA/home"                             "/home"
+zfs_create          "DATA/home/root"                        "/root"
 
 ### "SCRATCH" ###
-zfs create -u \
-    "${ZFS_OPTIONS[@]}" \
-    -o canmount=off \
-    "$DATASET_SCRATCH"
-zfs create -pp -u \
-    -o mountpoint="$MOUNTPOINT/var/lib/libvirt/images" \
-    "$DATASET_SCRATCH/libvirt"
-zfs create -pp -u \
-    -o mountpoint="$MOUNTPOINT/var/lib/machines" \
-    "$DATASET_SCRATCH/machines"
-zfs create -pp -u \
-    "$DATASET_SCRATCH/machines/arch"
-zfs create -pp -u \
-    -o mountpoint="$MOUNTPOINT/var/lib/containers" \
-    "$DATASET_SCRATCH/containers/root"
-zfs create -pp -u \
-    -o recordsize=1M \
-    -o compression=zstd-19 \
-    "$DATASET_SCRATCH/containers/root/images"
-zfs create -pp -u \
-    "$DATASET_SCRATCH/containers/root/volumes"
-zfs create -pp -u \
-    -o mountpoint="$MOUNTPOINT/var/lib/docker" \
-    "$DATASET_SCRATCH/docker/root"
-zfs create -pp -u \
-    -o recordsize=1M \
-    -o compression=zstd-19 \
-    "$DATASET_SCRATCH/docker/root/overlay2"
-zfs create -pp -u \
-    "$DATASET_SCRATCH/docker/root/volumes"
-zfs create -pp -u \
-    -o recordsize=1M \
-    -o compression=zstd-19 \
-    -o mountpoint="$MOUNTPOINT/var/lib/waydroid" \
-    "$DATASET_SCRATCH/waydroid"
-zfs create -u \
-    -o mountpoint="$MOUNTPOINT/srv/build" \
-    "$DATASET_SCRATCH/srv-build"
-zfs create -u \
-    -o mountpoint="$MOUNTPOINT/srv/repo" \
-    "$DATASET_SCRATCH/srv-repo"
-zfs create -u \
-    -o mountpoint="$MOUNTPOINT/var/cache/pacman/pkg" \
-    "$DATASET_SCRATCH/var-cache-pacman-pkg"
+zfs_create --root   "SCRATCH"                               --nomount
+zfs_create          "SCRATCH/libvirt"                       "/var/lib/libvirt/images"
+zfs_create          "SCRATCH/machines"                      "/var/lib/machines"
+zfs_create          "SCRATCH/machines/arch"
+zfs_create_podman   "SCRATCH/containers/root"               "/var/lib/containers"
+zfs_create_docker   "SCRATCH/docker/root"                   "/var/lib/docker"
+zfs_create --os     "SCRATCH/waydroid"                      "/var/lib/waydroid"
+zfs_create          "SCRATCH/srv-build"                     "/srv/build"
+zfs_create          "SCRATCH/srv-repo"                      "/srv/repo"
+zfs_create --big    "SCRATCH/var-cache-pacman-pkg"          "/var/cache/pacman/pkg"
 
 ### USERS ###
-for user in intelfx; do
-    zfs create -pp -u \
-        -o mountpoint="$MOUNTPOINT/home/$user/tmp/big" \
-        "$DATASET_SCRATCH/user/$user"
-    zfs create -pp -u \
-        -o mountpoint="$MOUNTPOINT/home/$user/.cache" \
-        "$DATASET_SCRATCH/cache/$user"
-    zfs create -pp -u \
-        -o recordsize=1M \
-        -o compression=zstd-19 \
-        -o mountpoint="$MOUNTPOINT/home/$user/.cache/Zeal/Zeal/docsets" \
-        "$DATASET_SCRATCH/cache/$user/zeal-docsets"
-    zfs create -pp -u \
-        -o mountpoint="$MOUNTPOINT/home/$user/.local/share/containers" \
-        "$DATASET_SCRATCH/containers/$user"
-    zfs create -pp -u \
-        -o recordsize=1M \
-        -o compression=zstd-19 \
-        "$DATASET_SCRATCH/containers/$user/images"
-    zfs create -pp -u \
-        "$DATASET_SCRATCH/containers/$user/volumes"
+for user in "${USERS[@]}"; do
+zfs_create          "SCRATCH/user/$user"                    "/home/$user/tmp/big"
+zfs_create          "SCRATCH/cache/$user"                   "/home/$user/.cache"
+zfs_create --os     "SCRATCH/cache/$user/zeal-docsets"      "/home/$user/.cache/Zeal/Zeal/docsets"
+zfs_create_podman   "SCRATCH/containers/$user"              "/home/$user/.local/share/containers"
 done
+
+set -x
 
 zfs mount -R "$DATASET_ROOT"
 zfs mount -R "$DATASET_DATA"
