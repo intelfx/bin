@@ -201,6 +201,12 @@ zfs_create --os     "SCRATCH/cache/$user/zeal-docsets"      "/home/$user/.cache/
 zfs_create_podman   "SCRATCH/containers/$user"              "/home/$user/.local/share/containers"
 done
 
+### HACKS ###
+if [[ $NAME == able ]]; then
+user=intelfx
+zfs_create          "SCRATCH/borg"                          "/home/$user/.cache/borg"
+fi
+
 set -x
 
 zfs mount -R "$DATASET_ROOT"
