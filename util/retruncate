@@ -1,12 +1,73 @@
 #!/bin/bash
 
 set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/}
+EOF
+}
+
+
+#
+# args
+#
+
+if args=$(getopt -o 's:' --long 'size:' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+while :; do
+	case "$1" in
+	-s|--size) shift; ARG_SIZE="$1" ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+case "$#" in
+0) usage "wrong number of positional arguments" ;;
+*) ;;
+esac
+
+
+#
+# main
+#
 
 rc=0
 for arg; do (
-	size="$(stat -c '%s' -- "$arg")" || exit 1
-	truncate -s 0 -- "$arg" || exit 1
-	truncate -s "$size" -- "$arg" || exit 1
+	set -ex
+	size="${ARG_SIZE:-$(stat -c '%s' -- "$arg")}"
+	truncate -s 0 -- "$arg"
+	truncate -s "$size" -- "$arg"
 ) || rc=1
 done
 exit "$rc"
