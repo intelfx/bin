@@ -192,6 +192,7 @@ v6.12)
 		work/fs-6.12-noop \
 		work/cddl-6.12 \
 		work/zfs-6.12 \
+		work/fonts-6.12 \
 		work/cpupower-6.12 \
 		work/pf-no-teo-6.12 \
 		# work/gvt-failsafe-6.12 \
@@ -306,6 +307,7 @@ v6.17)
 		work/fs-6.17-noop \
 		work/cddl-6.17 \
 		work/zfs-6.17 \
+		work/fonts-6.17 \
 		work/pf-no-teo-6.17 \
 		work/pf-no-archlinux-6.17 \
 		# work/gvt-failsafe-6.12 \
