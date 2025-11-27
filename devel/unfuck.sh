@@ -307,7 +307,7 @@ v6.17)
 		work/cddl-6.17 \
 		work/zfs-6.17 \
 		work/pf-no-teo-6.17 \
-		# work/pf-no-archlinux-6.17 \
+		work/pf-no-archlinux-6.17 \
 		# work/gvt-failsafe-6.12 \
 		# work/gvt-workaround-6.12 \
 		# work/i915-fastboot-revert-6.15 \
