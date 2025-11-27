@@ -1,0 +1,5 @@
+#!/bin/bash
+
+set -exo pipefail
+
+exec fd -uuu '(.sync-conflict-)|(^\.syncthing\..+\.tmp$)' "$@"
