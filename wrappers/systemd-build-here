@@ -4,7 +4,10 @@ IFS=':'
 read -ra path <<<"$PATH"
 ipath=()
 for p in "${path[@]}"; do
-	if [[ $p == /usr/* ]]; then ipath+=("$p"); fi
+	case "$p" in
+	/usr/*) ipath+=("$p") ;;
+	/opt/*) ipath+=("$p") ;;
+	esac
 done
 IPATH="${ipath[*]}"
 unset IFS
