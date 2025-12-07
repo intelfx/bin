@@ -19,11 +19,19 @@ declare -A _args=(
 	[-h|--help]=ARG_USAGE
 	[-r|-R|-p|-f]="pass=ARGS_PASS"
 	[-n]="ARG_DRY_RUN pass=ARGS_PASS"
+	[-y]="ARG_CONFIRM"
 	[-v]="ARG_VERBOSE pass=ARGS_PASS"
 	[--]=ARGS
 )
 parse_args _args "$@" || usage
 [[ ! $ARG_USAGE ]] || usage
+
+# molly-guard
+ARG_MOLLY_GUARD=0
+if ! (( ARG_CONFIRM )) && ! in_array -n "${ARGS_PASS[@]}"; then
+	ARGS_PASS+=( -n )
+	ARG_MOLLY_GUARD=1
+fi
 
 
 #
@@ -58,6 +66,10 @@ if [[ ${DESTROY_TARGETS+set} ]]; then
 	log "Destroying ${#DESTROY_TARGETS[@]} datasets"
 	xargs -t -r -d'\n' -n1 -P$(nproc) zfs destroy "${ARGS_PASS[@]}" \
 		< <(printf "%s\n" "${DESTROY_TARGETS[@]}")
+
+	if (( ARG_MOLLY_GUARD )); then
+		say "(pass -y to confirm)"
+	fi
 else
 	warn "Nothing matched"
 fi
