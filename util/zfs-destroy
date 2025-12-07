@@ -1,0 +1,63 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+. lib.sh
+
+_usage() {
+	cat <<EOF
+Usage: $0 [-r|-R] [-p] [-f] [-n] [-v] DATASET-OR-SNAPSHOT-GLOB...
+EOF
+}
+
+
+#
+# args
+#
+
+declare -A _args=(
+	[-h|--help]=ARG_USAGE
+	[-r|-R|-p|-f]="pass=ARGS_PASS"
+	[-n]="ARG_DRY_RUN pass=ARGS_PASS"
+	[-v]="ARG_VERBOSE pass=ARGS_PASS"
+	[--]=ARGS
+)
+parse_args _args "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
+
+
+#
+# main
+#
+
+declare -a DESTROY_TARGETS
+
+zfs list -Ho name -t all \
+	| readarray -t TARGETS
+
+for g in "${ARGS[@]}"; do
+	[[ "$g" == *@* ]] && g_is_snap=1 || g_is_snap=0
+
+	for t in "${TARGETS[@]}"; do
+		[[ "$t" == *@* ]] && t_is_snap=1 || t_is_snap=0
+
+		if (( g_is_snap != t_is_snap )); then
+			dbg "$g: not matching against $t (arg_is_snap != target_is_snap)"
+			continue
+		fi
+
+		# $g is a glob
+		if [[ "$t" == $g ]]; then
+			DESTROY_TARGETS+=("$t")
+			dbg "$g: destroying ${t@Q}"
+		fi
+	done
+done
+
+if [[ ${DESTROY_TARGETS+set} ]]; then
+	log "Destroying ${#DESTROY_TARGETS[@]} datasets"
+	xargs -t -r -d'\n' -n1 -P$(nproc) zfs destroy "${ARGS_PASS[@]}" \
+		< <(printf "%s\n" "${DESTROY_TARGETS[@]}")
+else
+	warn "Nothing matched"
+fi

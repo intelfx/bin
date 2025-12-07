@@ -7,6 +7,6 @@ if [[ -t 1 ]]; then
 	color=(--color=always)
 fi
 
-rg -uuu --no-heading --no-line-number "${color[@]}" . "$@" \
-	| sort -t: -k1 \
-	| column -s: -t -l2
+rg -uuu --no-heading --no-line-number --field-match-separator=$'\t' "${color[@]}" . "$@" \
+	| sort -t $'\t' -k1 \
+	| column -s $'\t' -t -l2
