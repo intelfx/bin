@@ -6,7 +6,7 @@ shopt -s lastpipe
 
 _usage() {
 	cat <<EOF
-Usage: $0 DATASET-GLOB@SNAPSHOT...
+Usage: $0 [-r|-R] [-f] DATASET-GLOB@SNAPSHOT...
 EOF
 }
 
@@ -17,6 +17,7 @@ EOF
 
 declare -A _args=(
 	[-h|--help]=ARG_USAGE
+	[-r|-R|-f]="pass=ARGS_PASS"
 	[--]=ARGS
 )
 parse_args _args "$@" || usage
@@ -52,7 +53,7 @@ done
 
 if [[ ${ROLLBACK_TARGETS+set} ]]; then
 	log "Rolling back ${#ROLLBACK_TARGETS[@]} datasets"
-	xargs -t -r -d'\n' -n1 -P$(nproc) zfs rollback \
+	xargs -t -r -d'\n' -n1 -P$(nproc) zfs rollback "${ARGS_PASS[@]}" \
 		< <(printf "%s\n" "${ROLLBACK_TARGETS[@]}")
 else
 	warn "Nothing matched"
