@@ -100,6 +100,10 @@ for arg; do
 	esac
 	# augment some args
 	case "$arg" in
+	/u:Administrator)
+		ARGS+=( /admin )
+		ARG_NO_NLA=1
+		;;
 	/u:intelfx|/u:intelfx@intelfx.name)
 		ARGS+=( /admin )
 		ARG_NO_NLA=1
