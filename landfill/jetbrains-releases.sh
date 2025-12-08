@@ -23,9 +23,10 @@ JQ_PROG='.
 	| reverse
 	| .[0]
 ))
-| map(
-	"\(.code)\t\(.name)\t\(.releases.type)\t\(.releases.date)\t\(.releases.version)\t\(.releases.build)"
-)'
+| map(. as $o | .releases | map(. as $r |
+	"\($o.code)\t\($o.name)\t\($r.type)\t\($r.date)\t\($r.version)\t\($r.build)"
+))
+| flatten'
 
 COLUMNS=(CODE NAME TYPE DATE VERSION BUILD)
 {
