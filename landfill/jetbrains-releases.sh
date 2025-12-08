@@ -10,6 +10,7 @@ else
 fi
 
 PRODUCTS_LIST=(RR PCC PCP CL DG WS GO)
+LAST_N=5
 
 JQ_PROG='.
 | map({code,name,releases})
@@ -21,7 +22,7 @@ JQ_PROG='.
 	| map(select(.type | match($release_types)))
 	| sort_by(.build|split(".")|map(tonumber))
 	| reverse
-	| .[0]
+	| .[0:$last_n]
 ))
 | map(. as $o | .releases | map(. as $r |
 	"\($o.code)\t\($o.name)\t\($r.type)\t\($r.date)\t\($r.version)\t\($r.build)"
@@ -35,5 +36,6 @@ COLUMNS=(CODE NAME TYPE DATE VERSION BUILD)
 		| jq \
 			--arg products "${PRODUCTS_LIST[*]}" \
 			--arg release_types "$RELEASE_TYPES_RE" \
+			--argjson last_n "$LAST_N" \
 			"$JQ_PROG[]" -r
 } | column -Lt -s $'\t'
