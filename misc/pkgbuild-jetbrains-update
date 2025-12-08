@@ -67,6 +67,41 @@ update_one() (
 	ver="$(aur srcinfo -Qr '.pkgver')"
 	local LIBSH_LOG_PREFIX="$name"
 
+if false; then
+
+	local url
+	if [[ -f .nvchecker.toml ]]; then
+		<.nvchecker.toml tomlq \
+		| jq -r --arg pkgbase "$name" \
+			'to_entries[] | select(.key == $pkgbase) | .value.url' \
+		| IFS='' read -r url
+	else
+		local stem="${name%%-}"
+		local code="${JETBRAINS_CODES[$stem]}"
+		if ! [[ $code ]]; then
+			die "Invalid pkgbase: $name"
+		fi
+		url="https://data.services.jetbrains.com/products?code=$code"
+	fi
+
+	local json
+	trace curl -fsSL "$url" | IFS='' read -r -d '' json
+
+	local jq_prog
+	jq_prog="$(cat <<-"EOF"
+	...
+	EOF
+	)"
+
+	local -a sed_expr
+	jq -n \
+		--slurpfile products <(printf "%s" "$json") \
+		--slurpfile srcinfo <(aur srcinfo -J) \
+		"$jq_prog" \
+	| readarray -t sed_expr
+
+fi
+
 	declare -A filename_to_arch
 	declare -a sed_expr
 
