@@ -35,10 +35,13 @@ zfs list -Ho name -t snapshot \
 	| readarray -t SNAPSHOTS
 
 for g in "${ARGS[@]}"; do
+	[[ $g == ?*@?* ]] || die "snapshot glob must contain @"
+
 	for s in "${SNAPSHOTS[@]}"; do
 		# $g is a glob
 		if [[ "$s" == $g ]]; then
 			[[ $s == ?*@?* ]] || die "Internal error: invalid snapshot name: ${s@Q}"
+
 			dataset="${s%@*}"
 			snapshot="${s#*@}"
 			existing="${DATASET_TARGETS["$dataset"]}"
