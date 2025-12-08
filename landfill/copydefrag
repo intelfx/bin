@@ -1,0 +1,74 @@
+#!/bin/bash
+
+. lib.sh || exit
+
+_usage() {
+	cat <<EOF
+Usage: $0 [ARGS...]
+EOF
+}
+
+
+#
+# args
+#
+
+declare -A _args=(
+	[-h|--help]=ARG_USAGE
+	[--verbose]=ARG_VERBOSE
+	[--]=ARGS
+)
+parse_args _args "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
+
+if [[ ${ARG_VERBOSE+set} ]]; then
+	LIBSH_DEBUG=1
+fi
+
+#
+# main
+#
+
+do_handle_arg() {
+	if [[ ${ARG_VERBOSE+set} ]]; then
+		trap '{ rc=$?; set +x; } &>/dev/null; trap - RETURN; return $rc' RETURN
+		set -x
+	fi
+	cp -a --reflink=never -T -- "$arg" "$tmp1" || return
+	mv --exchange -T "$arg" "$tmp1" || return
+	rm -rf -- "$tmp1" || return
+}
+
+handle_arg() {
+	local arg="$1"
+	local argdir argname
+	local tmp1
+
+	if [[ -L "$arg" ]]; then
+		dbg "${arg@Q} is a symbolic link, skipping"
+		return
+	fi
+
+	if ! [[ -e "$arg" ]]; then
+		err "${arg@Q} does not exist, bailing out"
+		return 1
+	fi
+
+	argdir="$(dn "$arg")"
+	argname="$(bn "$arg")"
+	tmp1="$(mktemp -u -- "$argdir/.$argname.XXXXXX")"
+
+	# XXX: TOCTOU, but idgaf
+	if [[ -e "$tmp1" ]]; then
+		err "${tmp1@Q} exists, bailing out"
+		return 1
+	fi
+
+	do_handle_arg || { rc=$?; rm -vrf -- "$tmp1"; return $rc; }
+}
+
+rc=0
+for arg in "${ARGS[@]}"; do
+	handle_arg "$arg" || rc=$rc
+done
+exit "$rc"
