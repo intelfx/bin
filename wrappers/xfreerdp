@@ -35,6 +35,7 @@ OPTIONS_ENERGY_EFFICIENT=(
 	/network:lan
 
 	/gfx:avc420:off,avc444:off,rfx:on,progressive:on
+	/rfx-mode:video
 	/gdi:hw
 )
 
@@ -43,7 +44,7 @@ OPTIONS_BEST=(
 
 	# AVC420 is preferred to AVC444, so don't
 	/gfx:avc420:off,avc444:on,rfx:on,progressive:on
-	# /rfx-mode:video
+	/rfx-mode:video
 	/gdi:hw
 )
 
@@ -66,7 +67,7 @@ OPTIONS_FASTEST=(
 
 	# AVC420 is preferred to AVC444, so don't
 	/gfx:avc420:off,avc444:on,rfx:on,progressive:on
-	# /rfx-mode:video
+	/rfx-mode:video
 	/gdi:hw
 
 	#/rfx # RemoteFxCodec
