@@ -3,6 +3,81 @@
 set -eo pipefail
 shopt -s lastpipe
 
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/}
+
+Interactively edit the last commit.
+EOF
+}
+
+
+#
+# args
+#
+
+if args=$(getopt -o 'h' --long 'help' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+while :; do
+	case "$1" in
+	-h|--help) usage ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+case "$#" in
+0) ;;
+*) usage "unexpected positional arguments" ;;
+esac
+
+
+#
+# main
+#
+
+#
+# XXX: this is implemented by playing games with index, so make sure that
+#      there are no interfering changes (otherwise they will get mixed up
+#      with the edit target).
+#
+
+if ! git diff --ignore-submodules --quiet --exit-code; then
+	die "working tree is unclean (unstaged changes present), aborting"
+fi
+
+if ! git diff --ignore-submodules --cached --quiet --exit-code; then
+	die "index is unclean (staged changes present), aborting"
+fi
+
 cleanup() {
 	git reset
 }
@@ -10,7 +85,7 @@ trap cleanup EXIT
 
 TOP_DIR="$(git rev-parse --show-toplevel)"
 git reset 'HEAD^' -- "$TOP_DIR"
-git diff 'HEAD^..' --name-only -z \
+git diff 'HEAD^..' --ignore-submodules --name-only -z \
 	| git add --all --force --intent-to-add --pathspec-from-file=- --pathspec-file-nul
 git add --edit
 git commit --amend --no-edit "$@"
