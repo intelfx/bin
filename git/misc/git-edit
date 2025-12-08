@@ -27,9 +27,9 @@ usage() {
 
 _usage() {
 	cat <<EOF
-Usage: ${0##*/}
+Usage: ${0##*/} [-c|--cached]
 
-Interactively edit the last commit.
+Interactively edit the last commit, or staged changes (with -c/--cached).
 EOF
 }
 
@@ -38,15 +38,17 @@ EOF
 # args
 #
 
-if args=$(getopt -o 'h' --long 'help' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o 'hc' --long 'help,cached' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
 fi
 unset args
 
+unset ARG_CACHED
 while :; do
 	case "$1" in
+	-c|--cached) ARG_CACHED=1 ;;
 	-h|--help) usage ;;
 	--) shift; break ;;
 	*) die "getopt error" ;;
@@ -75,7 +77,13 @@ if ! git diff --ignore-submodules --quiet --exit-code; then
 fi
 
 if ! git diff --ignore-submodules --cached --quiet --exit-code; then
-	die "index is unclean (staged changes present), aborting"
+	if ! [[ ${ARG_CACHED+set} ]]; then
+		die "index is unclean (staged changes present), aborting"
+	fi
+else
+	if [[ ${ARG_CACHED+set} ]]; then
+		die "index is clean (no staged changes), nothing to do"
+	fi
 fi
 
 cleanup() {
@@ -84,8 +92,18 @@ cleanup() {
 trap cleanup EXIT
 
 TOP_DIR="$(git rev-parse --show-toplevel)"
-git reset 'HEAD^' -- "$TOP_DIR"
-git diff 'HEAD^..' --ignore-submodules --name-only -z \
-	| git add --all --force --intent-to-add --pathspec-from-file=- --pathspec-file-nul
-git add --edit
-git commit --amend --no-edit "$@"
+if [[ ${ARG_CACHED+set} ]]; then
+	git diff 'HEAD' --ignore-submodules --cached --name-only -z \
+	| sponge \
+	| {
+		git reset 'HEAD' -- "$TOP_DIR" </dev/null
+		git add --all --force --intent-to-add --pathspec-from-file=- --pathspec-file-nul
+	}
+	git add --edit
+else
+	git reset 'HEAD^' -- "$TOP_DIR"
+	git diff 'HEAD^..' --ignore-submodules --name-only -z \
+		| git add --all --force --intent-to-add --pathspec-from-file=- --pathspec-file-nul
+	git add --edit
+	git commit --amend --no-edit "$@"
+fi
