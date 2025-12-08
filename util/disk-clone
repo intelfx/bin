@@ -88,8 +88,8 @@ function blkid_src() {
 
 function cleanup_detach() {
 	unindent_all
-	local dev="$1"
-	local origin="$(losetup -n -O BACK-FILE "$dev")" || origin="<unknown>"
+	local dev="$1" origin
+	origin="$(losetup -n -O BACK-FILE "$dev")" || origin="<unknown>"
 	log "detaching $dev (loop for $origin)"
 	losetup -d "$dev"
 }
@@ -124,10 +124,10 @@ function cleanup_close() {
 
 function maybe_truncate() {
 	eval "$(lindent)"
-	local dest="$1"
-	local src="$2"
-	local dest_size="$(get_size "$dest")"
-	local src_size="$(get_size "$src")"
+	local dest="$1" src="$2"
+	local dest_size src_size
+	dest_size="$(get_size "$dest")"
+	src_size="$(get_size "$src")"
 	if ! [[ -b "$dest" ]]; then
 		log "truncating regular file $dest"
 		if ! exists "$dest"; then
@@ -143,8 +143,9 @@ function maybe_truncate() {
 function maybe_loop() {
 	eval "$(lindent)"
 	declare -n dev="$1"
+	local loop
 	if ! [[ -b "$dev" ]]; then
-		local loop=$(losetup -Pf --show "$dev")
+		loop=$(losetup -Pf --show "$dev")
 		ltrap "cleanup_detach '$loop'"
 		log "$loop for $dev"
 		dev="$loop"
@@ -263,7 +264,9 @@ LUKS_OPEN_CMD=(
 function luks_open() {
 	local part="$1"
 	local name="${part##*/}"
-	local uuid="$(blkid "$part" -o value -s UUID)"
+
+	local uuid
+	uuid="$(blkid "$part" -o value -s UUID)"
 
 	declare -n out="$2"
 	out="/dev/mapper/$name"
@@ -292,7 +295,8 @@ function luks_clone() {
 
 	local src_part="$1" dest_part="$2"
 	local src_dm dest_dm
-	local src_uuid="$(blkid_src UUID)"
+	local src_uuid
+	src_uuid="$(blkid_src UUID)"
 
 	if [[ "$ARG_LUKS" == "recreate" ]]; then
 		luks_open "$src_part" src_dm
@@ -300,7 +304,8 @@ function luks_clone() {
 	elif [[ "$ARG_LUKS" == "clone" ]]; then
 		# `mktemp -u` is unsafe, but cryptsetup won't accept a backup file
 		# that already exists.
-		local header="$(mktemp -u)"
+		local header
+		header="$(mktemp -u)"
 		ltrap "cleanup_remove '$header'"
 		cryptsetup luksHeaderBackup "$src_part" --batch-mode --header-backup-file "$header"
 		cryptsetup luksHeaderRestore "$dest_part" --batch-mode --header-backup-file "$header"
@@ -321,8 +326,9 @@ function clone_partition() {
 	eval "$(lindent)"
 
 	local idx="$1" src_part="$2" dest_part="$3"
-	local part_type="$(blkid_src TYPE)"
+	local part_type
 	local log_msg="cloning '$src_part'"
+	part_type="$(blkid_src TYPE)"
 
 	if in_array "$idx" "${ARG_SKIP[@]}"; then
 		log "skipping clone of '$src_part' to '$dest_part'"
