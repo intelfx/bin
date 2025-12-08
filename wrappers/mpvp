@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# exec mpv --ytdl-raw-options-append="proxy=socks5h://localhost:1080"
+exec proxychains -q -f "${BASH_SOURCE%/*}/../etc/proxychains.conf" mpv "$@"

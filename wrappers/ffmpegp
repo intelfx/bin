@@ -1,0 +1,3 @@
+#!/bin/bash
+
+exec proxychains -f "${BASH_SOURCE%/*}/../etc/proxychains.conf" ffmpeg "$@"
