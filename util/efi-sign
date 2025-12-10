@@ -89,6 +89,149 @@ fi
 
 
 #
+# functions
+#
+
+function hash_to_efi_sig_list() {
+	local guid="$1" input="$2" output="$3"
+	python3 - "$guid" "$input" "$output" <<"EOF"
+import struct
+import sys
+
+def efi_guid(guid_str):
+    """Convert a GUID string (e.g., '77fa9abd-0359-4d32-bd60-28f4e78f784b') to EFI-packed bytes."""
+    fields = guid_str.split('-')
+    return (
+        int(fields[0], 16).to_bytes(4, 'little') +
+        int(fields[1], 16).to_bytes(2, 'little') +
+        int(fields[2], 16).to_bytes(2, 'little') +
+        int(fields[3], 16).to_bytes(2, 'big') +
+        int(fields[4], 16).to_bytes(6, 'big')
+    )
+
+def create_hash_esl(owner_guid_str, hash_file, output_esl):
+    # Read the raw 32-byte hash
+    with open(hash_file, 'rb') as f:
+        hash_data = f.read()
+    if len(hash_data) != 32:
+        raise ValueError("Input .hash file must be exactly 32 bytes (SHA-256).")
+
+    # EFI_CERT_SHA256_GUID
+    sig_type = efi_guid('c1c41626-504c-4092-aca9-41f936934328')
+
+    # Owner GUID
+    owner_guid = efi_guid(owner_guid_str)
+
+    # EFI_SIGNATURE_DATA = owner GUID (16 bytes) + hash (32 bytes)
+    sig_data = owner_guid + hash_data
+    sig_size = len(sig_data)  # 48
+
+    # EFI_SIGNATURE_LIST headers
+    list_size = 28 + sig_size  # 76 for one entry
+    header_size = 0
+
+    # Pack the full structure
+    esl_data = (
+        sig_type +
+        struct.pack('<I', list_size) +
+        struct.pack('<I', header_size) +
+        struct.pack('<I', sig_size) +
+        sig_data
+    )
+
+    # Write to output .esl
+    with open(output_esl, 'wb') as f:
+        f.write(esl_data)
+
+if __name__ == '__main__':
+    if len(sys.argv) != 4:
+        print("Usage: python hash_to_esl.py <owner_guid> <input.hash> <output.esl>")
+        sys.exit(1)
+    create_hash_esl(sys.argv[1], sys.argv[2], sys.argv[3])
+EOF
+}
+
+function esl_cat() {
+	local output="$1"
+	shift
+	local -a inputs=( "$@" )
+
+	local LIBSH_LOG_PREFIX="esl_cat($output)"
+
+	if ! (( ${#inputs[@]} )); then
+		>"$output"
+		return
+	fi
+
+	eval "$(ltraps)"
+	local tmpfile tmpdir
+	tmpfile="$(mktemp --tmpdir eslcombine.XXXXXX)"
+	tmpdir="$(mktemp -d --tmpdir eslcombine.XXXXXX)"
+	ltrap "rm -r ${tmpdir@Q} ${tmpfile@Q}"
+
+	# output=combined_deduplicated.esl
+	# tmpfile=combined.esl
+	# tmpdir=combined.esl.d
+	# mkdir -p "$tmpdir"
+
+	log "Concatenating ${#inputs[@]} ESL files"
+	cat "${inputs[@]}" >"$tmpfile"
+
+	declare -A guids
+	local -a files lines
+	sig-list-to-certs "$tmpfile" "$tmpdir/tmp" | readarray -t lines
+	local line file guid
+	for line in "${lines[@]}"; do
+		if [[ $line =~ ^file\ (.+):\ Guid\ (.+)$ ]]; then
+			file="${BASH_REMATCH[1]}"
+			guid="${BASH_REMATCH[2]}"
+			dbg "extracted: file ${file@Q} guid ${guid@Q}"
+			files+=("$file")
+			guids["$file"]="$guid"
+		fi
+	done
+	log "Extracted ${#files[@]} signatures"
+
+	local -a esls
+	declare -A sums
+	local sum
+	for file in "${files[@]}"; do
+		sum="$(sha256sum -b "$file")"
+		sum="${sum%% *}"
+		if [[ ${sums["$sum"]+set} ]]; then
+			dbg "skipped: ${file@Q}"
+			continue
+		fi
+		sums["$sum"]=1
+
+		if ! [[ ${guids["$file"]+set} ]]; then
+			die "Internal error: no GUID for ${file@Q}"
+		fi
+		guid="${guids["$file"]}"
+
+		if [[ $file == *.der ]]; then
+			pem="${file%.der}.pem"
+			esl="$pem.esl"
+			dbg "readded: der ${file@Q} pem ${pem@Q} esl ${esl@Q}"
+			openssl x509 -inform DER -outform PEM -in "$file" -out "$pem"
+			cert-to-efi-sig-list -g "$guid" "$pem" "$esl"
+			esls+=( "$esl" )
+		elif [[ $file == *.hash ]]; then
+			esl="$file.esl"
+			dbg "readded: hash ${file@Q} esl ${esl@Q}"
+			hash_to_efi_sig_list "$guid" "$file" "$esl"
+			esls+=( "$esl" )
+		else
+			die "Internal error: unexpected file ${file@Q}"
+		fi
+	done
+	log "Reencoded ${#esls[@]} signatures"
+
+	cat "${esls[@]}" >"$output"
+}
+
+
+#
 # main
 #
 
@@ -113,9 +256,7 @@ if (( ${#ARG_INPUTS[@]} > 1 )); then
 	log "Multiple inputs, concatenating"
 	ARG_INPUT_COMBINED="$(mktemp --tmpdir efisign.XXXXXX)"
 	ltrap "rm ${ARG_INPUT_COMBINED@Q}"
-	set -x
-	cat "${ARG_INPUTS[@]}" | tee "$ARG_INPUT_COMBINED" >/dev/null
-	{ set +x; } &>/dev/null
+	esl_cat "$ARG_INPUT_COMBINED" "${ARG_INPUTS[@]}"
 else
 	ARG_INPUT_COMBINED="$ARG_INPUTS"
 fi
