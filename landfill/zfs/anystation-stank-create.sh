@@ -8,6 +8,10 @@ set -e
 # definitions
 #
 
+ZPOOL_DEVICES=(
+    /dev/disk/by-id/dm-name-stank-1
+    log /dev/disk/by-id/dm-name-stank-log-1
+)
 ZPOOL_CREATE_OPTS=(
     -o cachefile=/etc/zfs/zpool.cache
 
@@ -33,8 +37,7 @@ set -x
 
 zpool create \
     "${ZPOOL_CREATE_OPTS[@]}" \
-    stank -m /mnt/stank \
-    /dev/mapper/stank-1 \
-    log /dev/mapper/stank-log-1 \
+    stank -m /mnt/stank -O canmount=off \
+    "${ZPOOL_DEVICES[@]}" \
 
 zfs_allow_create stank operator

@@ -8,11 +8,18 @@ set -e
 # definitions
 #
 
+ZPOOL_DEVICES=(
+            raidz  /dev/disk/by-id/dm-name-htank-{1,2,3,4}
+    log            /dev/disk/by-id/dm-name-htank-log-1
+    cache          /dev/disk/by-id/dm-name-htank-cache-1
+    special mirror /dev/disk/by-id/dm-name-htank-special-{1,2}
+)
+
 ZPOOL_CREATE_OPTS=(
     -o cachefile=/etc/zfs/zpool.cache
 
     -o ashift=12
-    # -o autotrim=on
+    -o autotrim=on
     -o feature@fast_dedup=enabled
     -o feature@block_cloning=enabled
     -o feature@empty_bpobj=enabled
@@ -38,10 +45,6 @@ set -x
 zpool create \
     "${ZPOOL_CREATE_OPTS[@]}" \
     htank -m /mnt/htank \
-    raidz /dev/mapper/htank-{1,2,3,4} \
-    log /dev/mapper/htank-log-1 \
-    cache /dev/mapper/htank-cache-1 \
-    special mirror /dev/mapper/htank-special-{1,2} \
 
 zfs_allow_create htank operator
 
