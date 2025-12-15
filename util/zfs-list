@@ -1,8 +1,15 @@
 #!/bin/bash
 
+ARGV0="${0##*/}"
 ARGS=()
 COLUMNS=()
 REDUCED=0
+
+case "$ARGV0" in
+zfs-listv) REDUCED=0 ;;
+zfs-list)  ;&
+zfs-listq) REDUCED=1 ;;
+esac
 
 while (( $# )); do
 	case "$1" in
