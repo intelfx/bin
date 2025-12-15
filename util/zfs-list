@@ -2,17 +2,32 @@
 
 ARGS=()
 COLUMNS=()
+REDUCED=0
+
 while (( $# )); do
 	case "$1" in
 	-o) COLUMNS+=("$2"); shift 2;;
 	-o=*) COLUMNS+=("${1#-o=}"); shift 1;;
 	-o*) COLUMNS+=("${1#-o}"); shift 1;;
+	-v) REDUCED=0; shift 1;;
+	-q) REDUCED=1; shift 1;;
 	*) ARGS+=("$1"); shift 1;;
 	esac
 done
 
-COLUMNS=(
+COLUMNS_PRE=(
 	"name,volsize,volblocksize,recordsize,lused,used,lrefer,refer,usedds,usedsnap,compressratio,avail"
+)
+COLUMNS_PRE_REDUCED=(
+	"name,used,refer"
+)
+
+if (( REDUCED ))
+then COLUMNS_PRE=( "${COLUMNS_PRE_REDUCED[@]}" )
+fi
+
+COLUMNS=(
+	"${COLUMNS_PRE[@]}"
 	"${COLUMNS[@]}"
 	"mountpoint"
 )
