@@ -1,0 +1,13 @@
+#!/bin/bash
+
+XATTR=( --xattr-read )
+for arg; do
+	case "$arg" in
+	--xattr-read|--xattr-clear)
+		# drop implied --xattr-read
+		# this messes up indices, but it doesn't matter for "${XATTR[@]}"
+		unset XATTR[0] ;;
+	esac
+done
+
+exec rmlint -T df -o progressbar -o json:rmlint.json -o sh:rmlint.sh -o pretty -o summary -c sh:handler=clone --hidden "${XATTR[@]}" "$@"
