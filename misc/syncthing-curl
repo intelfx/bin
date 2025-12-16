@@ -20,9 +20,21 @@ REQ_PATH="${1##/}"
 ARGS=( "${@:2}" )
 
 xq -r .configuration.gui.apikey "$CONFIG_XML" | read SYNCTHING_APIKEY
-xq -r '.configuration.gui.address | sub(".*:"; "")' "$CONFIG_XML" | read SYNCTHING_PORT
-SYNCTHING_ADDRESS="localhost"
+xq -r .configuration.gui.address "$CONFIG_XML" | IFS=':' read SYNCTHING_ADDRESS SYNCTHING_PORT
 
-curl -sSL \
+if ! [[ $SYNCTHING_PORT ]]; then
+	SYNCTHING_PORT=8384
+	warn "Syncthing API endpoint port could not be inferred -- assuming $SYNCTHING_PORT"
+fi
+
+if ! [[ $SYNCTHING_ADDRESS ]]; then
+	SYNCTHING_ADDRESS=localhost
+	warn "Syncthing API endpoint address could not be inferred -- assuming $SYNCTHING_ADDRESS"
+elif [[ $SYNCTHING_ADDRESS == 0.0.0.0 ]]; then
+	SYNCTHING_ADDRESS=localhost
+	warn "Syncthing API endpoint is a wildcard address -- assuming $SYNCTHING_ADDRESS"
+fi
+
+Trace curl -sSL \
 	-H "X-API-Key: $SYNCTHING_APIKEY" \
 	"http://${SYNCTHING_ADDRESS}:${SYNCTHING_PORT}/${REQ_PATH}" "${ARGS[@]}"
