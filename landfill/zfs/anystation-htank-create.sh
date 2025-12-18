@@ -44,7 +44,7 @@ set -x
 
 zpool create \
     "${ZPOOL_CREATE_OPTS[@]}" \
-    htank -m /mnt/htank \
+    htank -m /mnt/zfs/htank -O canmount=off \
 
 zfs_allow_create htank operator
 
