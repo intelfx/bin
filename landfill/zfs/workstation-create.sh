@@ -200,6 +200,8 @@ zfs_create --os     "ROOT/flatpak"                          "/var/lib/flatpak"
 zfs_create --os     "ROOT/nix"
 zfs_create --os     "ROOT/opt"
 zfs_create --os     "ROOT/usr"
+zfs_create --os     "ROOT/usr/debug"                        "/usr/lib/debug"
+zfs_create --os     "ROOT/usr/images"                       "/var/lib/libvirt/images"
 zfs_create          "ROOT/var"
 zfs_create          "ROOT/var/etc"                          "/etc"
 zfs_create          "ROOT/var/log"
@@ -213,15 +215,15 @@ zfs_create          "DATA/home/root"                        "/root"
 
 ### "SCRATCH" ###
 zfs_create --root   "SCRATCH"                               --nomount
-zfs_create          "SCRATCH/libvirt"                       "/var/lib/libvirt/images"
-zfs_create          "SCRATCH/machines"                      "/var/lib/machines"
-zfs_create          "SCRATCH/machines/arch"
 zfs_create_podman   "SCRATCH/containers/root"               "/var/lib/containers"
 zfs_create_docker   "SCRATCH/docker/root"                   "/var/lib/docker"
 zfs_create --os     "SCRATCH/waydroid"                      "/var/lib/waydroid"
+
+zfs_create --big    "SCRATCH/var-cache-pacman-pkg"          "/var/cache/pacman/pkg"                --global
+zfs_create          "SCRATCH/machines"                      "/var/lib/machines"
+zfs_create          "SCRATCH/libvirt"                       "/var/lib/libvirt"
 zfs_create          "SCRATCH/srv-build"                     "/srv/build"
-zfs_create          "SCRATCH/srv-repo"                      "/srv/repo"
-zfs_create --big    "SCRATCH/var-cache-pacman-pkg"          "/var/cache/pacman/pkg"
+zfs_create --big    "SCRATCH/srv-repo"                      "/srv/repo"
 
 ### USERS ###
 for user in "${USERS[@]}"; do
@@ -230,12 +232,6 @@ zfs_create          "SCRATCH/cache/$user"                   "/home/$user/.cache"
 zfs_create --os     "SCRATCH/cache/$user/zeal-docsets"      "/home/$user/.cache/Zeal/Zeal/docsets"
 zfs_create_podman   "SCRATCH/containers/$user"              "/home/$user/.local/share/containers"
 done
-
-### HACKS ###
-if [[ $NAME == able ]]; then
-user=intelfx
-zfs_create          "SCRATCH/borg"                          "/home/$user/.cache/borg"
-fi
 
 set -x
 
