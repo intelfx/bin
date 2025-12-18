@@ -211,7 +211,6 @@ zfs_create --big    "ROOT/var/coredump"                     "/var/lib/systemd/co
 
 ### "DATA" ###
 zfs_create --root   "DATA"                                  --nomount
-zfs_create          "DATA/data"                             "/mnt/rpool"                           --global
 zfs_create          "DATA/home"                             "/home"
 zfs_create          "DATA/home/root"                        "/root"
 
@@ -223,15 +222,14 @@ zfs_create_podman   "SCRATCH/containers/root"               "/var/lib/containers
 zfs_create_docker   "SCRATCH/docker/root"                   "/var/lib/docker"
 
 if [[ $NAME == anystation ]]; then
-zfs_create          "SCRATCH/scratch"                       "/mnt/scratch"                         --global
+zfs_create          "SCRATCH/scratch"                                                              --global
 zfs_create          "SCRATCH/scratch/big"                                                          --global
 zfs_create          "SCRATCH/scratch/borg"                                                         --global
 zfs_create          "SCRATCH/scratch/cache"                                                        --global
 zfs_create --big    "SCRATCH/var-cache-pacman-pkg"          --nomount                              --global
-zfs_create          "SCRATCH/var-cache-pacman-pkg/arch"     "/var/cache/pacman/pkg"                --global
-zfs_create          "SCRATCH/var-cache-pacman-pkg/steamos"  "/var/cache/pacman/pkg-steamos"        --global
-# zfs_create          "SCRATCH/machines"                      "/var/lib/machines"
-# zfs_create          "SCRATCH/machines/arch"
+zfs_create          "SCRATCH/var-cache-pacman-pkg/arch"                                            --global
+zfs_create          "SCRATCH/var-cache-pacman-pkg/steamos"                                         --global
+zfs_create          "SCRATCH/machines"                      "/var/lib/machines"
 zfs_create          "SCRATCH/libvirt"                       "/var/lib/libvirt"
 zfs_create          "SCRATCH/incus"                         "/var/lib/incus"
 zfs_create          "SCRATCH/k3s"                           "/var/lib/rancher/k3s"
@@ -239,7 +237,6 @@ zfs_create          "SCRATCH/kubelet"                       "/var/lib/kubelet"
 fi
 
 if [[ $NAME == stratofortress ]]; then
-#zfs_create --os     "SCRATCH/waydroid"                      "/var/lib/waydroid"
 zfs_create          "SCRATCH/srv-build"                     "/srv/build"
 zfs_create          "SCRATCH/srv-build/cache"
 zfs_create --os     "SCRATCH/srv-build/chroot"
@@ -253,15 +250,8 @@ fi
 for user in "${USERS[@]}"; do
 zfs_create          "SCRATCH/user/$user"                    "/home/$user/tmp/big"
 zfs_create          "SCRATCH/cache/$user"                   "/home/$user/.cache"
-# zfs_create --os     "SCRATCH/cache/$user/zeal-docsets"      "/home/$user/.cache/Zeal/Zeal/docsets"
 zfs_create_podman   "SCRATCH/containers/$user"              "/home/$user/.local/share/containers"
 done
-
-### HACKS ###
-if [[ $NAME == able ]]; then
-user=intelfx
-zfs_create          "SCRATCH/borg"                          "/home/$user/.cache/borg"
-fi
 
 set -x
 
