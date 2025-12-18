@@ -8,7 +8,7 @@ set -e
 #
 
 BPOOL_DEVICES=(
-    /dev/disk/by-partuuid/3140d069-9a4b-4002-9d4c-b0f887c5974e
+    /dev/disk/by-partlabel/cain-XBOOTLDR
 )
 BPOOL_CREATE_OPTS=(
     -o compatibility=grub2
@@ -26,7 +26,7 @@ BPOOL_CREATE_OPTS=(
 )
 
 RPOOL_DEVICES=(
-    /dev/disk/by-id/dm-uuid-CRYPT-LUKS2-78c2172bac7a471594d396a3196ea068-*
+    /dev/disk/by-id/dm-name-cain-rpool-1
 )
 RPOOL_CREATE_OPTS=(
     -o cachefile=/etc/zfs/zpool.cache
