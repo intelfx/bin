@@ -15,6 +15,7 @@ declare -A _ARGS=(
     [-P|--prefix:]="ARG_PREFIX"
     [-M|--mountpoint:]="ARG_MOUNTPOINT"
     [-u|--users:]="ARG_USERS split=, append"
+    [--dedup::]="ARG_DEDUP default=on"
 )
 parse_args _ARGS "$@"
 
@@ -26,7 +27,14 @@ USERS=( "${ARG_USERS[@]}" )
 OPTIONS=( "${ARG_OPTIONS[@]}" )
 
 ZFS_OPTIONS=()
+ZFS_BIG_OPTIONS=( -o recordsize=1M )
+ZFS_OS_OPTIONS=( -o recordsize=1M -o compression=zstd-19 )
+
 for o in "${OPTIONS[@]}"; do ZFS_OPTIONS+=( -o "$o" ); done
+
+if [[ ${ARG_DEDUP+set} ]]; then
+    ZFS_OS_OPTIONS+=( -o "dedup=${ARG_DEDUP:-on}" )
+fi
 
 DATASET_ROOT="$POOL/ROOT/$NAME"
 DATASET_DATA="$POOL/DATA/$NAME"
@@ -107,8 +115,8 @@ zfs_create() {
         case "$1" in
         --global)  is_global=1 ;;
         --root)    options+=( "${ZFS_OPTIONS[@]}" ) ;;
-        --os)      options+=( -o recordsize=1M -o compression=zstd-19 -o dedup=sha256 ) ;;
-        --big)     options+=( -o recordsize=1M ) ;;
+        --os)      options+=( "${ZFS_OS_OPTIONS[@]}" ) ;;
+        --big)     options+=( "${ZFS_BIG_OPTIONS[@]}" ) ;;
         -o)        options+=( "$1" "$2" ); shift ;;
         -o?*)      options+=( "$1" ) ;;
         -p|-pp)    options+=( "$1" ) ;;
