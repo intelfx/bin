@@ -32,6 +32,18 @@ DATASET_ROOT="$POOL/ROOT/$NAME"
 DATASET_DATA="$POOL/DATA/$NAME"
 DATASET_SCRATCH="$POOL/SCRATCH/$NAME"
 
+zpool get -H altroot "$POOL" \
+    | IFS=$'\t' read _ _ value _
+
+POOL_ALTROOT=""
+if [[ $value == /?* ]]; then
+    POOL_ALTROOT="$value"
+elif [[ $value == - ]]; then
+    :
+else
+    err "Unexpected altroot: ${value@Q}"
+fi
+
 print_or() {
     local text
     text="$(cat)" && [[ "$text" ]] && printf "%s" "$text" || echo "$*"
@@ -40,6 +52,7 @@ print_or() {
 log "Target name:                     ${NAME@Q}"
 log "Target mountpoint:               ${MOUNTPOINT@Q}"
 log "Target pool:                     ${POOL@Q}"
+log "Target pool altroot:             $(<<<"${POOL_ALTROOT:+"${POOL_ALTROOT@Q}"}" print_or "(none)")"
 log "Target users to create:          $(join ', ' "${USERS[@]@Q}" | print_or "(none)")"
 log "Target dataset options:          $(join ', ' "${OPTIONS[@]@Q}" | print_or "(none)")"
 log "Target dataset for OS:           ${DATASET_ROOT@Q}"
@@ -56,19 +69,29 @@ _zfs_create_one() {
     local dataset="$1" mountpoint="$2"
     local -a options=("${@:3}")
 
-    case "$dataset" in
-    ROOT?(/*))    dataset="$DATASET_ROOT${dataset#ROOT}" ;;
-    DATA?(/*))    dataset="$DATASET_DATA${dataset#DATA}" ;;
-    SCRATCH?(/*)) dataset="$DATASET_SCRATCH${dataset#SCRATCH}" ;;
-    *)            die "zfs_create: invalid dataset: ${dataset@Q}" ;;
-    esac
+    if ! [[ $is_global ]]; then
+        case "$dataset" in
+        ROOT?(/*))    dataset="$DATASET_ROOT${dataset#ROOT}" ;;
+        DATA?(/*))    dataset="$DATASET_DATA${dataset#DATA}" ;;
+        SCRATCH?(/*)) dataset="$DATASET_SCRATCH${dataset#SCRATCH}" ;;
+        *)            die "zfs_create: invalid dataset: ${dataset@Q}" ;;
+        esac
 
-    case "$mountpoint" in
-    "") ;;
-    /)   options+=( -o mountpoint="$MOUNTPOINT" ) ;;
-    /?*) options+=( -o mountpoint="$MOUNTPOINT$mountpoint" ) ;;
-    *)   die "zfs_create: invalid mountpoint: ${mountpoint@Q}" ;;
-    esac
+        case "$mountpoint" in
+        "") ;;
+        /)   options+=( -o mountpoint="$MOUNTPOINT" ) ;;
+        /?*) options+=( -o mountpoint="$MOUNTPOINT$mountpoint" ) ;;
+        *)   die "zfs_create: invalid mountpoint: ${mountpoint@Q}" ;;
+        esac
+    else
+        dataset="$POOL/$dataset"
+
+        case "$mountpoint" in
+        "") ;;
+        /*) options+=( -o mountpoint="$mountpoint" ) ;;
+        *)  die "zfs_create: invalid mountpoint: ${mountpoint@Q}" ;;
+        esac
+    fi
 
     local -
     set -x
@@ -76,13 +99,12 @@ _zfs_create_one() {
 }
 
 zfs_create() {
-    local special
+    local is_global
     local options=()
     local args=()
     while (( $# )); do
         case "$1" in
-        --docker)  special=docker ;;
-        --podman)  special=podman ;;
+        --global)  is_global=1 ;;
         --root)    options+=( "${ZFS_OPTIONS[@]}" ) ;;
         --os)      options+=( -o recordsize=1M -o compression=zstd-19 ) ;;
         --big)     options+=( -o recordsize=1M ) ;;
@@ -157,7 +179,7 @@ zfs_create_docker() {
 
 set -x
 
-! mountpoint -q "$MOUNTPOINT" || umount -R "$MOUNTPOINT"
+! mountpoint -q "$POOL_ALTROOT$MOUNTPOINT" || umount -R "$POOL_ALTROOT$MOUNTPOINT"
 zfs destroy -R "$DATASET_SCRATCH" ||:
 zfs destroy -R "$DATASET_DATA" ||:
 zfs destroy -R "$DATASET_ROOT" ||:
