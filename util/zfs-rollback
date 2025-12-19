@@ -18,6 +18,7 @@ EOF
 declare -A _args=(
 	[-h|--help]=ARG_USAGE
 	[-r|-R|-f]="pass=ARGS_PASS"
+	[-n]="ARG_DRY_RUN"
 	[--]=ARGS
 )
 parse_args _args "$@" || usage
@@ -54,9 +55,21 @@ for g in "${ARGS[@]}"; do
 	done
 done
 
+# cute hack:
+# $dry_run is interposed between xargs' flags and command line
+# - if not dry-run, $dry_run contains a "verbose" flag to xargs
+#   (semantically, it is the trailing part of xargs' flags)
+# - if dry-run, the "verbose" argument is _replaced_ with an echo command
+#   (semantically, it is the leading part of xargs' command line)
+# the `--` is added purely to illustrate this
+dry_run=(-t --)
+if [[ ${ARG_DRY_RUN+set} ]]; then
+	dry_run=(-- echo "(would execute)")
+fi
+
 if [[ ${ROLLBACK_TARGETS+set} ]]; then
 	log "Rolling back ${#ROLLBACK_TARGETS[@]} datasets"
-	xargs -t -r -d'\n' -n1 -P$(nproc) zfs rollback "${ARGS_PASS[@]}" \
+	xargs -r -d'\n' -n1 -P$(nproc) "${dry_run[@]}" zfs rollback "${ARGS_PASS[@]}" \
 		< <(printf "%s\n" "${ROLLBACK_TARGETS[@]}")
 else
 	warn "Nothing matched"
