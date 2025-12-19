@@ -63,12 +63,14 @@ done
 #   (semantically, it is the leading part of xargs' command line)
 # the `--` is added purely to illustrate this
 dry_run=(-t --)
+msg="Rolling back"
 if [[ ${ARG_DRY_RUN+set} ]]; then
 	dry_run=(-- echo "(would execute)")
+	msg="Would roll back"
 fi
 
 if [[ ${ROLLBACK_TARGETS+set} ]]; then
-	log "Rolling back ${#ROLLBACK_TARGETS[@]} datasets"
+	log "$msg ${#ROLLBACK_TARGETS[@]} datasets"
 	xargs -r -d'\n' -n1 -P$(nproc) "${dry_run[@]}" zfs rollback "${ARGS_PASS[@]}" \
 		< <(printf "%s\n" "${ROLLBACK_TARGETS[@]}")
 else

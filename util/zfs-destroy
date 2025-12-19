@@ -30,6 +30,7 @@ parse_args _args "$@" || usage
 ARG_MOLLY_GUARD=0
 if ! (( ARG_CONFIRM )) && ! in_array -n "${ARGS_PASS[@]}"; then
 	ARGS_PASS+=( -n )
+	ARG_DRY_RUN=1
 	ARG_MOLLY_GUARD=1
 fi
 
@@ -62,8 +63,13 @@ for g in "${ARGS[@]}"; do
 	done
 done
 
+msg="Destroying"
+if [[ ${ARG_DRY_RUN+set} ]]; then
+	msg="Would destroy"
+fi
+
 if [[ ${DESTROY_TARGETS+set} ]]; then
-	log "Destroying ${#DESTROY_TARGETS[@]} datasets"
+	log "$msg ${#DESTROY_TARGETS[@]} datasets"
 	xargs -t -r -d'\n' -n1 -P$(nproc) zfs destroy "${ARGS_PASS[@]}" \
 		< <(printf "%s\n" "${DESTROY_TARGETS[@]}")
 

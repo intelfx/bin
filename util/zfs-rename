@@ -87,12 +87,14 @@ rename_pairs() {
 #   (semantically, it is the leading part of xargs' command line)
 # the `--` is added purely to illustrate this
 dry_run=(-t --)
+msg="Renaming"
 if [[ ${ARG_DRY_RUN+set} ]]; then
 	dry_run=(-- echo "(would execute)")
+	msg="Would rename"
 fi
 
 if [[ ${RENAME_TARGETS+set} ]]; then
-	log "Renaming ${#RENAME_TARGETS[@]} datasets"
+	log "$msg ${#RENAME_TARGETS[@]} datasets"
 	xargs -r -d'\n' -n2 -P$(nproc) "${dry_run[@]}" zfs rename "${ARGS_PASS[@]}" \
 		< <(rename_pairs)
 else
