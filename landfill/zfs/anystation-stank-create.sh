@@ -37,7 +37,7 @@ set -x
 
 zpool create \
     "${ZPOOL_CREATE_OPTS[@]}" \
-    stank -m /mnt/stank -O canmount=off \
+    stank -m /mnt/zfs/stank -O canmount=off \
     "${ZPOOL_DEVICES[@]}" \
 
 zfs_allow_create stank operator
