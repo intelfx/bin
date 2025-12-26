@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Wrapper for Debian-family distributions (e.g., Debian, Ubuntu)
+
+GLOBAL_ARGS=()
+CMD=
+
+while (( $# )); do
+    case "$1" in
+    create|run)
+        CMD="$1"
+        shift
+        break
+        ;;
+    *)
+        GLOBAL_ARGS+=("$1")
+        shift
+        ;;
+    esac
+done
+
+if ! [[ $CMD ]]; then
+    set -x
+    exec podman "${GLOBAL_ARGS[@]}" "$@"
+fi
+
+set -x
+    # --volume /var/lib/apt/lists:/var/lib/apt/lists:rw,idmap \
+    # --volume /etc/apt/sources.list:/etc/apt/sources.list:ro \
+    # --volume /etc/apt/sources.list.d:/etc/apt/sources.list.d:ro \
+    # --volume /etc/apt/apt.conf.d:/etc/apt/apt.conf.d:ro \
+exec podman "${GLOBAL_ARGS[@]}" "$CMD" \
+    --volume /var/cache/apt:/var/cache/apt:rw,idmap \
+    --volume "$HOME"/.cargo:/root/.cargo:rw \
+    --volume "$HOME"/go:/root/go:rw \
+    --volume "$HOME"/.cache/cargo:/root/.cache/cargo:rw \
+    --volume "$HOME"/.cache/go-mod:/root/.cache/go-mod:rw \
+    --volume "$HOME"/.cache/go-build:/root/.cache/go-build:rw \
+    --env GOMODCACHE=/root/.cache/go-mod \
+    --env CC --env CXX \
+    --env CFLAGS --env CXXFLAGS --env LDFLAGS \
+    --env RUSTFLAGS --env "CARGO_*" \
+    --env GOFLAGS --env "CGO_*" \
+    "$@"

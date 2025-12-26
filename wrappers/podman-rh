@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# Wrapper for RedHat-family distributions (e.g., Fedora, RHEL)
+
+GLOBAL_ARGS=()
+CMD=
+
+while (( $# )); do
+    case "$1" in
+    create|run)
+        CMD="$1"
+        shift
+        break
+        ;;
+    *)
+        GLOBAL_ARGS+=("$1")
+        shift
+        ;;
+    esac
+done
+
+if ! [[ $CMD ]]; then
+    set -x
+    exec podman "${GLOBAL_ARGS[@]}" "$@"
+fi
+
+set -x
+    # --volume /etc/dnf/dnf.conf:/etc/dnf/dnf.conf:ro \
+    # --volume /etc/yum.repos.d:/etc/yum.repos.d:ro \
+exec podman "${GLOBAL_ARGS[@]}" "$CMD" \
+    --volume /var/cache/dnf:/var/cache/dnf:rw,idmap \
+    --volume "$HOME"/.cargo:/root/.cargo:rw \
+    --volume "$HOME"/go:/root/go:rw \
+    --volume "$HOME"/.cache/cargo:/root/.cache/cargo:rw \
+    --volume "$HOME"/.cache/go-mod:/root/.cache/go-mod:rw \
+    --volume "$HOME"/.cache/go-build:/root/.cache/go-build:rw \
+    --env GOMODCACHE=/root/.cache/go-mod \
+    --env CC --env CXX \
+    --env CFLAGS --env CXXFLAGS --env LDFLAGS \
+    --env RUSTFLAGS --env "CARGO_*" \
+    --env GOFLAGS --env "CGO_*" \
+    "$@"
