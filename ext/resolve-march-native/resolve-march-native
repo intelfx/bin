@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -eo pipefail
+
+__SCRIPT_FILE="$(realpath -qe "$BASH_SOURCE")"
+__SCRIPT_DIR="$(dirname "$__SCRIPT_FILE")"
+PYTHONPATH="$__SCRIPT_DIR/pkg" exec python -m resolve_march_native "$@"
