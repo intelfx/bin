@@ -83,7 +83,7 @@ fi
 		./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
 	fi
 
-	find "$PATCH_DIR" -type f -name '*.patch' -printf '%P\n' | while IFS='' read -r p; do
+	find "$PATCH_DIR" -type f -name '*.patch' -printf '%P\n' | sort | while IFS='' read -r p; do
 		if [[ $p == *WIP* ]]; then
 			continue
 		fi
