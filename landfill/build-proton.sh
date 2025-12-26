@@ -1,7 +1,10 @@
 #!/bin/bash -e
 
-. $HOME/bin/lib/lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
 shopt -s nullglob
+
+. $HOME/bin/lib/lib.sh
 
 SCRIPT_DIR="$HOME/build/my/proton-ge"
 SOURCE_DIR="$SCRIPT_DIR/proton-ge-custom"
