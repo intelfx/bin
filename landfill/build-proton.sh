@@ -183,16 +183,16 @@ aexport CCACHE_DIR := $CCACHE_DIR
 }" -i Makefile
 
 # newer Makefiles do not use offline tarballs -- sunrise by hand
-mkdir -p "$SOURCE_DIR/contrib"
+mkdir -p "$SCRIPT_DIR/contrib" "$SOURCE_DIR/contrib"
 cp -av \
-	"$SCRIPT_DIR/contrib"/*.tar* \
-	-t "$SOURCE_DIR/contrib"
+	"$SCRIPT_DIR/contrib" \
+	-T "$SOURCE_DIR/contrib"
 
 make redist
 
 # ditto
 cp -avu \
-	"$SOURCE_DIR/contrib"/*.tar* \
-	-t "$SCRIPT_DIR/contrib"
+	"$SOURCE_DIR/contrib" \
+	-T "$SCRIPT_DIR/contrib"
 
 r-put *.tar.* '/mnt/data/Files/shared/dist/misc/deck/proton'
