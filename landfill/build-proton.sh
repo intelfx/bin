@@ -163,6 +163,7 @@ fi
 set -x
 
 mkdir -p "$BUILD_DIR"
+find "$BUILD_DIR" -mindepth 1 -maxdepth 1 -execdir rm -rf {} \+
 cd "$BUILD_DIR"
 declare -p CMD
 "$SOURCE_DIR/configure.sh" "${CMD[@]}" "${ARGS[@]}"
