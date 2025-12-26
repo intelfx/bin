@@ -17,6 +17,22 @@ MARCH_ORIG="znver2"
 CC_FLAGS_ORIG="-march=znver2"
 RUST_FLAGS_ORIG="-Ctarget-cpu=znver2"
 
+declare -A CC_FLAGS_DEVICES=(
+	[native]="-march=native"
+	[deck]="-march=znver2 --param=l1-cache-line-size=64 --param=l1-cache-size=32 --param=l2-cache-size=512"
+	[mtl8]="-march=skylake -mtune=generic -mabm -mavx256-split-unaligned-load -mavx256-split-unaligned-store -mclwb -mgfni -mmovdir64b -mmovdiri -mno-sgx -mpconfig -mpku -mptwrite -mrdpid -msha -mshstk -mvaes -mvpclmulqdq -mwaitpkg --param=l1-cache-line-size=64 --param=l1-cache-size=32 --param=l2-cache-size=24576"  # gcc 10
+	[mtl]="-march=meteorlake -mabm -mno-cldemote -mno-kl -mno-sgx -mno-widekl -mshstk --param=l1-cache-line-size=64 --param=l1-cache-size=48 --param=l2-cache-size=24576"  # gcc 14
+	#[mtl]="-march=meteorlake -mabm -mno-kl -mno-sgx -mno-widekl -mshstk --param=l1-cache-line-size=64 --param=l1-cache-size=48 --param=l2-cache-size=24576"  # gcc 15
+)
+declare -A RUST_FLAGS_DEVICES=(
+	[native]="-Ctarget-cpu=native"
+	[deck]="-Ctarget-cpu=znver2"
+	[mtl8]="-Ctarget-cpu=alderlake" # rustc 1.68 / LLVM 15
+	[mtl]="-Ctarget-cpu=alderlake" # rustc 1.68 / LLVM 15
+	#[mtl]="-Ctarget-cpu=meteorlake"
+)
+_devices=( "${!CC_FLAGS_DEVICES[@]}" )
+
 CMD=()
 ARGS=()
 unset TAG
@@ -24,17 +40,19 @@ unset PATCH_VERSION
 unset ARG_MARCH
 unset ARG_CFLAGS
 unset ARG_RUSTFLAGS
+unset ARG_DEVICE
 unset CC_FLAGS
 unset RUST_FLAGS
 
 _usage() {
 	cat <<EOF
-Usage: $0 [--build-tag SUFFIX] [--march MARCH] [--cflags FLAGS] [--rustflags FLAGS] [-v PATCH-VERSION]
+Usage: $0 [--build-tag SUFFIX] [--march MARCH] [--cflags FLAGS] [--rustflags FLAGS] [--device DEVICE] [-v PATCH-VERSION]
 
 --build-tag SUFFIX	append -SUFFIX to the name of the build
 --march MARCH		replace ${MARCH_ORIG@Q} in ${CC_FLAGS_ORIG@Q} and ${RUST_FLAGS_ORIG@Q} with given string
 --cflags FLAGS		replace entire ${CC_FLAGS_ORIG@Q} with given string
 --rustflags FLAGS	replace entire ${RUST_FLAGS_ORIG@Q} with given string
+--device DEVICE		replace entire flags (see above) with flags for given device (options: $(join ', ' "${_devices[@]@Q}"))
 -v PATCH-VERSION	use given patchset instead of autodetected (7ge, 8ge, 9ge, 10ge, ...)
 EOF
 }
@@ -52,6 +70,9 @@ while (( $# )); do
 		shift "$n"
 	elif get_arg k v n --rustflags -- "$@"; then
 		ARG_RUSTFLAGS="$v"
+		shift "$n"
+	elif get_arg k v n --device -- "$@"; then
+		ARG_DEVICE="$v"
 		shift "$n"
 	elif get_arg k v n -v -- "$@"; then
 		PATCH_VERSION="$v"
@@ -105,6 +126,14 @@ fi
 if [[ $ARG_MARCH ]]; then
 	CC_FLAGS="${CC_FLAGS_ORIG/$MARCH_ORIG/$ARG_MARCH}"
 	RUST_FLAGS="${RUST_FLAGS_ORIG/$MARCH_ORIG/$ARG_MARCH}"
+fi
+if [[ $ARG_DEVICE ]]; then
+	CC_FLAGS="${CC_FLAGS_DEVICES[$ARG_DEVICE]}"
+	RUST_FLAGS="${RUST_FLAGS_DEVICES[$ARG_DEVICE]}"
+	if ! [[ $CC_FLAGS && $RUST_FLAGS ]]; then
+		usage "Invalid --device= value: ${ARG_DEVICE@Q}"
+	fi
+
 fi
 if [[ $ARG_CFLAGS ]]; then
 	CC_FLAGS="$ARG_CFLAGS"
