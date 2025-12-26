@@ -21,3 +21,6 @@
 [submodule "ext/btrfs-tools"]
 	path = ext/btrfs-tools
 	url = https://github.com/intelfx/btrfs-tools
+[submodule "ext/resolve-march-native/pkg"]
+	path = ext/resolve-march-native/pkg
+	url = https://github.com/hartwork/resolve-march-native
