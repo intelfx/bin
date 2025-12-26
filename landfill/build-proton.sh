@@ -6,11 +6,12 @@ shopt -s nullglob
 
 . $HOME/bin/lib/lib.sh
 
-SCRIPT_DIR="$HOME/build/my/proton-ge"
+SCRIPT_DIR="$HOME/tmp/big/build/proton-ge"
 SOURCE_DIR="$SCRIPT_DIR/proton-ge-custom"
 BUILD_DIR="/mnt/local/Scratch/build/proton-ge"
-CCACHE_DIR="/mnt/local/Cache/proton-ge/ccache"
-SCCACHE_DIR="/mnt/local/Cache/proton-ge/sccache"  # TODO: unused
+CCACHE_DIR="/mnt/local/Scratch/cache/proton-ge/ccache"
+SCCACHE_DIR="/mnt/local/Scratch/cache/proton-ge/sccache"  # TODO: unused
+CARGO_HOME="$HOME/.cache/cargo"
 
 CMD=()
 ARGS=()
@@ -105,6 +106,8 @@ mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 declare -p CMD
 "$SOURCE_DIR/configure.sh" "${CMD[@]}" "${ARGS[@]}"
+
+export CARGO_HOME="$CARGO_HOME"
 
 CCACHE_CONFIGPATH="$CCACHE_DIR/ccache.conf"
 mkdir -p "$CCACHE_DIR"
