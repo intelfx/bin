@@ -18,6 +18,15 @@ ARGS=()
 unset TAG
 unset PATCH_VERSION
 
+_usage() {
+	cat <<EOF
+Usage: $0 [--build-tag SUFFIX] [-v PATCH-VERSION]
+
+--build-tag SUFFIX	append -SUFFIX to the name of the build
+-v PATCH-VERSION	use given patchset instead of autodetected (7ge, 8ge, 9ge, 10ge, ...)
+EOF
+}
+
 while (( $# )); do
 	declare k v n
 	if get_arg k v n --build-tag -- "$@"; then
@@ -26,6 +35,9 @@ while (( $# )); do
 	elif get_arg k v n -v -- "$@"; then
 		PATCH_VERSION="$v"
 		shift "$n"
+	elif get_flag k n -h --help -- "$@"; then
+		usage
+		exit
 	else
 		ARGS+=( "$1" )
 		shift 1
