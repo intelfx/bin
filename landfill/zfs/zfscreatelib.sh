@@ -57,11 +57,6 @@ DATASET_SCRATCH="$POOL/SCRATCH/$NAME"
 # functions
 #
 
-print_or() {
-    local text
-    text="$(cat)" && [[ "$text" ]] && printf "%s" "$text" || echo "$*"
-}
-
 print_header() {
     log "Target name:                     ${NAME@Q}"
     log "Target mountpoint:               ${MOUNTPOINT@Q}"
