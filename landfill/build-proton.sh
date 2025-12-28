@@ -31,6 +31,9 @@ declare -A RUST_FLAGS_DEVICES=(
 	[mtl]="-Ctarget-cpu=alderlake" # rustc 1.68 / LLVM 15
 	#[mtl]="-Ctarget-cpu=meteorlake"
 )
+declare -A TAGS_DEVICES=(
+	[mtl8]=mtl
+)
 _devices=( "${!CC_FLAGS_DEVICES[@]}" )
 
 CMD=()
@@ -91,7 +94,7 @@ done
 if [[ ${ARG_TAG+set} ]]; then
 	TAG="$ARG_TAG"
 elif [[ ${ARG_DEVICE+set} ]]; then
-	TAG="$ARG_DEVICE"
+	TAG="${TAGS_DEVICES[$ARG_DEVICE]-$ARG_DEVICE}"
 fi
 
 SOURCE_TAG="$(cd "$SOURCE_DIR" && git describe --tags --abbrev=0)"
