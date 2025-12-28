@@ -37,6 +37,8 @@ CMD=()
 ARGS=()
 unset TAG
 unset PATCH_VERSION
+unset ARG_TAG
+unset ARG_PATCH_VERSION
 unset ARG_MARCH
 unset ARG_CFLAGS
 unset ARG_RUSTFLAGS
@@ -60,7 +62,7 @@ EOF
 while (( $# )); do
 	declare k v n
 	if get_arg k v n --build-tag -- "$@"; then
-		TAG="$v"
+		ARG_TAG="$v"
 		shift "$n"
 	elif get_arg k v n --march -- "$@"; then
 		ARG_MARCH="$v"
@@ -75,7 +77,7 @@ while (( $# )); do
 		ARG_DEVICE="$v"
 		shift "$n"
 	elif get_arg k v n -v -- "$@"; then
-		PATCH_VERSION="$v"
+		ARG_PATCH_VERSION="$v"
 		shift "$n"
 	elif get_flag k n -h --help -- "$@"; then
 		usage
@@ -86,20 +88,20 @@ while (( $# )); do
 	fi
 done
 
-CMD=(
-	--container-engine=podman
-)
+if [[ ${ARG_TAG+set} ]]; then
+	TAG="$ARG_TAG"
+fi
 
 SOURCE_TAG="$(cd "$SOURCE_DIR" && git describe --tags --abbrev=0)"
 
 if [[ ${TAG+set} ]]; then
-	CMD+=( --build-name="$SOURCE_TAG-$TAG" )
+	BUILD_NAME="$SOURCE_TAG-$TAG"
 else
-	CMD+=( --build-name="$SOURCE_TAG" )
+	BUILD_NAME="$SOURCE_TAG"
 fi
 
-if [[ ${PATCH_VERSION+set} ]]; then
-	log "Forcing patches v${PATCH_VERSION}"
+if [[ ${ARG_PATCH_VERSION+set} ]]; then
+	PATCH_VERSION="$ARG_PATCH_VERSION"
 else
 	case "$SOURCE_TAG" in
 		GE-Proton10-*)
@@ -115,7 +117,6 @@ else
 		*)
 			die "Unknown source tag $SOURCE_TAG, cannot pick patches" ;;
 	esac
-	log "Using patches v${PATCH_VERSION}"
 fi
 
 PATCH_DIR="$SCRIPT_DIR/patches-${PATCH_VERSION}"
@@ -141,6 +142,18 @@ fi
 if [[ $ARG_RUSTFLAGS ]]; then
 	RUST_FLAGS="$ARG_RUSTFLAGS"
 fi
+
+print_header() {
+	log "Build name suffix:               $(ifelse "$TAG" "-$TAG" "(unset)")"
+	log "Source tag:                      ${SOURCE_TAG@Q}"
+	log "Build name:                      ${BUILD_NAME@Q}"
+	log "Patches:                         $(ifelse "$ARG_PATCH_VERSION" "${PATCH_VERSION@Q}" "${PATCH_VERSION@Q} (default)")"
+	log "-march:                          $(ifelse "$ARG_MARCH" "${ARG_MARCH@Q}" "(unset)")"
+	log "Device:                          $(ifelse "$ARG_DEVICE" "${ARG_DEVICE@Q}" "(unset)")"
+	log "CFLAGS:                          $(ifelse "$CC_FLAGS" "(unset)")"
+	log "RUSTFLAGS:                       $(ifelse "$RUST_FLAGS" "(unset)")"
+	log "./configure args:                ${CMD[*]@Q}"
+}
 
 
 (
@@ -184,17 +197,23 @@ if [[ $CC_FLAGS || $RUST_FLAGS ]]; then
 	done
 fi
 
+CMD=(
+	--container-engine=podman
+	--build-name="$BUILD_NAME"
+)
+
 if grep -q 'enable-ccache' "$SOURCE_DIR/configure.sh"; then
 	# legacy (ca. Proton-GE 8 and earlier)
 	CMD+=( --enable-ccache )
 fi
+
+print_header
 
 set -x
 
 mkdir -p "$BUILD_DIR"
 find "$BUILD_DIR" -mindepth 1 -maxdepth 1 -execdir rm -rf {} \+
 cd "$BUILD_DIR"
-declare -p CMD
 "$SOURCE_DIR/configure.sh" "${CMD[@]}" "${ARGS[@]}"
 
 export CARGO_HOME="$CARGO_HOME"
