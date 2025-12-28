@@ -90,6 +90,8 @@ done
 
 if [[ ${ARG_TAG+set} ]]; then
 	TAG="$ARG_TAG"
+elif [[ ${ARG_DEVICE+set} ]]; then
+	TAG="$ARG_DEVICE"
 fi
 
 SOURCE_TAG="$(cd "$SOURCE_DIR" && git describe --tags --abbrev=0)"
@@ -144,7 +146,7 @@ if [[ $ARG_RUSTFLAGS ]]; then
 fi
 
 print_header() {
-	log "Build name suffix:               $(ifelse "$TAG" "-$TAG" "(unset)")"
+	log "Build name suffix:               $(ifelse "$TAG" "$(ifelse "$ARG_TAG" "-$TAG" "-$TAG (default)")" "(unset)")"
 	log "Source tag:                      ${SOURCE_TAG@Q}"
 	log "Build name:                      ${BUILD_NAME@Q}"
 	log "Patches:                         $(ifelse "$ARG_PATCH_VERSION" "${PATCH_VERSION@Q}" "${PATCH_VERSION@Q} (default)")"
