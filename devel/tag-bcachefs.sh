@@ -21,7 +21,7 @@ set_one_revision() {
 
 	case "$kind" in
 	tag)    git -C "$BCACHEFS_KERNEL_DIR" tag "$@" "$name" "$rev" ;;
-	branch) git -C "$BCACHEFS_KERNEL_DIR" branch "$@" "$name" "$rev" ;;
+	branch) git -C "$BCACHEFS_KERNEL_DIR" branch -f "$@" "$name" "$rev" ;;
 	*) die "set_one_revision: invalid invocation: kind=${kind@Q}" ;;
 	esac
 }
