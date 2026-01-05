@@ -73,6 +73,8 @@ __fzf_compgen_fd() {
 	fd_opts+=( --hidden --exclude ".git" )
 	if ! __fzf_compgen_nofollow_at "$abspath"; then
 		fd_opts+=( --follow )
+		# hack: do not follow Wine's `Z:` back to `/`
+		fd_opts+=( --exclude '**/dosdevices/z:/*')
 	fi
 	if __fzf_compgen_skip_vcs_at "$abspath"; then
 		fd_opts+=( --no-ignore-vcs --no-ignore-parent )
