@@ -14,3 +14,8 @@ shopt -s lastpipe
 
 setup_tmpdir "." "$TMP_ROOT"
 process_one_dir --no-subdir ".cache/clangd"
+
+shopt -s nullglob
+for file in */compile_commands.json; do
+	process_one_dir --no-subdir "${file%/*}/.cache/clangd"
+done
