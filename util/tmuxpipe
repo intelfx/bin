@@ -289,8 +289,6 @@ run_monitor() {
 
 # Mode: Main orchestrator
 run_main() {
-	eval "$(ltraps)"
-
 	local -a args=( "$@" )
 
 	if (( ${#args[@]} == 0 )); then
@@ -347,7 +345,8 @@ run_main() {
 	}
 
 	# Cleanup function
-	_cleanup_main() {
+	# shellcheck disable=SC2329
+	_cleanup() {
 		# Kill tmux server if still running
 		if [[ -S "$SOCKET" ]]; then
 			_tmux kill-server
@@ -355,7 +354,7 @@ run_main() {
 		# Remove working directory
 		rm -rf "$WORKDIR"
 	}
-	ltrap _cleanup_main
+	trap _cleanup EXIT
 
 	# Handle stdin: if stdin is not a terminal, save it to a file for the first step
 	if [[ ! -t 0 ]]; then
