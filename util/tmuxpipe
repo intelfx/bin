@@ -32,10 +32,9 @@ shopt -s extglob
 #
 
 # --- Constants ---
-readonly TMUXPIPE_REEXEC_VAR="_TMUXPIPE_WORKDIR"
+readonly TMUXPIPE_REEXEC_VAR="_TMUXPIPE_REEXEC"
+readonly TMUXPIPE_WORKDIR_VAR="_TMUXPIPE_WORKDIR"
 readonly TMUXPIPE_STEP_VAR="_TMUXPIPE_STEP"
-readonly TMUXPIPE_MONITOR_VAR="_TMUXPIPE_MONITOR"
-readonly TMUXPIPE_STEP_COUNT_VAR="_TMUXPIPE_STEP_COUNT"
 
 # --- Usage ---
 _usage() {
@@ -93,9 +92,8 @@ deserialize_array() {
 
 # Get the number of pipeline steps
 get_step_count() {
-	local workdir="$1"
 	local count=0
-	while [[ -d "$workdir/steps/$count" ]]; do
+	while [[ -d "$WORKDIR/steps/$count" ]]; do
 		(( ++count ))
 	done
 	echo "$count"
@@ -104,29 +102,26 @@ get_step_count() {
 # Wait for all panes to exit using tmux wait-for
 # This is more efficient than polling
 wait_for_panes() {
-	local workdir="$1"
-	local count="$2"
-	local socket="$workdir/tmux.sock"
+	local count="$1"
 
 	# Wait for each step's completion channel
 	local i
 	for (( i = 0; i < count; i++ )); do
 		# Use tmux wait-for to block until signaled
 		# Each pane will signal "step-$i-done" when complete
-		tmux -S "$socket" wait-for "step-$i-done" 2>/dev/null || true
+		_tmux wait-for "step-$i-done"
 	done
 }
 
 # Get the first non-zero exit code, or 0 if all succeeded
 # (mimics shell pipeline behavior: return rightmost non-zero, but we use leftmost for clarity)
 get_pipeline_exit_code() {
-	local workdir="$1"
 	local count
-	count="$(get_step_count "$workdir")"
+	count="$(get_step_count)"
 	local i code
 	for (( i = 0; i < count; i++ )); do
-		if [[ -f "$workdir/steps/$i/exitcode" ]]; then
-			code="$(<"$workdir/steps/$i/exitcode")"
+		if [[ -f "$WORKDIR/steps/$i/exitcode" ]]; then
+			code="$(<"$WORKDIR/steps/$i/exitcode")"
 			if (( code != 0 )); then
 				echo "$code"
 				return
@@ -154,35 +149,36 @@ format_cmd() {
 
 # Mode: Execute a pipeline step (reexec mode)
 run_step() {
-	local workdir="$1"
-	local step="$2"
-	local stepdir="$workdir/steps/$step"
-	local socket="$workdir/tmux.sock"
+	_tmux() {
+		tmux "$@" 2>/dev/null || true
+	}
+
+	local step="$1"
+	local stepdir="$WORKDIR/steps/$step"
+
+	local count
+	count="$(get_step_count)"
 
 	# Set pane to remain on exit so user can see output
-	tmux -S "$socket" set-option -p remain-on-exit on 2>/dev/null || true
+	_tmux set-option -t "$TMUX_PANE" remain-on-exit on
 
 	# Deserialize command
 	local -a cmd
 	deserialize_array "$stepdir/command" cmd
 
 	# Determine stdin/stdout for this step
-	local count
-	count="$(get_step_count "$workdir")"
-
 	local stdin_source stdout_dest
-
 	if (( step == 0 )); then
 		# First step: check if we have external stdin
-		if [[ -e "$workdir/stdin" ]]; then
-			stdin_source="$workdir/stdin"
+		if [[ -e "$WORKDIR/stdin" ]]; then
+			stdin_source="$WORKDIR/stdin"
 		else
 			# No external stdin, use /dev/null
 			stdin_source="/dev/null"
 		fi
 	else
 		# Read from previous step's FIFO
-		stdin_source="$workdir/steps/$((step - 1))/pipe"
+		stdin_source="$WORKDIR/steps/$((step - 1))/pipe"
 	fi
 
 	if (( step == count - 1 )); then
@@ -200,7 +196,7 @@ run_step() {
 		# Write exit code
 		echo "${rc:-$sig_rc}" > "$stepdir/exitcode"
 		# Signal completion via tmux wait-for
-		tmux -S "$socket" wait-for -S "step-$step-done" 2>/dev/null || true
+		_tmux wait-for -S "step-$step-done"
 	}
 	trap _cleanup_step EXIT
 
@@ -223,9 +219,9 @@ run_step() {
 
 # Mode: Monitor pane (waits for all steps to complete, then prompts)
 run_monitor() {
-	local workdir="$1"
-	local step_count="$2"
-	local socket="$workdir/tmux.sock"
+	_tmux() {
+		tmux "$@" 2>/dev/null || true
+	}
 
 	echo "╔══════════════════════════════════════════════════════════════╗"
 	echo "║              Pipeline Monitor - tmuxpipe                     ║"
@@ -234,18 +230,20 @@ run_monitor() {
 	echo "Waiting for all commands to complete..."
 	echo
 
+	local count
+	count="$(get_step_count)"
+
 	# Show the pipeline
-	local count="$step_count"
 	local i
 	for (( i = 0; i < count; i++ )); do
 		local -a cmd
-		deserialize_array "$workdir/steps/$i/command" cmd
+		deserialize_array "$WORKDIR/steps/$i/command" cmd
 		printf "  [%d] %s\n" "$i" "$(format_cmd "${cmd[@]}")"
 	done
 	echo
 
 	# Wait for all panes to complete
-	wait_for_panes "$workdir" "$step_count"
+	wait_for_panes "$count"
 
 	# Show summary
 	echo
@@ -257,9 +255,9 @@ run_monitor() {
 	local -a cmd
 	local code status_icon
 	for (( i = 0; i < count; i++ )); do
-		deserialize_array "$workdir/steps/$i/command" cmd
-		if [[ -f "$workdir/steps/$i/exitcode" ]]; then
-			code="$(<"$workdir/steps/$i/exitcode")"
+		deserialize_array "$WORKDIR/steps/$i/command" cmd
+		if [[ -f "$WORKDIR/steps/$i/exitcode" ]]; then
+			code="$(<"$WORKDIR/steps/$i/exitcode")"
 		else
 			code="???"
 		fi
@@ -286,7 +284,7 @@ run_monitor() {
 	echo
 
 	# Kill the tmux server
-	tmux -S "$socket" kill-server 2>/dev/null || true
+	_tmux kill-server
 }
 
 # Mode: Main orchestrator
@@ -333,32 +331,42 @@ run_main() {
 	fi
 
 	# Create temporary working directory
-	local workdir
-	workdir="$(mktemp -d --tmpdir "tmuxpipe.XXXXXXXXXX")"
-	dbg "Working directory: $workdir"
+	WORKDIR="$(mktemp -d --tmpdir "tmuxpipe.XXXXXXXXXX")"
+	dbg "Working directory: $WORKDIR"
+
+	# Create tmux socket path
+	SOCKET="$WORKDIR/tmux.sock"
+	dbg "tmux socket: $SOCKET"
+
+	# Generate a unique tmux session name (for no particular reason, just in case)
+	local target="tmuxpipe-$$"
+
+	# Define a wrapper to run tmux commands on our socket, squelching stderr and errors
+	_tmux() {
+		tmux -S "$SOCKET" "$@" 2>/dev/null || true
+	}
 
 	# Cleanup function
 	_cleanup_main() {
-		local socket="$workdir/tmux.sock"
 		# Kill tmux server if still running
-		if [[ -S "$socket" ]]; then
-			tmux -S "$socket" kill-server 2>/dev/null || true
+		if [[ -S "$SOCKET" ]]; then
+			_tmux kill-server
 		fi
 		# Remove working directory
-		rm -rf "$workdir"
+		rm -rf "$WORKDIR"
 	}
 	ltrap _cleanup_main
 
 	# Handle stdin: if stdin is not a terminal, save it to a file for the first step
 	if [[ ! -t 0 ]]; then
 		log "Capturing stdin for first pipeline step..."
-		cat > "$workdir/stdin"
+		cat >"$WORKDIR/stdin"
 	fi
 
 	# Create step directories, serialize commands, create FIFOs
 	local i
 	for (( i = 0; i < step_count; i++ )); do
-		local stepdir="$workdir/steps/$i"
+		local stepdir="$WORKDIR/steps/$i"
 		mkdir -p "$stepdir"
 
 		# Deserialize the step (it's a declare -p output)
@@ -374,9 +382,6 @@ run_main() {
 		dbg "Step $i: ${current_cmd[*]}"
 	done
 
-	# Create tmux socket path
-	local socket="$workdir/tmux.sock"
-
 	# Get the path to this script for reexec
 	local self
 	self="$(realpath -e "${BASH_SOURCE[0]}")"
@@ -389,59 +394,56 @@ run_main() {
 	# Start tmux server with a monitor pane
 	# Pass step count so monitor knows how many steps to wait for
 	log "Starting tmux server..."
-	tmux -S "$socket" new-session -d \
+	tmux -S "$SOCKET" new-session -d \
 		-x "$term_cols" -y "$term_lines" \
-		-s "tmuxpipe" \
-		-e "$TMUXPIPE_REEXEC_VAR=$workdir" \
-		-e "$TMUXPIPE_MONITOR_VAR=1" \
-		-e "$TMUXPIPE_STEP_COUNT_VAR=$step_count" \
+		-s "$target" \
+		-e "$TMUXPIPE_REEXEC_VAR=monitor" \
+		-e "$TMUXPIPE_WORKDIR_VAR=$WORKDIR" \
 		"$self"
 
 	# Create panes for each step
 	# We split horizontally to stack panes vertically
 	# Just use session name - tmux will target the current window
-	local target="tmuxpipe"
 	for (( i = 0; i < step_count; i++ )); do
 		dbg "Creating pane for step $i"
-		tmux -S "$socket" split-window -v \
-			-t "$target" \
-			-e "$TMUXPIPE_REEXEC_VAR=$workdir" \
+		_tmux split-window -v \
+			-e "$TMUXPIPE_REEXEC_VAR=step" \
+			-e "$TMUXPIPE_WORKDIR_VAR=$WORKDIR" \
 			-e "$TMUXPIPE_STEP_VAR=$i" \
-			-e "$TMUXPIPE_MONITOR_VAR=" \
 			"$self"
 
 		# Re-layout to even-vertical after each split
-		tmux -S "$socket" select-layout -t "$target" even-vertical
+		_tmux select-layout even-vertical
 	done
 
 	# Set pane titles for clarity
 	# Pane 0 is monitor, panes 1..N are steps 0..N-1
-	tmux -S "$socket" select-pane -t "$target.0" -T "Monitor"
+	_tmux select-pane -t "$target.0" -T "[monitor]"
 	for (( i = 0; i < step_count; i++ )); do
 		local -a cmd
-		deserialize_array "$workdir/steps/$i/command" cmd
-		tmux -S "$socket" select-pane -t "$target.$((i + 1))" -T "[${i}] ${cmd[0]}"
+		deserialize_array "$WORKDIR/steps/$i/command" cmd
+		_tmux select-pane -t "$target.$((i + 1))" -T "[${i}] ${cmd[0]}"
 	done
 
 	# Enable pane border status to show titles
-	tmux -S "$socket" set-option -t "$target" pane-border-status top 2>/dev/null || true
-	tmux -S "$socket" set-option -t "$target" pane-border-format \
-		' #{pane_index}: #{pane_title} #{?pane_dead,[exit #{pane_dead_status}],}' 2>/dev/null || true
+	_tmux set-option pane-border-status top
+	_tmux set-option pane-border-format \
+		' #{pane_index}: #{pane_title} #{?pane_dead,[exit #{pane_dead_status}],}'
 
 	# Set status bar
-	tmux -S "$socket" set-option -t "tmuxpipe" status-left "[tmuxpipe] " 2>/dev/null || true
-	tmux -S "$socket" set-option -t "tmuxpipe" status-right "" 2>/dev/null || true
+	_tmux set-option status-left '[tmuxpipe] '
+	_tmux set-option status-right ''
 
 	# Focus on the monitor pane
-	tmux -S "$socket" select-pane -t "$target.0"
+	_tmux select-pane -t "$target.0"
 
 	# Attach to tmux
 	log "Attaching to tmux session..."
-	tmux -S "$socket" attach-session -t "tmuxpipe" || true
+	_tmux attach-session -t "$target"
 
 	# After detach/exit, collect exit codes
 	local pipeline_rc
-	pipeline_rc="$(get_pipeline_exit_code "$workdir")"
+	pipeline_rc="$(get_pipeline_exit_code)"
 
 	# Cleanup is handled by ltrap
 	log "Pipeline completed with exit code $pipeline_rc"
@@ -452,23 +454,34 @@ run_main() {
 # --- Entry point ---
 
 # Check for reexec mode
-if [[ "${!TMUXPIPE_REEXEC_VAR-}" ]]; then
-	workdir="${!TMUXPIPE_REEXEC_VAR}"
+if [[ "${!TMUXPIPE_REEXEC_VAR+set}" ]]; then
+	mode="${!TMUXPIPE_REEXEC_VAR}"
 
-	if [[ "${!TMUXPIPE_STEP_VAR+set}" ]]; then
-		# Step execution mode (note: step can be 0, so check +set not -)
-		# Check this BEFORE monitor mode because session env vars are inherited
-		step="${!TMUXPIPE_STEP_VAR}"
-		run_step "$workdir" "$step"
-		exit $?
-	elif [[ "${!TMUXPIPE_MONITOR_VAR-}" ]]; then
-		# Monitor mode
-		step_count="${!TMUXPIPE_STEP_COUNT_VAR}"
-		run_monitor "$workdir" "$step_count"
-		exit $?
-	else
-		die "Reexec mode but no step or monitor specified"
+	if ! [[ ${!TMUXPIPE_WORKDIR_VAR} ]]; then
+		die "\$$TMUXPIPE_WORKDIR_VAR not set"
 	fi
+	WORKDIR="${!TMUXPIPE_WORKDIR_VAR}"
+	SOCKET="$WORKDIR/tmux.sock"
+
+	case "$mode" in
+	step)
+		# Step execution mode
+		if ! [[ ${!TMUXPIPE_STEP_VAR} ]]; then
+			die "\$$TMUXPIPE_STEP_VAR not set"
+		fi
+		step="${!TMUXPIPE_STEP_VAR}"
+		run_step "$step"
+		exit $?
+		;;
+	monitor)
+		# Monitor mode
+		run_monitor
+		exit $?
+		;;
+	*)
+		die "\$$TMUXPIPE_REEXEC_VAR invalid: ${mode@Q}"
+		;;
+	esac
 fi
 
 # Normal mode: parse arguments and run
