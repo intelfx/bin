@@ -150,7 +150,7 @@ format_cmd() {
 # Mode: Execute a pipeline step (reexec mode)
 run_step() {
 	_tmux() {
-		tmux "$@" 2>/dev/null || true
+		tmux "$@"
 	}
 
 	local step="$1"
@@ -253,7 +253,7 @@ run_step() {
 # Mode: Monitor pane (waits for all steps to complete, then prompts)
 run_monitor() {
 	_tmux() {
-		tmux "$@" 2>/dev/null || true
+		tmux "$@"
 	}
 
 	echo "╔══════════════════════════════════════════════════════════════╗"
@@ -379,15 +379,15 @@ run_main() {
 
 	# Define a wrapper to run tmux commands on our socket, squelching stderr and errors
 	_tmux() {
-		tmux -S "$SOCKET" "$@" 2>/dev/null || true
+		tmux -S "$SOCKET" "$@"
 	}
 
 	# Cleanup function
 	# shellcheck disable=SC2329
 	_cleanup() {
-		# Kill tmux server if still running
+		# Kill tmux server if still running, ignore errors
 		if [[ -S "$SOCKET" ]]; then
-			_tmux kill-server
+			__tmux kill-server 2>/dev/null || true
 		fi
 		# Remove working directory
 		rm -rf "$WORKDIR"
