@@ -190,15 +190,34 @@ run_step() {
 	fi
 
 	# Signal handler to write exit code even on signals
-	local rc=0
-	_cleanup_step() {
-		local sig_rc=$?
+	local rc
+	# shellcheck disable=SC2329
+	_cleanup() {
+		# Untrap everything to avoid repeated cleanup
+		trap - HUP INT QUIT ABRT PIPE TERM EXIT
 		# Write exit code
-		echo "${rc:-$sig_rc}" > "$stepdir/exitcode"
+		echo "$rc" >"$stepdir/exitcode"
 		# Signal completion via tmux wait-for
 		_tmux wait-for -S "step-$step-done"
 	}
-	trap _cleanup_step EXIT
+	# shellcheck disable=SC2329
+	_exit() {
+		# if by some chance the child's exit code is not set (e.g. the
+		# control process was killed and we are in the signal handler),
+		# use the last exit code instead of the child's exit code
+		rc="${rc:-$?}"
+		_cleanup
+		if (( rc > 128 )); then
+			# either the child process exited with a signal, or we were killed with it
+			# we cannot just exit with $rc because that will not be a true WIFSIGNALED
+			# so kill ourselves with the same signal
+			kill -"$(( rc - 128 ))" "$$"
+		fi
+		exit "$rc"
+	}
+	# XXX: an EXIT trap is not enough to catch non-zero codes from signals,
+	#      so we need a dedicated handler for signals
+	trap _exit HUP INT QUIT ABRT PIPE TERM EXIT
 
 	# Print the command being executed (similar to set -x output)
 	echo "─────────────────────────────────────────────────" >&2
@@ -206,12 +225,17 @@ run_step() {
 	echo "─────────────────────────────────────────────────" >&2
 	echo >&2
 
+	# do not die on non-zero exit codes, we handle them ourselves
+	set +e
+
 	# Run with proper redirections
 	if [[ -n "$stdout_dest" ]]; then
-		"${cmd[@]}" < "$stdin_source" > "$stdout_dest" || rc=$?
+		"${cmd[@]}" <"$stdin_source" >"$stdout_dest"
 	else
-		"${cmd[@]}" < "$stdin_source" || rc=$?
+		"${cmd[@]}" <"$stdin_source"
 	fi
+
+	rc=$?
 
 	# EXIT trap will handle writing exitcode and signaling
 	exit "$rc"
