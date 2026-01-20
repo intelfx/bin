@@ -464,15 +464,18 @@ run_main() {
 		_tmux select-pane -t "$target.$((i + 1))" -T "[${i}] ${cmd[0]}"
 	done
 
+	# extracted from tmux's default remain-on-exit-format
+	local _tmux_exit_status='#{?#{!=:#{pane_dead_status},},exit #{pane_dead_status},}#{?#{!=:#{pane_dead_signal},},signal #{pane_dead_signal},}'
+
 	# Enable pane border status to show titles
 	_tmux set-option pane-border-status top
 	_tmux set-option pane-border-format \
-		' #{pane_index}: #{pane_title} #{?pane_dead,[exit #{pane_dead_status}],}'
+		" #{pane_index}: #{pane_title} #{?pane_dead,[${_tmux_exit_status}],}"
 
 	# Make window title follow the pane
 	_tmux set-option -gw automatic-rename on
 	_tmux set-option -gw automatic-rename-format \
-		'#{pane_title} #{?pane_dead,[exit #{pane_dead_status}],}'
+		"#{pane_title} #{?pane_dead,[${_tmux_exit_status}],}"
 
 	# Make tmux's own title (visible in case of nesting) follow the window title
 	_tmux set-option -g set-titles on
