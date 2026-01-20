@@ -235,8 +235,11 @@ run_step() {
 	set +e
 
 	# Run with proper redirections
+	# NB: opening FIFOs for writing blocks until it is open for reading
+	#     this specific ordering causes all commands to start at the same time
+	#     (everything blocks until the last step opens its FIFO for reading)
 	if [[ -n "$stdout_dest" ]]; then
-		"${cmd[@]}" <"$stdin_source" >"$stdout_dest"
+		"${cmd[@]}" >"$stdout_dest" <"$stdin_source"
 	else
 		"${cmd[@]}" <"$stdin_source"
 	fi
