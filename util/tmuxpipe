@@ -467,6 +467,13 @@ run_main() {
 	# extracted from tmux's default remain-on-exit-format
 	local _tmux_exit_status='#{?#{!=:#{pane_dead_status},},exit #{pane_dead_status},}#{?#{!=:#{pane_dead_signal},},signal #{pane_dead_signal},}'
 
+	# styling: inverse colors on error (signal or non-zero exit code), italics on success
+	local _tmux_exit_style='#{?#{!=:#{pane_dead_signal},},#[reverse],#{?#{!=:#{pane_dead_status},0},#[reverse],#[italics]}}'
+
+	# Set the "dead pane" message format with inverse colors on error
+	_tmux set-option -gw remain-on-exit-format \
+		"${_tmux_exit_style}Pane is dead [${_tmux_exit_status}] (#{t:pane_dead_time})"
+
 	# Enable pane border status to show titles
 	_tmux set-option pane-border-status top
 	_tmux set-option pane-border-format \
