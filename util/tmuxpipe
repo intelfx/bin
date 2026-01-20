@@ -321,6 +321,9 @@ run_monitor() {
 	read -r -s -n1 -p "Press any key to exit..."
 	echo
 
+	# Set a flag to indicate completion
+	touch "$WORKDIR/done"
+
 	# Kill the tmux server
 	_tmux kill-server
 }
@@ -374,6 +377,9 @@ run_main() {
 	SOCKET="$WORKDIR/tmux.sock"
 	dbg "tmux socket: $SOCKET"
 
+	# Reset completion flag
+	DONE=
+
 	# Generate a unique tmux session name (for no particular reason, just in case)
 	local target="tmuxpipe-$$"
 
@@ -385,6 +391,15 @@ run_main() {
 	# Cleanup function
 	# shellcheck disable=SC2329
 	_cleanup() {
+		# skip cleanup if the payload failed or if we are aborting by `set -e`,
+		# but only if we have actually got around to launching tmux
+		if [[ -S "$SOCKET" && ! "$DONE" ]]; then
+			err "tmuxpipe crashed unexpectedly, cleanup skipped"
+			err "  \$WORKDIR=${WORKDIR@Q}"
+			err "Attach to internal tmux session with:"
+			err "  tmux -S ${SOCKET@Q} attach"
+			exit 1
+		fi
 		# Kill tmux server if still running, ignore errors
 		if [[ -S "$SOCKET" ]]; then
 			__tmux kill-server 2>/dev/null || true
@@ -514,12 +529,18 @@ run_main() {
 	local pipeline_rc
 	pipeline_rc="$(get_pipeline_exit_code)"
 
-	# Cleanup is handled by ltrap
-	log "Pipeline completed with exit code $pipeline_rc"
+	# Check if the monitor process ran to completion
+	if [[ -e "$WORKDIR/done" ]]; then
+		DONE=1
+		log "Pipeline completed with exit code $pipeline_rc"
+	else
+		err "Monitor process did not complete"
+	fi
 
 	# Dump last step's stdout
 	cat "$WORKDIR/stdout"
 
+	# Cleanup is handled by ltrap
 	exit "$pipeline_rc"
 }
 
