@@ -193,31 +193,6 @@ run_step() {
 		stdout_dest="$stepdir/pipe"
 	fi
 
-	# Synchronization: signal that we're ready to read from our input FIFO
-	# This allows the previous step to know it's safe to open the FIFO for writing
-	if (( step > 0 )); then
-		touch "$workdir/steps/$((step - 1))/reader_ready"
-	fi
-
-	# Synchronization: wait for the next step to be ready to read before we write
-	# This prevents blocking on FIFO open (would deadlock if writer opens first)
-	if [[ -n "$stdout_dest" ]]; then
-		local wait_count=0
-		while [[ ! -f "$stepdir/reader_ready" ]]; do
-			if (( wait_count == 0 )); then
-				echo "Waiting for step $((step + 1)) to be ready..." >&2
-			fi
-			sleep 0.1
-			(( ++wait_count ))
-			# Timeout after 30 seconds
-			if (( wait_count > 300 )); then
-				echo "ERROR: Timeout waiting for step $((step + 1))" >&2
-				exit 124
-			fi
-		done
-		echo "Step $((step + 1)) is ready, proceeding..." >&2
-	fi
-
 	# Signal handler to write exit code even on signals
 	local rc=0
 	_cleanup_step() {
@@ -258,14 +233,6 @@ run_monitor() {
 	echo
 	echo "Waiting for all commands to complete..."
 	echo
-
-	# Wait for setup to complete (all step directories to exist)
-	local i
-	for (( i = 0; i < step_count; i++ )); do
-		while [[ ! -f "$workdir/steps/$i/command" ]]; do
-			sleep 0.1
-		done
-	done
 
 	# Show the pipeline
 	local count="$step_count"
