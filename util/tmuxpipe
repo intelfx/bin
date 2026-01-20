@@ -522,8 +522,19 @@ run_main() {
 	_tmux select-pane -t "$target.0"
 
 	# Attach to tmux
-	log "Attaching to tmux session..."
-	_tmux attach-session -t "$target"
+	if [[ $TMUX ]]; then
+		# nested tmux, try to do something smart
+		log "Attaching to tmux session in a new pane..."
+		local signal="tmuxpipe-$$-done"
+		tmux split-window \
+			-v -l 90% \
+			"tmux -S ${SOCKET@Q} attach-session -t ${target@Q}; tmux wait-for -S ${signal@Q}"
+		tmux wait-for "$signal"
+
+	else
+		log "Attaching to tmux session..."
+		_tmux attach-session -t "$target"
+	fi
 
 	# After detach/exit, collect exit codes
 	local pipeline_rc
