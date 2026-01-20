@@ -295,14 +295,19 @@ run_monitor() {
 			code="???"
 		fi
 
-		if [[ "$code" == "0" ]]; then
+		message="exit"
+		if (( code == 0 )); then
 			status_icon="✓"
 		else
 			status_icon="✗"
 			any_failed=1
+			if (( code > 128 )); then
+				message="signal"
+				(( code -= 128 ))
+			fi
 		fi
 
-		printf "  %s [%d] exit %-3s │ %s\n" "$status_icon" "$i" "$code" "$(format_cmd "${cmd[@]}")"
+		printf "  %s [%d] %6s %-3s │ %s\n" "$status_icon" "$i" "$message" "$code" "$(format_cmd "${cmd[@]}")"
 	done
 
 	echo
