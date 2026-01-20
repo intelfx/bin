@@ -426,15 +426,12 @@ run_main() {
 	term_cols="$(tput cols 2>/dev/null || echo 80)"
 	term_lines="$(tput lines 2>/dev/null || echo 24)"
 
-	# Start tmux server with a monitor pane
-	# Pass step count so monitor knows how many steps to wait for
+	# Start tmux server with a dummy command
 	log "Starting tmux server..."
 	tmux -S "$SOCKET" new-session -d \
 		-x "$term_cols" -y "$term_lines" \
 		-s "$target" \
-		-e "$TMUXPIPE_REEXEC_VAR=monitor" \
-		-e "$TMUXPIPE_WORKDIR_VAR=$WORKDIR" \
-		"$self"
+		"sleep infinity"
 
 	# Create panes for each step
 	# We split horizontally to stack panes vertically
@@ -446,10 +443,17 @@ run_main() {
 			-e "$TMUXPIPE_WORKDIR_VAR=$WORKDIR" \
 			-e "$TMUXPIPE_STEP_VAR=$i" \
 			"$self"
-
-		# Re-layout to even-vertical after each split
-		_tmux select-layout even-vertical
 	done
+
+	# Start the monitor in the first pane
+	# Pass step count so monitor knows how many steps to wait for
+	_tmux respawn-pane -t "$target.0" -k \
+		-e "$TMUXPIPE_REEXEC_VAR=monitor" \
+		-e "$TMUXPIPE_WORKDIR_VAR=$WORKDIR" \
+		"$self"
+
+	# Re-layout to even-vertical after all panes have been created
+	_tmux select-layout even-vertical
 
 	# Set pane titles for clarity
 	# Pane 0 is monitor, panes 1..N are steps 0..N-1
