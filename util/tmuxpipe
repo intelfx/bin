@@ -57,7 +57,7 @@ _usage() {
 	Notes:
 	  - If only one command is given (no '!' separators), it runs directly without tmux.
 	  - The first command reads from stdin if not a terminal; otherwise from /dev/null.
-	  - The last command writes to its pane's terminal (visible output).
+	  - The last command writes into a buffer, which is then copied to overall stdout.
 	  - Press any key in the monitor pane to exit after the pipeline completes.
 	EOF
 }
@@ -182,8 +182,14 @@ run_step() {
 	fi
 
 	if (( step == count - 1 )); then
-		# Last step: write to stdout (the pane's terminal)
-		stdout_dest=""  # empty means don't redirect
+		# Last step: check if we have somewhere to write stdout to
+		if [[ -e "$WORKDIR"/stdout ]]; then
+			# Buffer to the final stdout location
+			stdout_dest="$WORKDIR/stdout"
+		else
+			# Write to the pane's terminal normally
+			stdout_dest=""  # empty means don't redirect
+		fi
 	else
 		# Write to this step's FIFO
 		stdout_dest="$stepdir/pipe"
@@ -405,6 +411,9 @@ run_main() {
 		dbg "Step $i: ${current_cmd[*]}"
 	done
 
+	# Create a file to store the stdout of the last step
+	touch "$WORKDIR/stdout"
+
 	# Get the path to this script for reexec
 	local self
 	self="$(realpath -e "${BASH_SOURCE[0]}")"
@@ -470,6 +479,9 @@ run_main() {
 
 	# Cleanup is handled by ltrap
 	log "Pipeline completed with exit code $pipeline_rc"
+
+	# Dump last step's stdout
+	cat "$WORKDIR/stdout"
 
 	exit "$pipeline_rc"
 }
