@@ -469,8 +469,23 @@ run_main() {
 	_tmux set-option pane-border-format \
 		' #{pane_index}: #{pane_title} #{?pane_dead,[exit #{pane_dead_status}],}'
 
+	# Make window title follow the pane
+	_tmux set-option -gw automatic-rename on
+	_tmux set-option -gw automatic-rename-format \
+		'#{pane_title} #{?pane_dead,[exit #{pane_dead_status}],}'
+
+	# Make tmux's own title (visible in case of nesting) follow the window title
+	_tmux set-option -g set-titles on
+	_tmux set-option -g set-titles-string \
+		'tmuxpipe: #{window_name}'
+
+	# Disable per-window status for less clutter
+	_tmux set-option window-status-format ''
+	_tmux set-option window-status-current-format ''
+
 	# Set status bar
-	_tmux set-option status-left '[tmuxpipe] '
+	_tmux set-option status-left ' [tmuxpipe] '
+	_tmux set-option status-left-length 11
 	_tmux set-option status-right ''
 
 	# Focus on the monitor pane
