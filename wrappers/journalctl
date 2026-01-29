@@ -18,6 +18,7 @@ declare -A JOURNALCTL_ARGS=(
 	[--image:]="$pass_src"
 	[--image-policy:]="$pass_src"
 	[--namespace:]="$pass_src"
+	[--synchronize-on-exit:]="$pass_src"
 
 	[-S|--since:]="ARG_SINCE" # no pass=
 	[-U|--until:]="ARG_UNTIL" # no pass=
