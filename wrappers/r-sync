@@ -1,0 +1,8 @@
+#!/bin/sh
+
+# Script version of my sligtly useful alias `r-sync` that rsyncs files into the destination
+# with sensible defaults.
+# "Sync" variant (i.e. delete files in dest/ absent from src/)
+
+exec rsync -r --partial --no-i-r -aHAX --delete "$@"
+
