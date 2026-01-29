@@ -291,6 +291,12 @@ v6.16)
 	;;
 
 v6.17)
+	# bcachefs
+	make_merge \
+		work/bcachefs-6.17 \
+		bcachefs-tools/release \
+		# EOL
+
 	# main
 	make_merge \
 		work/iwlwifi-lar-v3-6.17 \
