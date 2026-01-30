@@ -30,6 +30,7 @@ set -x
     # --volume /etc/apt/sources.list.d:/etc/apt/sources.list.d:ro \
     # --volume /etc/apt/apt.conf.d:/etc/apt/apt.conf.d:ro \
 exec podman "${GLOBAL_ARGS[@]}" "$CMD" \
+    --volume /dev/null:/etc/apt/apt.conf.d/docker-clean \
     --volume /var/cache/apt:/var/cache/apt:rw,idmap \
     --volume "$HOME"/.cargo:/root/.cargo:rw \
     --volume "$HOME"/go:/root/go:rw \
