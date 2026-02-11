@@ -3,6 +3,9 @@
 set -eo pipefail
 shopt -s lastpipe
 
+# shellcheck source=../lib/lib.sh
+. lib.sh
+
 
 #
 # This is a "text preview" script for SQLite databases.
@@ -58,20 +61,45 @@ separator() {
 
 
 #
-# main
+# args
 #
 
-if [[ -t 1 ]]; then
+_usage() {
+	cat <<EOF
+Usage: $LIB_NAME [--width <terminal width>] <database file>
+
+Text preview of SQLite databases. Requires \`sqlite3\` and \`bat\`.
+EOF
+}
+
+declare -A _args=(
+	['-h|--help']="ARG_HELP"
+	['--width:']="ARG_WIDTH"
+	['--']="ARGS"
+)
+parse_args _args "$@" || usage "Invalid arguments"
+
+case "${#ARGS[@]}" in
+1)
+	DB_FILE="${ARGS[0]}"
+	;;
+*)
+	usage "Expected 1 positional argument, got ${#ARGS[@]}"
+	;;
+esac
+
+if [[ $ARG_WIDTH ]]; then
+	TERMINAL_WIDTH="$ARG_WIDTH"
+elif [[ -t 1 ]]; then
 	TERMINAL_WIDTH=$(tput cols)
+else
+	usage "--width not specified and not on a terminal"
 fi
 
-# FIXME: proper argument parsing
-if [[ $1 == --width ]]; then
-	TERMINAL_WIDTH="$2"
-	shift 2
-fi
 
-DB_FILE="$1"
+#
+# main
+#
 
 # Redirect everything to `bat` for syntax highlighting
 # TODO: teach bat to accept an override for the file size (e.g. `--file-size=`),
