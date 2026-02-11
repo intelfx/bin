@@ -180,14 +180,86 @@ for table in "${tables[@]}"; do
 	emit "Rows:"
 	count=$(sqlite_exec "SELECT COUNT(*) FROM \"$table\";")
 	if (( count )); then
+		# TODO: perhaps random sample?
+		query="SELECT * FROM \"$table\" LIMIT 5;"
+
+		# SQLite pretty-printing formats do not support limiting
+		# overall width of the output, only per-column width.
+		# Try to approximate a per-column width limit.
+
+		sample_json="$(
+			sqlite_exec \
+				".mode json" \
+				"$query"
+		)"
+
+		# shellcheck disable=SC2016
+		WIDTHS_SORTED_JQ='.
+			| (.[0] | keys) as $keys
+			| map(map_values(tostring)) as $items
+			| ($keys
+				| map(. as $key
+					| [$key] + ($items | map(.[$key]))
+					| map(length)
+					| max
+				)
+			)
+			| sort
+			| .[]
+		'
+
+		readarray -t widths < <(
+			jq -r "$WIDTHS_SORTED_JQ" <<<"$sample_json"
+		)
+		n_columns="${#widths[@]}"
+
+		# Table formatting overhead:
+		# (2c padding + 1c leading separator) per column + 1c trailing separator + 3c comment start sequence + 2c outer padding
+		width_overhead=$(( n_columns * 3 + 1 + 5 ))
+
+		# Compute optimal per-column width limit using "water-filling" algorithm.
+		# The idea: columns narrower than an equal share "give back" their unused
+		# space to wider columns. We iteratively lock in narrow columns at their
+		# natural width and redistribute remaining space among wider columns.
+
+		available_width=$(( TERMINAL_WIDTH - width_overhead ))
+		remaining_width=$available_width
+		remaining_cols=$n_columns
+
+		for w in "${widths[@]}"; do
+			if (( remaining_cols == 0 )); then
+				break
+			fi
+			# Tentative equal distribution among remaining columns
+			tentative=$(( remaining_width / remaining_cols ))
+
+			if (( w <= tentative )); then
+				# This column fits within equal share, lock it at natural width
+				remaining_width=$(( remaining_width - w ))
+				(( remaining_cols-- ))
+			else
+				# This and all wider columns need to be capped
+				break
+			fi
+		done
+
+		if (( remaining_cols > 0 )); then
+			max_col_width=$(( remaining_width / remaining_cols ))
+		else
+			# All columns fit naturally within available width, no wrapping needed
+			max_col_width=
+		fi
+
 		emit "  Count: $count"
 		emit "  Sample (LIMIT 5):"
+		# XXX: for some reason, SQLite insists on wrapping columns even if --wrap is not set,
+		#      thus set it explicitly to the maximum column width if wrapping is not required
 		sqlite_exec \
 			".headers on" \
-			".mode box" \
+			".mode box --wrap ${max_col_width:-${widths[-1]}}" \
 			# EOL
 		readarray -t sample_lines < <(
-			sqlite_exec "SELECT * FROM \"$table\" LIMIT 5;"
+			sqlite_exec "$query"
 		)
 		sqlite_exec \
 			".headers off" \
