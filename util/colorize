@@ -47,6 +47,15 @@ function adjust_gtk3() {
 		trace gsettings set org.gnome.shell.extensions.user-theme name "${shell_theme[$1]}"
 	[[ ! ${icon_theme+set} ]] || \
 		trace gsettings set org.gnome.desktop.interface icon-theme "${icon_theme[$1]}"
+
+	# TODO: investigate why some applications pick up configuration from dconf, but some are only affected by this flag
+	# XXX: applications which require `gtk-application-prefer-dark-theme=1` in config
+	#      only accept it when dconf `gtk-theme=Adwaita` in dconf
+	# XXX: original issue is solved by installing extra/gnome-themes-extra and extra/xdg-desktop-portal-gtk)
+	#      (with that installed, apps pick up configuration from dconf via the portal)
+	#      but the question still remains
+	# trace sed -r "s|(gtk-application-prefer-dark-theme)=.*|\1=${gtk3_prefer_dark[$1]}|" \
+	# 	-i "/home/intelfx/.config/gtk-3.0/settings.ini"
 }
 
 # $1: whether to enable dark (1 or 0)
