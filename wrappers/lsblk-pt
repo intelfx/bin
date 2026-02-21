@@ -1,5 +1,65 @@
 #!/bin/bash
 
-extra_columns="PARTN,PARTLABEL,PARTFLAGS,PARTTYPE,PARTTYPENAME,PARTUUID" # ,PTTYPE,PTUUID
+# (old `lsblk-pt`)
+COLUMNS_PT=(
+	PARTN
+	PARTLABEL
+	PARTUUID     # partition instance UUID
+	PARTTYPENAME # partition type, decoded
+	PARTTYPE     # partition type UUID
+	PARTFLAGS
+	PTTYPE       # entire disk (partition table) type
+	PTUUID       # entire disk (partition table) UUID
+)
 
-exec /usr/bin/lsblk -o "+${extra_columns}" "$@" 
+# (similar to `lsblk -f`)
+COLUMNS_SHORT=(
+	NAME         # (*)
+	TYPE
+	SIZE
+	FSTYPE       # (*)
+	FSSIZE
+	FSVER        # (*)
+	LABEL        # (*)
+	UUID         # (*)
+	FSAVAIL      # (*)
+	FSUSE%       # (*)
+	MOUNTPOINTS  # (*)
+)
+
+COLUMNS=(
+	NAME
+	PHY-SEC
+	LOG-SEC
+	RO
+	TYPE
+	SIZE
+
+	FSTYPE
+	FSSIZE
+	FSAVAIL
+	FSUSE%
+	LABEL
+	MOUNTPOINTS
+	UUID
+
+	PARTN
+	PARTLABEL
+	# PARTFLAGS
+	# PARTTYPE
+	PARTTYPENAME
+	PARTUUID
+)
+
+_columns=( "${COLUMNS[@]}" )
+case "$1" in
+--pt)    _columns=( "${COLUMNS_PT[@]}" ); shift ;;
+--short) _columns=( "${COLUMNS_SHORT[@]}" ); shift ;;
+esac
+
+IFS=,
+_columns="${_columns[*]}"
+unset IFS
+
+set -x
+exec /usr/bin/lsblk -o "$_columns" "$@"
