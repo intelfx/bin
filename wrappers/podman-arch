@@ -27,7 +27,7 @@ exec podman "${GLOBAL_ARGS[@]}" "$CMD" \
 	--volume /var/cache/pacman/pkg:/var/cache/pacman/pkg:rw,idmap \
 	--volume /var/cache/pacman/repo:/var/cache/pacman/repo:ro \
 	--volume /srv/repo:/srv/repo:ro \
-	--volume "$HOME"/bin/etc/pacman.conf:/etc/pacman.conf:ro \
+	--volume "$HOME"/bin/etc/pacman-oci.conf:/etc/pacman.conf:ro \
 	--volume /etc/pacman.d/mirrorlist:/etc/pacman.d/mirrorlist:ro \
 	--volume /etc/pacman.d/gnupg:/etc/pacman.d/gnupg:ro \
 	--volume "$HOME"/.cargo:/root/.cargo:rw \
