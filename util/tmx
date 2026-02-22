@@ -56,6 +56,20 @@ while IFS='=' read -d $'\0' -r name value; do
 		# Pass outer $TERM as $ORIG_TERM (as tmux will override $TERM)
 		name="ORIG_TERM"
 		;;
+
+	JOURNAL_STREAM|\
+	INVOCATION_ID|\
+	MANAGERPID|\
+	MANAGERPIDFD|\
+	SYSTEMD_EXEC_PID)
+		# Remove systemd-specific environment variables from the outer
+		# terminal emulator in case it has been launched in a (user) unit
+		# of its own (which is in fact commonplace), to avoid leaking
+		# these variables into unrelated shell process within tmux.
+		#
+		# See also ~/.config/systemd/scripts/tmuxrc.
+		continue
+		;;
 	esac
 
 	ENVIRONMENT_COMMAND+=( "set-environment" "-t" "$new_session" "$name" "$value" ";" )
