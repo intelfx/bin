@@ -1,0 +1,150 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+shopt -s extglob
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
+
+# shellcheck disable=SC2034
+LIBSH_LOG_PREFIX="incus-pull"
+
+#
+# incus-pull: pull an OCI image via Incus by creating and immediately deleting
+# an ephemeral container, triggering image download as a side-effect.
+#
+
+_usage() {
+	cat <<-EOF
+	Usage: incus-pull [INCUS_ARGS...] IMAGE
+
+	Pull an OCI image via Incus by creating and immediately deleting an
+	ephemeral container.
+
+	IMAGE may be specified in OCI format    (registry.tld/path:tag)
+	                      or in Incus format (remote:path:tag).
+
+	The Incus OCI remote for the registry is registered automatically if
+	not already present.
+	EOF
+}
+
+#
+# Parse arguments
+# Convention: IMAGE is always the last argument; everything before it is
+# forwarded verbatim to `incus create` as global/extra arguments.
+#
+
+if (( $# < 1 )); then
+	usage "Missing image argument"
+fi
+
+case "$1" in
+-h|--help) usage ;;
+esac
+
+INCUS_ARGS=( "${@:1:$#-1}" )
+IMAGE="${*: -1}"
+
+if [[ "$IMAGE" == -* ]]; then
+	usage "IMAGE argument must not start with '-': ${IMAGE@Q}"
+fi
+
+#
+# Parse the image reference into a remote name and an Incus-style image ref.
+#
+# OCI format:   registry.tld/path[:tag]  -- first separator character is /
+# Incus format: remote:path[:tag]        -- first separator character is :
+#
+# OCI refs are normalised to Incus format by replacing the first / with :,
+# i.e. "registry.tld/path:tag" -> "registry.tld:path:tag".
+#
+
+# if [[ "$IMAGE" =~ ^([^/:]+\.[^/:]+)/(.+)$ ]]; then
+# 	# OCI format: extract registry as remote, reassemble in Incus notation
+# 	# (we expect that the OCI registry is a 2+-component domain name)
+# 	REMOTE="${BASH_REMATCH[1]}"
+# 	INCUS_IMAGE="${REMOTE}:${BASH_REMATCH[2]}"
+# elif [[ "$IMAGE" =~ ^([^/:]+):(.+)$ ]]; then
+# 	# Already in Incus format
+# 	REMOTE="${BASH_REMATCH[1]}"
+# 	INCUS_IMAGE="$IMAGE"
+# else
+# 	die "invalid image reference: ${IMAGE@Q}"
+# fi
+
+IFS=':' read -ra IMAGE_PARTS <<<"$IMAGE"
+IMAGE_REMOTE=
+IMAGE_PATH=
+IMAGE_TAG=
+
+if (( ${#IMAGE_PARTS[@]} == 3 )); then
+	# Simplest case: full Incus-style reference `remote:path:tag`
+	IMAGE_REMOTE="${IMAGE_PARTS[0]}"
+	IMAGE_PATH="${IMAGE_PARTS[1]}"
+	IMAGE_TAG="${IMAGE_PARTS[2]}"
+elif (( ${#IMAGE_PARTS[@]} == 2 )); then
+	# Ambiguity: either tag-less Incus-style `remote:path`,
+	# or OCI-style `(registry/)path:tag`
+	# Prefer OCI-style
+	IMAGE_PATH="${IMAGE_PARTS[0]}"
+	IMAGE_TAG="${IMAGE_PARTS[1]}"
+elif (( ${#IMAGE_PARTS[@]} == 1 )); then
+	# tag-less OCI-style `(registry/)path`
+	IMAGE_PATH="${IMAGE_PARTS[0]}"
+	IMAGE_TAG="latest"
+fi
+
+# Infer registry name in case of an OCI-style reference
+if [[ ! $IMAGE_REMOTE ]]; then
+	IFS='/' read -ra IMAGE_PATH_PARTS <<<"$IMAGE_PATH"
+
+	# Assume that registry is always a multi-label domain name (i.e., contains a dot),
+	# otherwise the first path component is merely part of the path
+	if (( ${#IMAGE_PATH_PARTS[@]} >= 2 )) && [[ "${IMAGE_PATH_PARTS[0]}" == *.* ]]; then
+		# Full OCI-style reference: `registry/path:tag`
+		IMAGE_REMOTE="${IMAGE_PATH_PARTS[0]}"
+		IMAGE_PATH="${IMAGE_PATH#"$IMAGE_REMOTE/"}"
+	else
+		# No registry specified
+		# Sell our souls to Docker, Inc.
+		IMAGE_REMOTE="docker.io"
+	fi
+fi
+
+# Reconstruct full Incus-style reference
+INCUS_IMAGE="${IMAGE_REMOTE}:${IMAGE_PATH}:${IMAGE_TAG}"
+
+log "pulling ${INCUS_IMAGE@Q}"
+
+# Ensure an Incus remote of type "oci" for this registry exists
+declare -A oci_remotes=()
+incus remote ls -c nup -f csv,noheader | \
+	while IFS=, read -r _name _url _protocol
+do
+	if [[ "$_protocol" == "oci" ]]; then
+		oci_remotes["$_name"]=1
+	fi
+done
+
+if [[ ! "${oci_remotes[$IMAGE_REMOTE]+set}" ]]; then
+	log "remote ${IMAGE_REMOTE@Q} not found, adding"
+	Trace incus remote add "$IMAGE_REMOTE" "https://$IMAGE_REMOTE" --protocol oci
+else
+	dbg "remote ${IMAGE_REMOTE@Q} already exists"
+fi
+
+#
+# Pull the image by spinning up an ephemeral container and immediately deleting it.
+#
+
+eval "$(globaltraps)"
+
+CONTAINER="tmp-$(echo -n "$INCUS_IMAGE" | tr -cs '[:alnum:]' '-')-$$"
+ltrap "incus rm -f ${CONTAINER@Q}"
+
+Trace incus "${INCUS_ARGS[@]}" create "$INCUS_IMAGE" "$CONTAINER" --ephemeral
+Trace incus rm -f "$CONTAINER"
+
+luntrap
