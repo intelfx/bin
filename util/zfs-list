@@ -1,9 +1,13 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
 ARGV0="${0##*/}"
 ARGS=()
 COLUMNS=()
 REDUCED=0
+COLOR=0
 
 case "$ARGV0" in
 zfs-listv) REDUCED=0 ;;
@@ -13,6 +17,7 @@ esac
 
 while (( $# )); do
 	case "$1" in
+	-c|--color) COLOR=1; shift ;;
 	-o) COLUMNS+=("$2"); shift 2;;
 	-o=*) COLUMNS+=("${1#-o=}"); shift 1;;
 	-o*) COLUMNS+=("${1#-o}"); shift 1;;
@@ -40,4 +45,23 @@ COLUMNS=(
 )
 
 IFS=','
-exec zfs list -o "${COLUMNS[*]}" "${ARGS[@]}"
+ZFS_LIST_CMD=(
+	zfs list -o "${COLUMNS[*]}" "${ARGS[@]}"
+)
+unset IFS
+
+# IFS=','
+# exec zfs list -o "${COLUMNS[*]}" "${ARGS[@]}"
+
+if [[ $COLOR == 1 || -t 1 ]] \
+&& command -v bat &>/dev/null \
+&& bat --list-languages | grep -q -w zfs-list; then
+	BAT_CMD=(
+		bat --language zfs-list --plain --color=always --paging=never
+	)
+
+	# try not to leave a shell hanging around
+	exec "${ZFS_LIST_CMD[@]}" | exec "${BAT_CMD[@]}"
+else
+	exec "${ZFS_LIST_CMD[@]}"
+fi
