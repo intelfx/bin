@@ -21,7 +21,7 @@ SSH_ARGS=(
 	# we do not want to leave arbitrary background processes outside of the
 	# `sshfs-*.service` unit we create, so don't do this.
 	# -o ControlPersist=1
-	-o ControlPath=/home/intelfx/.ssh/sock-%C
+	-o ControlPath="$HOME/.ssh/sock-%C"
 )
 
 SSHFS_ARGS=(
