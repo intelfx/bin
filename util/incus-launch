@@ -83,6 +83,7 @@ incus_define() {
 
 	case "$PROFILE" in
 	?(oci-)arch) incus_define_arch "$@" ;;
+	?(oci-)@(deb|rh)) die "Unimplemented: ${PROFILE@Q}" ;;
 	*) die "Unknown profile: ${PROFILE@Q}" ;;
 	esac
 
@@ -140,6 +141,8 @@ CMD=
 # multi-call support
 case "${LIB_ARGV0##*/}" in
 	incus-arch) PROFILE="oci-arch" ;;
+	incus-deb) PROFILE="oci-deb" ;;
+	incus-rh) PROFILE="oci-rh" ;;
 esac
 
 while (( $# )); do
@@ -151,6 +154,10 @@ while (( $# )); do
 
 	--oci-arch) PROFILE_IS_OCI=1 ;&
 	--arch)     PROFILE="${PROFILE_IS_OCI:+oci-}arch"; shift ;;
+	--oci-deb)  PROFILE_IS_OCI=1 ;&
+	--deb)      PROFILE="${PROFILE_IS_OCI:+oci-}deb"; shift ;;
+	--oci-rh)   PROFILE_IS_OCI=1 ;&
+	--rh)       PROFILE="${PROFILE_IS_OCI:+oci-}rh"; shift ;;
 
 	*)          GLOBAL_ARGS+=("$1"); shift ;;
 	esac
