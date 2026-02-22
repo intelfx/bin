@@ -8,6 +8,7 @@ ARGS=()
 COLUMNS=()
 REDUCED=0
 COLOR=0
+PAGING=0
 
 case "$ARGV0" in
 zfs-listv) REDUCED=0 ;;
@@ -18,6 +19,7 @@ esac
 while (( $# )); do
 	case "$1" in
 	-c|--color) COLOR=1; shift ;;
+	-P|--pager) PAGING=1; shift ;;
 	-o) COLUMNS+=("$2"); shift 2;;
 	-o=*) COLUMNS+=("${1#-o=}"); shift 1;;
 	-o*) COLUMNS+=("${1#-o}"); shift 1;;
@@ -57,7 +59,7 @@ if [[ $COLOR == 1 || -t 1 ]] \
 && command -v bat &>/dev/null \
 && bat --list-languages | grep -q -w zfs-list; then
 	BAT_CMD=(
-		bat --language zfs-list --plain --color=always --paging=never
+		bat --language zfs-list --plain --color=always --paging="$( (( PAGING )) && echo always || echo never )"
 	)
 
 	# try not to leave a shell hanging around
