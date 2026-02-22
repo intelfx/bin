@@ -30,6 +30,34 @@ _usage() {
 	EOF
 }
 
+# Piggy-back on podman's (libpod etc.) registries.conf shortnames snippet
+REGISTRY_SHORTNAMES_CONF="/etc/containers/registries.conf.d/00-shortnames.conf"
+infer_registry() {
+	local image="$1"
+
+	if ! [[ -e "$REGISTRY_SHORTNAMES_CONF" ]]; then
+		return 1
+	fi
+
+	if ! command -v tomlq &>/dev/null; then
+		return 1
+	fi
+
+	# shellcheck disable=SC2016
+	local jq_prog='.aliases[$image] // empty'
+
+	local -a image_full
+	tomlq --arg image "$image" -r "$jq_prog" "$REGISTRY_SHORTNAMES_CONF" \
+		| readarray -t image_full
+
+	if [[ ${image_full+set} ]]; then
+		printf "%s\n" "$image_full"
+		return 0
+	fi
+
+	return 1
+}
+
 #
 # Parse arguments
 # Convention: IMAGE is always the last argument; everything before it is
@@ -98,6 +126,12 @@ fi
 
 # Infer registry name in case of an OCI-style reference
 if [[ ! $IMAGE_REMOTE ]]; then
+	# Attempt to expand an image "shortname" according to libpod configuration
+	if IMAGE_PATH_FULL="$(infer_registry "$IMAGE_PATH")"; then
+		log "resolved ${IMAGE_PATH@Q} to ${IMAGE_PATH_FULL@Q}"
+		IMAGE_PATH="$IMAGE_PATH_FULL"
+	fi
+
 	IFS='/' read -ra IMAGE_PATH_PARTS <<<"$IMAGE_PATH"
 
 	# Assume that registry is always a multi-label domain name (i.e., contains a dot),
