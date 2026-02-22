@@ -1,6 +1,10 @@
 #!/bin/bash -e
 
-. lib.sh || exit 1
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 TARGET="$1"
 ARGS=( "${@:2}" )
@@ -83,7 +87,8 @@ if [[ ${SSH_AUTH_SOCK+set} ]]; then
 	SYSTEMD_RUN_ARGS+=( -E SSH_AUTH_SOCK )
 fi
 
-systemd-run \
+set -x
+exec systemd-run \
 	--user \
 	--unit "$UNIT" \
 	-p Type=forking \
@@ -92,4 +97,3 @@ systemd-run \
 		"$USERHOST:$DIR" \
 		"$MOUNTPOINT" \
 		"${SSHFS_ARGS[@]}" \
-
