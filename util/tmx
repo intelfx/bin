@@ -51,9 +51,13 @@ fi
 
 # Now build the command line to actually copy the environment to the target session.
 while IFS='=' read -d $'\0' -r name value; do
-	if [[ $name == TERM ]]; then
+	case "$name" in
+	TERM)
+		# Pass outer $TERM as $ORIG_TERM (as tmux will override $TERM)
 		name="ORIG_TERM"
-	fi
+		;;
+	esac
+
 	ENVIRONMENT_COMMAND+=( "set-environment" "-t" "$new_session" "$name" "$value" ";" )
 done < <(env -0)
 
