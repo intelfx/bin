@@ -9,6 +9,13 @@ shopt -s lastpipe
 TARGET="$1"
 ARGS=( "${@:2}" )
 
+case "${ARGS[0]}" in
+/*|./*|../*)
+	MOUNTPOINT="${ARGS[0]}"
+	ARGS=( "${ARGS[@]:1}" )
+	;;
+esac
+
 SSH_ARGS=(
 	"${ARGS[@]}"
 	-o BatchMode=yes
@@ -61,7 +68,9 @@ else
 	SYMBOLIC_DIR="$DIR"
 fi
 
-MOUNTPOINT="$HOME/mnt/${SYMBOLIC_USERHOST}/${SYMBOLIC_DIR##/}"
+if ! [[ ${MOUNTPOINT+set} ]]; then
+	MOUNTPOINT="$HOME/mnt/${SYMBOLIC_USERHOST}/${SYMBOLIC_DIR##/}"
+fi
 mkdir -p "$MOUNTPOINT"
 
 UNIT="sshfs-$(systemd-escape "$SYMBOLIC_USER")-$(systemd-escape "$HOST")-$(systemd-escape "$DIR").service"
