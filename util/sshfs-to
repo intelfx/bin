@@ -6,6 +6,27 @@ shopt -s lastpipe
 # shellcheck source=../lib/lib.sh
 . lib.sh
 
+
+#
+# essential functions, wrappers
+#
+
+SYSTEMD_USER_ARGS=()
+FUSE_USER_ARGS=()
+if [[ $(id -u) != 0 ]]; then
+	SYSTEMD_USER_ARGS+=( --user )
+	FUSE_USER_ARGS=( -o allow_root -o idmap=user )
+else
+	FUSE_USER_ARGS=( -o allow_other )
+fi
+
+systemctl() { Trace command systemctl "${SYSTEMD_USER_ARGS[@]}" "$@"; }
+
+
+#
+# args
+#
+
 TARGET="$1"
 ARGS=( "${@:2}" )
 
@@ -15,6 +36,11 @@ case "${ARGS[0]}" in
 	ARGS=( "${ARGS[@]:1}" )
 	;;
 esac
+
+
+#
+# ssh defaults
+#
 
 SSH_ARGS=(
 	"${ARGS[@]}"
@@ -33,8 +59,7 @@ SSH_ARGS=(
 
 SSHFS_ARGS=(
 	"${SSH_ARGS[@]}"
-	-o allow_root
-	-o idmap=user
+	"${FUSE_USER_ARGS[@]}"
 	-o transform_symlinks
 	-o reconnect
 	-o max_conns=8
@@ -74,19 +99,19 @@ fi
 mkdir -p "$MOUNTPOINT"
 
 UNIT="sshfs-$(systemd-escape "$SYMBOLIC_USER")-$(systemd-escape "$HOST")-$(systemd-escape "$DIR").service"
-ACTIVE="$(systemctl --user is-active "$UNIT" || true)"
+ACTIVE="$(systemctl is-active "$UNIT" || true)"
 case "$ACTIVE" in
 inactive)
 	;;
 failed)
-	systemctl --user reset-failed "$UNIT"
+	systemctl reset-failed "$UNIT"
 	;;
 active)
-	systemctl --user status "$UNIT"
+	systemctl status "$UNIT"
 	exit
 	;;
 *)
-	systemctl --user status "$UNIT"
+	systemctl status "$UNIT"
 	die "Invalid unit state for '$UNIT': '$ACTIVE'"
 	;;
 esac
@@ -98,7 +123,7 @@ fi
 
 set -x
 exec systemd-run \
-	--user \
+	"${SYSTEMD_USER_ARGS[@]}" \
 	--unit "$UNIT" \
 	-p Type=forking \
 	"${SYSTEMD_RUN_ARGS[@]}" \
