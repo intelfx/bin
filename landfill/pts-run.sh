@@ -1,6 +1,10 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 PTS_ROOT="$HOME/.phoronix-test-suite"
 PTS_TEST_ROOT="$PTS_ROOT/installed-tests"

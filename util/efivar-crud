@@ -1,6 +1,10 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 function handle_fail() {
 	local cmd="$BASH_COMMAND" function="${FUNCNAME[1]}" exitcode="$?"

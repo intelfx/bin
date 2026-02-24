@@ -1,6 +1,10 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 git_verify() {
 	git rev-parse --verify --quiet "$1" >/dev/null

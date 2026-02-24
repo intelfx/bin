@@ -1,7 +1,10 @@
 #!/bin/bash
 
-set -e
-. lib.sh || exit 1
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../../lib/lib.sh
+. lib.sh
 
 cleanup() {
 	if [[ -e $pvc_yaml ]]; then

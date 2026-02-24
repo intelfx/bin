@@ -1,6 +1,10 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 REMOTE_BRANCH="bcachefs/master"
 REMOTE_REF="refs/remotes/$REMOTE_BRANCH"

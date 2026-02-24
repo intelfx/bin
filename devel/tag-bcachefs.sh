@@ -3,6 +3,7 @@
 set -eo pipefail
 shopt -s lastpipe
 
+# shellcheck source=../lib/lib.sh
 . lib.sh
 
 BCACHEFS_TOOLS_DIR="$HOME/devel/ext/bcachefs-tools"

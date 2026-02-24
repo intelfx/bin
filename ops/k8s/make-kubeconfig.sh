@@ -1,6 +1,10 @@
-#!/bin/bash -e
+#!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../../lib/lib.sh
+. lib.sh
 
 kubeget() {
 	local jsonpath="$1"

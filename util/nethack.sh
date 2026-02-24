@@ -1,7 +1,10 @@
 #!/bin/bash
 
-set -e
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 NH_LIVE_DIR="/var/games/nethack"
 NH_SAVE_DIR="$(systemd-path user-shared)/nethack"

@@ -1,6 +1,10 @@
-#!/bin/bash -e
+#!/bin/bash
 
-. lib.sh || exitG
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 MKTORRENT=(
 	mktorrent

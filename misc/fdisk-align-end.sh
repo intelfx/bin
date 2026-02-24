@@ -1,6 +1,10 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 ARGS=$(getopt -o 'a:' --long 'align:' -n "${0##*/}" -- "$@")
 eval set -- "$ARGS"

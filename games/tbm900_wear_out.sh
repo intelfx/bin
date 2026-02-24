@@ -1,6 +1,10 @@
 #!/bin/bash
 
-. lib.sh || exit 1
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 STATE_FILE_NEW="$1"
 STATE_FILE_OLD="$2"

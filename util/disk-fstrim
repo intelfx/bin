@@ -4,6 +4,7 @@ set -eo pipefail
 shopt -s lastpipe
 shopt -s nullglob
 
+# shellcheck source=../lib/lib.sh
 . lib.sh
 
 _usage() {

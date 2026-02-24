@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash
 
 set -eo pipefail
 shopt -s lastpipe

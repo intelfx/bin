@@ -1,6 +1,10 @@
-#!/bin/bash -e
+#!/bin/bash
 
-. lib.sh || exit 1
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 ARG_START="$1"
 ARG_END="$2"

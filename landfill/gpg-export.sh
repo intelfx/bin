@@ -1,5 +1,9 @@
-#!/bin/bash -e
+#!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
 . lib.sh
 
 _usage() {

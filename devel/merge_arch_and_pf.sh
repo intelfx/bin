@@ -3,7 +3,8 @@
 set -eo pipefail
 shopt -s lastpipe
 
-. lib.sh || exit
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 git_list_versions() {
 	# TODO: "rolling back" changes with sed is ugly

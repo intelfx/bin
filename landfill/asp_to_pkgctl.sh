@@ -1,6 +1,10 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 ASP_URL="/srv/build/asp"
 GITLAB_URL="https://gitlab.archlinux.org/archlinux/packaging/"

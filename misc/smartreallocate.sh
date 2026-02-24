@@ -1,5 +1,9 @@
 #!/bin/bash
 
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
 . lib.sh
 
 SECTOR_LOG_PER_PHYS=4

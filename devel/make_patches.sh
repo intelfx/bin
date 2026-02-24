@@ -1,7 +1,11 @@
 #!/bin/bash
 
-. lib.sh || exit
+set -eo pipefail
+shopt -s lastpipe
 shopt -s extglob
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 #
 # constants, functions

@@ -3,7 +3,8 @@
 set -eo pipefail
 shopt -s lastpipe
 
-. lib.sh || exit
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 # pending resolution of https://github.com/systemd/systemd/issues/16699
 systemctl_host() {

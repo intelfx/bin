@@ -3,7 +3,8 @@
 set -eo pipefail
 shopt -s lastpipe
 
-. lib.sh || exit
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 
 #

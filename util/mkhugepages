@@ -64,7 +64,8 @@ elif [[ $1 == write ]]; then
 	die "Invalid call: $0 ${*@Q}"
 fi
 
-. lib.sh || exit
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 _usage() {
 	cat <<EOF

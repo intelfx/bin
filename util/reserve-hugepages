@@ -1,6 +1,10 @@
 #!/bin/bash
 
-. lib.sh || exit 1
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
 
 mem_decode() {
 	local arg="$1" value unit
