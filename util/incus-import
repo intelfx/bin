@@ -1,0 +1,194 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+shopt -s extglob
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
+
+#
+# incus-import: generate Incus image metadata and import an image into Incus.
+#
+# Supports container rootfs (directory or tarball) and VM disk images (qcow2/raw).
+#
+
+_usage() {
+	cat <<-EOF
+	Usage: $0 [OPTIONS] ALIAS PATH
+
+	Import a filesystem tree or disk image into Incus as a new image.
+
+	PATH may be:
+	  - a directory          (container rootfs, will be tar'd automatically)
+	  - a tarball (.tar.*)   (container rootfs)
+	  - a disk image (.qcow2, .raw, .img)  (virtual machine)
+
+	Options:
+	  --arch ARCH            Architecture (default: $(uname -m))
+	  --distro DISTRO        Distribution name (default: custom)
+	  --version VERSION      Release version (default: unknown)
+	  --timestamp TIMESTAMP  Creation date in date(1) -d format (default: now)
+	  --type TYPE            Image type: container or virtual-machine (inferred from PATH)
+	  --variant VARIANT      Image variant (default: default)
+	  --description DESC     Image description (default: "DISTRO VERSION")
+	  --prop KEY=VALUE       Additional metadata properties (repeatable)
+	EOF
+}
+
+declare -A ARGS=(
+	[--arch:]=ARG_ARCH
+	[--distro:]=ARG_DISTRO
+	[--version:]=ARG_VERSION
+	[--timestamp:]=ARG_TIMESTAMP
+	[--type:]=ARG_TYPE
+	[--variant:]=ARG_VARIANT
+	[--description:]=ARG_DESCRIPTION
+	[-p\|--prop:]="ARG_PROPS append"
+	[-r\|--requirement:]="ARG_REQUIREMENTS append"
+	[--]=POSITIONAL
+)
+parse_args ARGS "$@" || usage
+
+(( ${#POSITIONAL[@]} == 2 )) || usage "Expected 2 positional arguments (ALIAS PATH), got ${#POSITIONAL[@]}"
+
+ALIAS="${POSITIONAL[0]}"
+ROOTFS_PATH="${POSITIONAL[1]}"
+
+ARCH="${ARG_ARCH:-$(uname -m)}"
+DISTRO="${ARG_DISTRO:-custom}"
+VERSION="${ARG_VERSION:-unknown}"
+TIMESTAMP="${ARG_TIMESTAMP:-now}"
+TYPE="${ARG_TYPE-}"
+VARIANT="${ARG_VARIANT:-default}"
+DESCRIPTION="${ARG_DESCRIPTION:-$DISTRO${ARG_VERSION:+ $VERSION}${ARG_VARIANT:+ ($VARIANT)} for $ARCH}"
+declare -a PROPS_AUTO
+
+
+#
+# Validate / infer image type from the rootfs path
+#
+
+if [[ ! -e "$ROOTFS_PATH" ]]; then
+	die "Path does not exist: $ROOTFS_PATH"
+fi
+
+if [[ ! $TYPE ]]; then
+	if [[ -d "$ROOTFS_PATH" ]]; then
+		TYPE=container
+	elif [[ "$ROOTFS_PATH" == *.tar.@(gz|xz|zst|bz2) ]]; then
+		TYPE=container
+	elif [[ "$ROOTFS_PATH" == *.@(qcow2|raw|img) ]]; then
+		TYPE=virtual-machine
+	else
+		die "Cannot infer image type from path: $ROOTFS_PATH (specify --type explicitly)"
+	fi
+	log "Inferred image type: $TYPE"
+fi
+
+case "$TYPE" in
+virtual-machine)
+	PROPS_AUTO+=("type=disk-kvm.img")
+	;;
+container)
+	# XXX: what type?
+	;;
+*) die "Invalid image type: $TYPE (expected 'container' or 'virtual-machine')" ;;
+esac
+
+for r in "${ARG_REQUIREMENTS[@]}"; do
+	IFS='=' read -r k v <<<"$r"
+	if ! [[ $k ]]; then
+		die "Invalid requirement (expected KEY[=VALUE]): ${r@Q}"
+	fi
+	PROPS_AUTO+=("requirement.$k=${v:-true}")
+done
+
+
+#
+# Compute creation date
+#
+
+CREATION_DATE="$(date -d "$TIMESTAMP" +%s)" \
+	|| die "Invalid timestamp: $TIMESTAMP"
+
+
+#
+# If the rootfs path is a directory, tar it up
+#
+
+eval "$(globaltraps)"
+
+ROOTFS_FILE="$ROOTFS_PATH"
+if [[ -d "$ROOTFS_PATH" ]]; then
+	if [[ "$TYPE" != container ]]; then
+		die "Directory input is only supported for container images"
+	fi
+
+	log "Packing directory into tarball: $ROOTFS_PATH"
+	ROOTFS_FILE="$(mktemp1 .tar.xz)"
+	ltrap "rm -f ${ROOTFS_FILE@Q}"
+	Trace tar -cJf "$ROOTFS_FILE" -C "$ROOTFS_PATH" .
+fi
+
+
+#
+# Generate metadata
+#
+
+METADATA_DIR="$(mktemp1 -d)"
+ltrap "rm -rf ${METADATA_DIR@Q}"
+
+
+cat >"$METADATA_DIR/metadata.yaml" <<-EOF
+architecture: "$ARCH"
+creation_date: $CREATION_DATE
+type: "$TYPE"
+properties:
+  os: "$DISTRO"
+  release: "$VERSION"
+  variant: "$VARIANT"
+  description: "$DESCRIPTION"
+EOF
+
+
+declare -A _props_set
+for prop in "${ARG_PROPS[@]}"; do
+	IFS='=' read -r k v <<<"$prop"
+	if ! [[ $k && $v ]]; then
+		die "Invalid property (expected KEY=VALUE): ${prop@Q}"
+	fi
+	log "prop (user): $k = $v"
+	printf '  %s: %s\n' "$k" "$v" >>"$METADATA_DIR/metadata.yaml"
+	_props_set["$k"]=1
+done
+
+for prop in "${PROPS_AUTO[@]}"; do
+	IFS='=' read -r k v <<<"$prop"
+	if ! [[ $k && $v ]]; then
+		die "Internal error: invalid property (expected KEY=VALUE): ${prop@Q}"
+	fi
+	if [[ ${_props_set[$k]} ]]; then
+		log "prop (auto): $k = $v [skipped]"
+		continue
+	fi
+	log "prop (auto): $k = $v"
+	printf '  %s: %s\n' "$k" "$v" >>"$METADATA_DIR/metadata.yaml"
+	_props_set["$k"]=1
+done
+
+dbg "metadata.yaml:"
+dbgf "  %s" "$(< "$METADATA_DIR/metadata.yaml")"
+
+METADATA_TAR="$(mktemp1 .tar.gz)"
+ltrap "rm -f ${METADATA_TAR@Q}"
+Trace tar -czf "$METADATA_TAR" -C "$METADATA_DIR" metadata.yaml
+
+
+#
+# Import into Incus
+#
+
+log "Importing image as ${ALIAS@Q}"
+Trace incus image import "$METADATA_TAR" "$ROOTFS_FILE" --alias "$ALIAS"
+log "Done"
