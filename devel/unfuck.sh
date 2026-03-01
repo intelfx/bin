@@ -342,7 +342,7 @@ v6.18)
 		work/em7565-ids-6.12 \
 		work/zswap-writeback-6.12 \
 		work/acpi-osc-6.12 \
-		work/logitech-hidpp-6.16 \
+		work/logitech-hidpp-6.18.15 \
 		work/fs-6.17-noop \
 		work/cddl-6.18 \
 		work/zfs-6.18 \
