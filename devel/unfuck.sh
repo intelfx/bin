@@ -315,6 +315,7 @@ v6.17)
 		work/cddl-6.17 \
 		work/zfs-6.17 \
 		work/fonts-6.17 \
+		work/intel-rapl-hack-6.17 \
 		work/pf-no-teo-6.17 \
 		work/pf-no-archlinux-6.17 \
 		# work/gvt-failsafe-6.12 \
@@ -346,6 +347,7 @@ v6.18)
 		work/cddl-6.18 \
 		work/zfs-6.18 \
 		work/fonts-6.17 \
+		work/intel-rapl-hack-6.17 \
 		work/pf-no-teo-6.18 \
 		# work/gvt-failsafe-6.12 \
 		# work/gvt-workaround-6.12 \
