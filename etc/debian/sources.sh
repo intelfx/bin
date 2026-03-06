@@ -352,6 +352,28 @@ make_legacy() {
 	esac
 }
 
+# Generate APT preferences content to pin backports to default priority
+make_preferences() {
+	codename="$1"
+	case "$codename" in
+		sid)
+			# No backports for sid
+			return 1
+			;;
+		*)
+			cat <<-EOF
+			Package: *
+			Pin: release n=${codename}-backports
+			Pin-Priority: 500
+
+			Package: *
+			Pin: release n=${codename}-backports-sloppy
+			Pin-Priority: 500
+			EOF
+			;;
+	esac
+}
+
 # Write content based on codename and format
 if [ "$target_format" = "deb822" ]; then
 	make_deb822 "$codename" >"$target_file"
@@ -366,4 +388,13 @@ fi
 echo "Wrote sources to $target_file."
 if [ -n "$other_files" ]; then
 	echo "Removed $(echo "$other_files" | wc -w) other sources files."
+fi
+
+# Write backports policy
+policy_file="/etc/apt/preferences.d/99-backports"
+if make_preferences "$codename" >"$policy_file"; then
+	echo "Wrote backports policy to $policy_file."
+else
+	# No backports for this release (e.g., sid); remove any stale policy file
+	rm -f "$policy_file"
 fi
