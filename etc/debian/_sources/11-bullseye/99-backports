@@ -1,0 +1,7 @@
+Package: *
+Pin: release n=bullseye-backports
+Pin-Priority: 500
+
+Package: *
+Pin: release n=bullseye-backports-sloppy
+Pin-Priority: 500

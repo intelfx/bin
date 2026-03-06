@@ -1,0 +1,7 @@
+Package: *
+Pin: release n=trixie-backports
+Pin-Priority: 500
+
+Package: *
+Pin: release n=trixie-backports-sloppy
+Pin-Priority: 500
