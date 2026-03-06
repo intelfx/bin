@@ -1,0 +1,24 @@
+Types: deb deb-src
+URIs: http://deb.debian.org/debian
+Suites: bullseye bullseye-updates bullseye-proposed-updates
+Components: main contrib non-free
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb deb-src
+URIs: http://security.debian.org/debian-security
+Suites: bullseye-security
+Components: main contrib non-free
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+# Backports are archived
+Types: deb deb-src
+URIs: http://archive.debian.org/debian
+Suites: bullseye-backports
+Components: main contrib non-free
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb deb-src
+URIs: http://archive.debian.org/debian
+Suites: bullseye-backports-sloppy
+Components: main contrib non-free
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
