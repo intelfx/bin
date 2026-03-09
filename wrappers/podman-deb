@@ -32,6 +32,7 @@ set -x
 exec podman "${GLOBAL_ARGS[@]}" "$CMD" \
     --volume "$HOME/bin/etc/debian/sources.sh:/sources.sh:ro" \
     --volume /dev/null:/etc/apt/apt.conf.d/docker-clean \
+    --volume "$HOME/bin/etc/debian/_aptconf/docker-keep-debs:/etc/apt/apt.conf.d/docker-keep-debs" \
     --volume /var/cache/apt:/var/cache/apt:rw \
     --volume "$HOME"/.cargo:/root/.cargo:rw \
     --volume "$HOME"/go:/root/go:rw \
