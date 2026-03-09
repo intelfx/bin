@@ -31,6 +31,7 @@ set -x
     # --volume /etc/apt/apt.conf.d:/etc/apt/apt.conf.d:ro \
 exec podman "${GLOBAL_ARGS[@]}" "$CMD" \
     --volume "$HOME/bin/etc/debian/sources.sh:/sources.sh:ro" \
+    --volume "$HOME/bin/etc/debian:/misc:ro" \
     --volume /dev/null:/etc/apt/apt.conf.d/docker-clean \
     --volume "$HOME/bin/etc/debian/_aptconf/docker-keep-debs:/etc/apt/apt.conf.d/docker-keep-debs" \
     --volume "$HOME/bin/etc/debian/_aptconf/docker-no-sandbox:/etc/apt/apt.conf.d/docker-no-sandbox" \
