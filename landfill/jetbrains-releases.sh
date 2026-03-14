@@ -16,31 +16,52 @@ EOF
 	exit 1
 }
 
-RELEASE_TYPES=()
-ARG_JSON=0
-while (( $# )); do
-	case "$1" in
-	--json)
-		ARG_JSON=1
-		;;
-	-*)
-		usage "unknown option: ${1@Q}"
-		;;
-	*)
-		RELEASE_TYPES+=("$1")
-		;;
-	esac
-	shift
-done
+declare -A _args=(
+	['--json']="ARG_JSON"
+	['-r|--release:']="ARG_RELEASES split=' ' append"
+	['-p|--product:']="ARG_PRODUCTS split=' ' append"
+	['-n|--last:']="ARG_LAST"
+	[--]="ARGS"
+)
+parse_args _args "$@" || usage
 
-if [[ ${RELEASE_TYPES+set} ]]; then
-	RELEASE_TYPES_RE="$(IFS='|'; echo "${RELEASE_TYPES[*]}")"
+# compat
+ARG_RELEASES+=("${ARGS[@]}")
+
+if [[ ${ARG_RELEASES+set} ]]; then
+	RELEASE_TYPES_RE="$(join '|' "${ARG_RELEASES[@]}")"
 else
 	RELEASE_TYPES_RE=".*"
 fi
 
-PRODUCTS_LIST=(RR PCC PCP CL DG WS GO)
-LAST_N=5
+if [[ ${ARG_PRODUCTS+set} ]]; then
+	PRODUCTS_LIST=()
+	for p in "${ARG_PRODUCTS[@]}"; do
+		case "${p,,}" in
+		rustrover) PRODUCTS_LIST+=("RR") ;;
+		pycharm) PRODUCTS_LIST+=("PCC" "PCP") ;;
+		clion) PRODUCTS_LIST+=("CL") ;;
+		datagrip) PRODUCTS_LIST+=("DG") ;;
+		webstorm) PRODUCTS_LIST+=("WS") ;;
+		goland) PRODUCTS_LIST+=("GO") ;;
+		*)
+			if [[ "$p" =~ ^[a-zA-Z]{2,3}$ ]]; then
+				PRODUCTS_LIST+=("${p^^}")
+			else
+				die "Invalid product code: ${p@Q}"
+			fi
+		;;
+		esac
+	done
+else
+	PRODUCTS_LIST=(RR PCC PCP CL DG WS GO)
+fi
+
+if [[ ${ARG_LAST+set} ]]; then
+	LAST_N="$ARG_LAST"
+else
+	LAST_N=5
+fi
 
 # shellcheck disable=SC2016
 JQ_PROG_FIRST='
