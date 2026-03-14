@@ -32,18 +32,29 @@ extract_one_revision() {
 	local tools_ref="$2"
 	local kernel_ref="$3"
 
-	git -C "$BCACHEFS_TOOLS_DIR" log "$tools_ref" \
-		-1 \
-		--grep='Update bcachefs sources to ' \
-		--format=$'%h\t%S\t%s\n' \
-	| IFS=$'\t' read -r tools_rev src subject
-	[[ $subject =~ ^Update\ bcachefs\ sources\ to\ ([0-9a-f]+) ]]
+	local rev_file=".bcachefs_revision"
 
-	kernel_rev="$(git -C "$BCACHEFS_KERNEL_DIR" rev-parse --verify --short "${BASH_REMATCH[1]}" 2>/dev/null)" || kernel_rev=""
-	kernel_rev_existing="$(git -C "$BCACHEFS_KERNEL_DIR" rev-parse --verify --short "$kernel_ref" 2>/dev/null)" || kerneL_ref_existing=""
+	# try to extract the kernel code revision corresponding to the given tools version
+	# 1) from a marker file, if one exists
+	# 2) by looking up the most recent commit that updated the kernel code
+
+	if tools_rev="$(git -C "$BCACHEFS_TOOLS_DIR" log -1 --format='%h' "$tools_ref" -- "$rev_file")"; then
+		rev="$(git -C "$BCACHEFS_TOOLS_DIR" show "$tools_rev:$rev_file")"
+	else
+		git -C "$BCACHEFS_TOOLS_DIR" log "$tools_ref" \
+			-1 \
+			--grep='Update bcachefs sources to ' \
+			--format=$'%h\t%S\t%s\n' \
+		| IFS=$'\t' read -r tools_rev src subject
+		[[ $subject =~ ^Update\ bcachefs\ sources\ to\ ([0-9a-f]+) ]]
+		rev="${BASH_REMATCH[1]}"
+	fi
+
+	kernel_rev="$(git -C "$BCACHEFS_KERNEL_DIR" rev-parse --verify --short "$rev^{commit}" 2>/dev/null)" || kernel_rev=""
+	kernel_rev_existing="$(git -C "$BCACHEFS_KERNEL_DIR" rev-parse --verify --short "$kernel_ref" 2>/dev/null)" || kernel_rev_existing=""
 
 	if [[ ! $kernel_rev ]]; then
-		log "tools/$tools_ref ($tools_rev) => kernel/$kernel_ref (${BASH_REMATCH[1]}) is UNKNOWN"
+		log "tools/$tools_ref ($tools_rev) => kernel/$kernel_ref ($rev) is UNKNOWN"
 		return 0
 	elif [[ $kernel_rev_existing && $kernel_rev_existing != $kernel_rev ]]; then
 		if [[ $kind == tag ]]; then
