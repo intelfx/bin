@@ -374,6 +374,37 @@ v6.18)
 		# work/gvt-workaround-6.18 \
 		# work/i915-fastboot-revert-6.18 \
 	;;
+
+v6.19)
+	# bcachefs
+	make_merge \
+		work/bcachefs-6.18 \
+		bcachefs-tools/release \
+		# EOL
+
+	# main
+	make_merge \
+		work/iwlwifi-lar-v3-6.18 \
+		work/amd-energy-6.18 \
+		work/btrfs-remove-ghost-subvolume-6.18 \
+		work/btrfs-allocation-hint-6.18 \
+		work/tsc-directsync-6.18 \
+		work/no-jobserver-exec-6.19 \
+		work/kbuild-6.18 \
+		work/em7565-ids-6.18 \
+		work/zswap-writeback-6.18 \
+		work/acpi-osc-6.18 \
+		work/logitech-hidpp-6.19 \
+		work/fs-6.18-noop \
+		work/cddl-6.19 \
+		work/zfs-6.19 \
+		work/fonts-6.19 \
+		work/intel-rapl-hack-6.18 \
+		work/pf-no-teo-6.19 \
+		# work/gvt-failsafe-6.18 \
+		# work/gvt-workaround-6.18 \
+		# work/i915-fastboot-revert-6.18 \
+	;;
 esac
 
 Trace git branch -f "${target[patch_prefix]}${minor}"
