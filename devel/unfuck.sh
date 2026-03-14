@@ -12,13 +12,19 @@ shopt -s lastpipe
 
 _usage() {
 	cat <<EOF
-Usage: $0 [--lts] [MAJOR] [merge_arch_and_pf.sh args...]
+Usage: $0 [--lts | -n[NAME] | --name[=NAME]] [MAJOR] [merge_arch_and_pf.sh args...]
+
+Options:
+	--lts			Prefix branch name with "lts-"
+	-n, -name[=NAME]	Prefix branch name with "NAME-"
+				(if empty, do not create a named branch)
 EOF
 }
 
 declare -A _args=(
 	[getopt]="+"
 	[--lts]=ARG_LTS
+	['-n|--name::']="ARG_NAME default="
 	[--]=ARGS
 )
 parse_args _args "$@" || usage
@@ -26,6 +32,10 @@ parse_args _args "$@" || usage
 case "${#ARGS[@]}" in
 0) usage "expected 1 or more positional arguments" ;;
 esac
+
+if [[ ${ARG_LTS+set} && ${ARG_NAME+set} ]]; then
+	usage "--name and --lts cannot be used together"
+fi
 
 ARG_MAJOR="${ARGS[0]}"
 ARGS=( "${ARGS[@]:1}" )
@@ -39,12 +49,21 @@ export GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000"
 declare -A target
 target[base_prefix]=base/base-
 target[patch_prefix]=my/my-
-if [[ ${ARG_LTS+set} ]]; then
+if [[ $ARG_NAME ]]; then
+	target[base]=base/$ARG_NAME
+	target[patch]=my/$ARG_NAME
+	log "Using named branches: .../$ARG_NAME"
+elif [[ ${ARG_NAME+set} ]]; then
+	:
+	log "Not using named branches"
+elif [[ ${ARG_LTS+set} ]]; then
 	target[base]=base/lts
 	target[patch]=my/lts
+	log "Using \"lts\" branches: .../lts"
 else
 	target[base]=base/latest
 	target[patch]=my/latest
+	log "Using \"latest\" branches: .../latest"
 fi
 
 tag="v${ARG_MAJOR#v}"
@@ -57,7 +76,9 @@ Trace git describe --tags --exact HEAD \
 
 Trace git branch -f "${target[base_prefix]}${major}"
 Trace git branch -f "${target[base_prefix]}${minor}"
-Trace git branch -f "${target[base]}"
+if [[ ${target[base]} ]]; then
+	Trace git branch -f "${target[base]}"
+fi
 
 function make_merge() {
 	Trace git merge-repeatedly --ff --no-edit "$@"
@@ -357,4 +378,6 @@ esac
 
 Trace git branch -f "${target[patch_prefix]}${minor}"
 Trace git branch -f "${target[patch_prefix]}${major}"
-Trace git branch -f "${target[patch]}"
+if [[ ${target[patch]} ]]; then
+	Trace git branch -f "${target[patch]}"
+fi
