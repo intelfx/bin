@@ -353,26 +353,26 @@ v6.18)
 
 	# main
 	make_merge \
-		work/iwlwifi-lar-v3-6.17 \
-		work/amd-energy-6.16 \
-		work/btrfs-remove-ghost-subvolume-6.12 \
-		work/btrfs-allocation-hint-6.12 \
-		work/tsc-directsync-6.16 \
-		work/no-jobserver-exec-6.12 \
-		work/kbuild-6.12 \
-		work/em7565-ids-6.12 \
-		work/zswap-writeback-6.12 \
-		work/acpi-osc-6.12 \
+		work/iwlwifi-lar-v3-6.18 \
+		work/amd-energy-6.18 \
+		work/btrfs-remove-ghost-subvolume-6.18 \
+		work/btrfs-allocation-hint-6.18 \
+		work/tsc-directsync-6.18 \
+		work/no-jobserver-exec-6.18 \
+		work/kbuild-6.18 \
+		work/em7565-ids-6.18 \
+		work/zswap-writeback-6.18 \
+		work/acpi-osc-6.18 \
 		work/logitech-hidpp-6.18.15 \
-		work/fs-6.17-noop \
+		work/fs-6.18-noop \
 		work/cddl-6.18 \
 		work/zfs-6.18 \
-		work/fonts-6.17 \
-		work/intel-rapl-hack-6.17 \
+		work/fonts-6.18 \
+		work/intel-rapl-hack-6.18 \
 		work/pf-no-teo-6.18 \
-		# work/gvt-failsafe-6.12 \
-		# work/gvt-workaround-6.12 \
-		# work/i915-fastboot-revert-6.15 \
+		# work/gvt-failsafe-6.18 \
+		# work/gvt-workaround-6.18 \
+		# work/i915-fastboot-revert-6.18 \
 	;;
 esac
 
