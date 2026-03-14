@@ -32,6 +32,15 @@ extract_one_revision() {
 	local tools_ref="$2"
 	local kernel_ref="$3"
 
+	local force_update=0
+	local arg
+	for arg in "${@:4}"; do
+		case "$arg" in
+		--force-update) force_update=1 ;;
+		*) die "extract_one_revision: invalid arguments: ${*@Q}" ;;
+		esac
+	done
+
 	local rev_file=".bcachefs_revision"
 
 	# try to extract the kernel code revision corresponding to the given tools version
@@ -52,6 +61,12 @@ extract_one_revision() {
 
 	kernel_rev="$(git -C "$BCACHEFS_KERNEL_DIR" rev-parse --verify --short "$rev^{commit}" 2>/dev/null)" || kernel_rev=""
 	kernel_rev_existing="$(git -C "$BCACHEFS_KERNEL_DIR" rev-parse --verify --short "$kernel_ref" 2>/dev/null)" || kernel_rev_existing=""
+
+	# if the commit does not exist, try to fetch it directly and retry resolving
+	if [[ ! $kernel_rev ]] && (( force_update )); then
+		git -C "$BCACHEFS_KERNEL_DIR" fetch "$BCACHEFS_KERNEL_REMOTE" "$rev" ||:
+		kernel_rev="$(git -C "$BCACHEFS_KERNEL_DIR" rev-parse --verify --short "$rev^{commit}" 2>/dev/null)" || kernel_rev=""
+	fi
 
 	if [[ ! $kernel_rev ]]; then
 		log "tools/$tools_ref ($tools_rev) => kernel/$kernel_ref ($rev) is UNKNOWN"
@@ -78,5 +93,5 @@ git -C "$BCACHEFS_TOOLS_DIR" ls-refs --format '%(refname:short)' 'refs/tags/v*' 
 	extract_one_revision tag "$tag" "bcachefs/${tag#v}"
 	last_tools_ref="$tag"
 done
-extract_one_revision branch "$last_tools_ref" bcachefs-tools/release
-extract_one_revision branch "$BCACHEFS_TOOLS_REMOTE/master" bcachefs-tools/master
+extract_one_revision branch "$last_tools_ref" bcachefs-tools/release --force-update
+extract_one_revision branch "$BCACHEFS_TOOLS_REMOTE/master" bcachefs-tools/master --force-update
