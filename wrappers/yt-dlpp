@@ -1,3 +1,11 @@
 #!/bin/bash
 
-exec yt-dlp --cookies="$HOME/.netcookies" --proxy socks5://localhost:1080 "$@"
+ARGS=(
+	--cookies="$HOME/.netcookies"
+	--proxy=socks5://localhost:1080
+)
+
+set -x
+exec yt-dlp \
+	"${ARGS[@]}" \
+	"$@"
