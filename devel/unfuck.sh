@@ -18,6 +18,7 @@ Options:
 	--lts			Prefix branch name with "lts-"
 	-n, -name[=NAME]	Prefix branch name with "NAME-"
 				(if empty, do not create a named branch)
+	-d, --dir[=DIR]		Kernel source directory (default: \$HOME/devel/ext/linux or variants)
 EOF
 }
 
@@ -25,6 +26,7 @@ declare -A _args=(
 	[getopt]="+"
 	[--lts]=ARG_LTS
 	['-n|--name::']="ARG_NAME default="
+	['-d|--dir:']=ARG_KERNEL_DIR
 	[--]=ARGS
 )
 parse_args _args "$@" || usage
@@ -40,11 +42,30 @@ fi
 ARG_MAJOR="${ARGS[0]}"
 ARGS=( "${ARGS[@]:1}" )
 
+unset KERNEL_DIR
+if [[ ${ARG_KERNEL_DIR+set} ]]; then
+	KERNEL_DIR="$ARG_KERNEL_DIR"
+fi
+
 #
 # main
 #
 
 export GIT_AUTHOR_DATE="@0 +0000" GIT_COMMITTER_DATE="@0 +0000"
+
+tag="v${ARG_MAJOR#v}"
+major="${tag#v}"
+
+if ! [[ ${KERNEL_DIR+set} ]]; then
+	case "$major" in
+	6.12|6.18) KERNEL_DIR="$HOME/devel/ext/linux-$major" ;;
+	*) KERNEL_DIR="$HOME/devel/ext/linux" ;;
+	esac
+fi
+KERNEL_TOPLEVEL="$(git -C "$KERNEL_DIR" rev-parse --show-toplevel)" \
+	&& [[ $KERNEL_TOPLEVEL ]] \
+	|| die "Invalid kernel directory: ${KERNEL_DIR@Q}"
+Trace cd "$KERNEL_TOPLEVEL"
 
 declare -A target
 target[base_prefix]=base/base-
@@ -65,9 +86,6 @@ else
 	target[patch]=my/latest
 	log "Using \"latest\" branches: .../latest"
 fi
-
-tag="v${ARG_MAJOR#v}"
-major="${tag#v}"
 
 Trace ~/bin/devel/merge_arch_and_pf.sh --major "$tag" "${ARGS[@]}"
 Trace git describe --tags --exact HEAD \
