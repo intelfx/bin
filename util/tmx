@@ -45,7 +45,7 @@ NEW_WINDOW_COMMAND=( "new-window" "-c" "$(pwd)" "$@" ";" )
 # When a session is created, it is already created with a single window in it.
 # It is impossible to create a window-less session or session group in tmux.
 # Hence, if this is the first window being created, we kill the "default" window.
-if "${tmux[@]}" list-windows -t "$base_session-0" -F "#{window_id}" | grep -q --line-regexp --fixed-strings '@0'; then
+if "${tmux[@]}" list-windows -t "$base_session-0" -F "#{window_id}" 2>/dev/null | grep -q --line-regexp --fixed-strings '@0'; then
 	NEW_WINDOW_COMMAND+=( "kill-window" "-t" "@0" ";" )
 fi
 
@@ -79,7 +79,7 @@ done < <(env -0)
 # expressly crated, see above).
 cd "$HOME"
 
-if ! "${tmux[@]}" has-session -t "$base_session-0"; then
+if ! "${tmux[@]}" has-session -t "$base_session-0" 2>/dev/null; then
 	# create a session group if the master session is absent
 	if [[ "$(systemctl --user show tmux.service -p LoadState)" == "LoadState=loaded" ]]; then
 		# attempt to start tmux via existing systemd unit, if possible
