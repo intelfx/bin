@@ -334,7 +334,7 @@ v6.17)
 	# bcachefs
 	make_merge \
 		work/bcachefs-6.17 \
-		bcachefs-tools/release \
+		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
 		# EOL
 
 	# main
@@ -366,7 +366,7 @@ v6.18)
 	# bcachefs
 	make_merge \
 		work/bcachefs-6.18 \
-		bcachefs-tools/release \
+		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
 		# EOL
 
 	# main
@@ -397,7 +397,7 @@ v6.19)
 	# bcachefs
 	make_merge \
 		work/bcachefs-6.18 \
-		bcachefs-tools/release \
+		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
 		# EOL
 
 	# main
