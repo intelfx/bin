@@ -6,15 +6,26 @@ ARIA2_OPTIONS=(
 	--enable-mmap=false
 	--stderr=true
 
+	# bittorrent behavior
+	--follow-torrent=true
+	--bt-save-metadata=true
+	--bt-load-saved-metadata=true
+	--bt-detach-seed-only=true
+	--seed-time=1
+
 	# transparent conditional re-fetch (HTTP)
 	--allow-overwrite=true
 	--auto-file-renaming=false
 	--conditional-get=true
 	--remote-time=true
+
+	# transparent conditional re-fetch (bittorrent)
+	--check-integrity=true
+	--bt-hash-check-seed=false
+	--allow-piece-length-change=true
 )
 
 set -x
 exec /usr/bin/aria2c \
-	--allow-piece-length-change=true \
 	"${ARIA2_OPTIONS[@]}" \
 	"$@"
