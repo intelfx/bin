@@ -1,12 +1,20 @@
 #!/bin/bash
 
+ARIA2_OPTIONS=(
+	# general behavior
+	--file-allocation=trunc
+	--enable-mmap=false
+	--stderr=true
+
+	# transparent conditional re-fetch (HTTP)
+	--allow-overwrite=true
+	--auto-file-renaming=false
+	--conditional-get=true
+	--remote-time=true
+)
+
+set -x
 exec /usr/bin/aria2c \
-	--file-allocation=trunc \
-	--enable-mmap=false \
-	--allow-overwrite=true \
 	--allow-piece-length-change=true \
-	--auto-file-renaming=false \
-	--conditional-get=true \
-	--remote-time=true \
-	--stderr=true \
+	"${ARIA2_OPTIONS[@]}" \
 	"$@"
