@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../inc/-mktempdir-main
+. -- -mktempdir-main
+
+
+#
+# main
+#
+
+setup_tmpdir "." "$TMP_ROOT"
+process_one_dir "build"

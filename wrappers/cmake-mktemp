@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../inc/-mktempdir-main
+. -- -mktempdir-main
+
+
+#
+# main
+#
+
+setup_tmpdir "." "$TMP_ROOT"
+
+for d in build cmake-build-*; do
+	if [[ -d $d ]]; then
+		exists=1
+		process_one_dir "$d"
+	fi
+done
+
+if (( ! exists )); then
+	process_one_dir "build"
+fi
