@@ -16,6 +16,7 @@ vars=(
 	SSH_AUTH_SOCK
 	"${!CCACHE_@}"
 	"${!DISTCC_@}"
+	RUSTC_WRAPPER
 	PATH="$IPATH"
 )
 
