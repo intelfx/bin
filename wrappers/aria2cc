@@ -12,6 +12,10 @@ ARIA2_OPTIONS=(
 	--bt-load-saved-metadata=true
 	--bt-detach-seed-only=true
 	--seed-time=1
+	--enable-dht{,6}=true
+	--enable-peer-exchange=true
+	--dht-listen-port=40090-40099
+	--listen-port=40090-40099
 
 	# transparent conditional re-fetch (HTTP)
 	--allow-overwrite=true
