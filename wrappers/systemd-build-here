@@ -17,8 +17,35 @@ vars=(
 	"${!CCACHE_@}"
 	"${!DISTCC_@}"
 	RUSTC_WRAPPER
-	PATH="$IPATH"
 )
+
+ARG_ISOLATE=1
+while (( $# )); do
+	case "$1" in
+	--no-isolate) shift; ARG_ISOLATE=0 ;;
+	--isolate)    shift; ARG_ISOLATE=1 ;;
+	*)            break ;;
+	esac
+done
+
+if (( ARG_ISOLATE )); then
+	# "isolate": pass a sanitized $PATH and no more variables
+	vars+=(
+		PATH="$IPATH"
+	)
+else
+	# "do not isolate": pass full $PATH and all relevant variables
+	unset vars[-1]  # drop RUSTC_WRAPPER, re-added below
+	vars+=(
+		PATH
+		CC CXX
+		CFLAGS CXXFLAGS LDFLAGS
+		RUSTFLAGS "${!RUSTC_@}" "${!CARGO_@}"
+		GOFLAGS "${!CGO_@}"
+		GOMODCACHE
+	)
+fi
+
 
 args=()
 for var in "${vars[@]}"; do
