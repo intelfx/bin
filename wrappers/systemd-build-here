@@ -49,7 +49,9 @@ fi
 
 args=()
 for var in "${vars[@]}"; do
-	args+=( -E "$var" )
+	if [[ ${!var+set} ]]; then
+		args+=( -E "$var" )
+	fi
 done
 
 set -x
