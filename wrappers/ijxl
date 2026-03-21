@@ -7,8 +7,8 @@ while (( $# )); do
 	case "$1" in
 	-v|--verbose) IJXL_FLAGS+=(--with-offset); shift;;
 	# -d|--dump) IJXL_DUMP=1; shift;;
-	-*) IJXL_FLAGS+=("$1"); shift;;
 	--) IJXL_FILES+=("${@:2}"); break;;
+	-*) IJXL_FLAGS+=("$1"); shift;;
 	*) IJXL_FILES+=("$1"); shift; break;;
 	esac
 done
