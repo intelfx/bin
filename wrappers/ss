@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# clean up trailing whitespace in the last column of the output, which is often
+# the process list (when `ss -p`) is used, as rows with extremely long process
+# lists (nginx, postgres, ...) affect the width of the same column in all other
+# rows as well (resulting in a table where most rows have the final column
+# consisting of hundreds of characters of trailing whitespace, wrapping onto
+# tens of visually-blank lines between adjacent rows)
+exec /usr/bin/ss "$@" | sed -r 's| +$||'
