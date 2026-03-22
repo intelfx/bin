@@ -11,12 +11,43 @@
 set -eo pipefail
 shopt -s lastpipe
 
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/}
+EOF
+}
+
 
 # ---------------------------------------------------------------------------
 # Common variables and setup
 # ---------------------------------------------------------------------------
 
 SRCDIR="$PWD"
+if ! [[ -e "$SRCDIR/Makefile" && -e "$SRCDIR/Kbuild" && -e "$SRCDIR/Kconfig" ]]; then
+	die "Not a Linux kernel source tree: ${SRCDIR@Q}"
+fi
 
 CDB="$SRCDIR/compile_commands.json"
 
