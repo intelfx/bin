@@ -58,7 +58,7 @@ if ! [[ ${ARG_SUBPATH+set} ]]; then
 fi
 
 for sub in "${!submodules[@]}"; do
-	url="${sub_to_url["$sub"]:?}"
+	url="git+${sub_to_url["$sub"]:?}"
 	subspec="${ARG_SUBPATH+"${ARG_SUBPATH@Q}:"}${sub@Q}"
 
 	printf "\t[%s]=%s\n" "$subspec" "${url@Q}"
