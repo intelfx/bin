@@ -1,0 +1,173 @@
+#!/bin/bash
+#
+# kbuild-all: build the kernel and userspace tools, then produce a merged
+#             compile_commands.json covering both.
+#
+# Usage:  ./kbuild-all [extra kmake args...]
+#
+# Extra arguments (e.g. "W=1") are forwarded to the kernel build only.
+#
+
+set -eo pipefail
+shopt -s lastpipe
+
+
+# ---------------------------------------------------------------------------
+# Common variables and setup
+# ---------------------------------------------------------------------------
+
+SRCDIR="$PWD"
+
+CDB="$SRCDIR/compile_commands.json"
+
+# bear invocation: append every tools build into the kernel's compile database
+BEAR=(bear --output "$CDB" --append --)
+
+# other variables to pass to make for reproducibility and ccache-friendliness
+MAKEVARS=(
+	SOURCE_DATE_EPOCH=0
+	KBUILD_BUILD_TIMESTAMP="$(date -Ru -d '@0')"
+	KBUILD_BUILD_HOST=archlinux
+	KBUILD_BUILD_USER=linux
+)
+if [[ -e "$SRCDIR/version" ]]; then MAKEVARS+=(
+	KERNELRELEASE="$(< "$SRCDIR/version")"
+); fi
+
+
+# ---------------------------------------------------------------------------
+# Default compiler / flags for userspace builds (not the kernel)
+# ---------------------------------------------------------------------------
+
+: "${CC=clang}"
+: "${CXX=clang++}"
+: "${CFLAGS=-march=native -pipe -fno-plt -fexceptions -Wformat -Werror=format-security -fstack-clash-protection -fcf-protection -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O0 -ggdb3}"
+: "${CXXFLAGS=-march=native -pipe -fno-plt -fexceptions -Wformat -Werror=format-security -fstack-clash-protection -fcf-protection -Wp,-D_GLIBCXX_ASSERTIONS -fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -O0 -ggdb3}"
+: "${LDFLAGS=-Wl,-O1 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now -Wl,-z,pack-relative-relocs -fuse-ld=lld}"
+
+REMAP_FLAGS=(
+	# "-ffile-prefix-map=$PWD=. -ffile-prefix-map=./=" ?
+	"-ffile-prefix-map=$SRCDIR=."
+)
+EXTRA_FLAGS=(
+	"-Wno-error=bad-function-cast"
+	"-Wno-error=declaration-after-statement"
+	"-Wno-error=switch-enum"
+	# "-Wno-error=discarded-qualifiers"  # gcc
+	"-Wno-error=ignored-qualifiers"  # clang
+)
+
+export CC="$CC"
+export CXX="$CXX"
+export CFLAGS="$CFLAGS ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}"
+export CXXFLAGS="$CXXFLAGS ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}"
+export LDFLAGS="$LDFLAGS"
+
+# ---------------------------------------------------------------------------
+# Helpers to run make for the kernel and tools builds
+# ---------------------------------------------------------------------------
+
+# Helper: run make with necessary variables to build the kernel
+kmake() {
+	local -
+	set -x
+	/usr/bin/make \
+		KCFLAGS="${REMAP_FLAGS[*]}" \
+		"${MAKEVARS[@]}" \
+		"-j$(nproc)" \
+		"$@" \
+		# EOL
+}
+
+# Helper: run make under bear with necessary variables to build userspace tools
+bmake() {
+	local -
+	set -x
+	"${BEAR[@]}" /usr/bin/make \
+		"${MAKEVARS[@]}" \
+		"-j$(nproc)" \
+		"$@" \
+		# EOL
+}
+
+# ============================= kernel ======================================
+echo ':: kernel'
+kmake LLVM=1 all compile_commands.json "$@"
+
+# ============================= tools =======================================
+
+# --- perf ------------------------------------------------------------------
+echo ':: perf'
+(
+	cd tools/perf
+	bmake -f Makefile.perf \
+		prefix=/usr \
+		lib=lib/perf \
+		perfexecdir=lib/perf \
+		WERROR=0 \
+		EXTRA_CFLAGS=" ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}" \
+		NO_SDT=1 \
+		BUILD_BPF_SKEL=1 \
+		PYTHON=python \
+		NO_LIBLLVM=1 \
+		PYTHON_CONFIG=python-config \
+		LIBPFM4=1 \
+		# EOL
+)
+
+# --- cpupower --------------------------------------------------------------
+echo ':: cpupower'
+(cd tools/power/cpupower && bmake)
+
+# --- x86_energy_perf_policy -------------------------------------------------
+echo ':: x86_energy_perf_policy'
+(cd tools/power/x86/x86_energy_perf_policy && bmake)
+
+# --- usbip ------------------------------------------------------------------
+echo ':: usbip'
+(
+	cd tools/usb/usbip
+	if [[ ! -f configure ]]; then
+		./autogen.sh
+	fi
+	if [[ ! -f Makefile ]]; then
+		./configure --prefix=/usr --sbindir=/usr/bin
+	fi
+	bmake
+)
+
+# --- tmon -------------------------------------------------------------------
+echo ':: tmon'
+(cd tools/thermal/tmon && bmake)
+
+# --- turbostat --------------------------------------------------------------
+echo ':: turbostat'
+(cd tools/power/x86/turbostat && bmake)
+
+# --- hv ---------------------------------------------------------------------
+echo ':: hv'
+(cd tools/hv && CFLAGS="$CFLAGS -DKVP_SCRIPTS_PATH=\\\"/usr/lib/hypervkvpd/\\\"" bmake)
+
+# --- bpf / bpftool ----------------------------------------------------------
+echo ':: bpf'
+(
+	cd tools/bpf
+	bmake -C bpftool all doc \
+		EXTRA_CFLAGS=" ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}" \
+		# EOL
+	bmake -W runqslower
+)
+
+# --- bootconfig -------------------------------------------------------------
+echo ':: bootconfig'
+(cd tools/bootconfig && bmake)
+
+# --- intel-speed-select -----------------------------------------------------
+echo ':: intel-speed-select'
+(cd tools/power/x86/intel-speed-select && bmake)
+
+# --- kcpuid -----------------------------------------------------------------
+echo ':: kcpuid'
+(cd tools/arch/x86/kcpuid && bmake)
+
+echo ':: done'
