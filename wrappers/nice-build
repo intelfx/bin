@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -x
+exec \
+	chrt --batch 0 \
+	nice -n18 \
+	"$@"
