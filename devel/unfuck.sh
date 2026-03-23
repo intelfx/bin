@@ -388,6 +388,7 @@ v6.18)
 		work/fonts-6.18 \
 		work/intel-rapl-hack-6.18 \
 		work/pf-no-teo-6.18 \
+		work/perf-zstd-6.18 \
 		# work/gvt-failsafe-6.18 \
 		# work/gvt-workaround-6.18 \
 		# work/i915-fastboot-revert-6.18 \
@@ -419,6 +420,7 @@ v6.19)
 		work/fonts-6.19 \
 		work/intel-rapl-hack-6.18 \
 		work/pf-no-teo-6.19 \
+		work/perf-zstd-6.18 \
 		# work/gvt-failsafe-6.18 \
 		# work/gvt-workaround-6.18 \
 		# work/i915-fastboot-revert-6.18 \
