@@ -94,6 +94,8 @@ export CFLAGS="$CFLAGS ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}"
 export CXXFLAGS="$CXXFLAGS ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}"
 export LDFLAGS="$LDFLAGS"
 export KCFLAGS="${REMAP_FLAGS[*]}"
+export USERCFLAGS="$CFLAGS ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}"
+export USERLDFLAGS="$LDFLAGS"
 
 # ---------------------------------------------------------------------------
 # Helpers to run make for the kernel and tools builds
