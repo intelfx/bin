@@ -56,6 +56,7 @@ BEAR=(bear --output "$CDB" --append --)
 
 # other variables to pass to make for reproducibility and ccache-friendliness
 MAKEVARS=(
+	"-j$(nproc)"
 	SOURCE_DATE_EPOCH=0
 	KBUILD_BUILD_TIMESTAMP="$(date -Ru -d '@0')"
 	KBUILD_BUILD_HOST=archlinux
@@ -107,7 +108,6 @@ kmake() {
 	set -x
 	/usr/bin/make \
 		"${MAKEVARS[@]}" \
-		"-j$(nproc)" \
 		"$@" \
 		# EOL
 }
@@ -118,7 +118,6 @@ bmake() {
 	set -x
 	"${BEAR[@]}" /usr/bin/make \
 		"${MAKEVARS[@]}" \
-		"-j$(nproc)" \
 		"$@" \
 		# EOL
 }
