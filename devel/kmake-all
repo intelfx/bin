@@ -10,6 +10,7 @@
 
 set -eo pipefail
 shopt -s lastpipe
+shopt -s extglob
 
 log() {
 	echo ":: $*" >&2
@@ -35,8 +36,109 @@ usage() {
 
 _usage() {
 	cat <<EOF
-Usage: ${0##*/}
+Usage: ${0##*/} [-h|--help]
+       ${0##*/} [--COMPONENT[=TARGETS] ...] [MAKE-FLAGS]
+
+Options:
+	--COMPONENT[=TARGETS]	When specified, build only these binaries
+				(and do not generate a compile_commands.json).
+				When TARGETS are specified, replace the
+				default make(1) targets when building this binary.
+
+				(when no COMPONENTs are specified, build all
+				binaries and generate compile_commands.json)
+
+	MAKE-FLAGS		Append specified Make flags and variables
+				to all make(1) invocations.
+
+Possible COMPONENTs:
+	-k | --kernel		build the kernel
+	-u | --user		build all userspace targets below
+	--perf			build the perf(1) tool
+	--cpupower		build the cpupower(1) tool
+	--x86			build the x86_energy_perf_policy(8) tool
+	--usbip			build the usbip(8) and usbipd(8) tools
+	--turbostat		build the turbostat(8) tool
+	--bpf			build the bpftool(8) and other tools
+	--tmon			build the tmon tool
+	--bpf			build the hv_* tools
+	--bootconfig		build the bootconfig tool
+	--intel-sst		build the intel-speed-select tool
+	--kcpuid		build the kcpuid tool
+
+
 EOF
+}
+
+
+#
+# args
+#
+
+if args=$(getopt -o 'hk::u::' --long 'help,kernel::,user::,perf::,cpupower::,x86::,usbip::,tmon::,turbostat::,hv::,bpf::,bootconfig::,intel-sst::,kcpuid::' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+declare -a COMPONENTS=(
+	kernel
+	user
+	perf
+	x86
+	usbip
+	tmon
+	turbostat
+	hv
+	bpf
+	bootconfig
+	intel-sst
+	kcpuid
+)
+declare -A WANTS
+declare -A TARGETS
+
+#
+while :; do
+	if [[ $1 == -h || $1 == --help ]]; then
+		ARG_HELP=1
+		shift; continue
+	fi
+	for c in "${COMPONENTS[@]}"; do
+		if [[ "$1" == "--$c" \
+		   || "$1" == "-${c:0:1}" && $c == @(kernel|user) ]]; then
+			WANTS[$c]=1
+			if [[ $2 ]]; then
+				TARGETS[$c]="$2"
+			fi
+			shift 2; continue 2
+		elif [[ $1 == -- ]]; then
+			shift; break 2
+		fi
+	done
+	die "getopt error: $1"
+done
+
+if [[ ${WANTS[user]+set} ]]; then
+	for c in "${COMPONENTS[@]}"; do
+		case "$c" in
+		kernel|user) ;;
+		*) WANTS[$c]=1; TARGETS[$c]="${TARGETS[user]}" ;;
+		esac
+	done
+fi
+
+ARG_MAKEVARS=("$@")
+
+want() {
+	# either nothing set (build everything), or want to build this specific thing
+	(( ! "${#WANTS[@]}" || "${WANTS[$1]:-0}" ))
+}
+
+want_cdb() {
+	# only generate compile_commands.json when building everything
+	(( ! "${#WANTS[@]}" ))
 }
 
 
@@ -53,6 +155,22 @@ CDB="$SRCDIR/compile_commands.json"
 
 # bear invocation: append every tools build into the kernel's compile database
 BEAR=(bear --output "$CDB" --append --)
+
+# kernel targets: build everything by default
+KERNEL_TARGETS=(all)
+
+if [[ ${TARGETS[kernel]} ]]; then
+	read -ra KERNEL_TARGETS <<<"${TARGETS[kernel]}"
+fi
+
+# generate compile_commands.json if desired
+if want_cdb; then
+	# kernel build: also generate compile_commands.json
+	KERNEL_TARGETS+=(compile_commands.json)
+else
+	# skip bear
+	BEAR=()
+fi
 
 # other variables to pass to make for reproducibility and ccache-friendliness
 MAKEVARS=(
@@ -109,6 +227,7 @@ kmake() {
 	/usr/bin/make \
 		"${MAKEVARS[@]}" \
 		"$@" \
+		"${ARG_MAKEVARS[@]}" \
 		# EOL
 }
 
@@ -119,17 +238,63 @@ bmake() {
 	"${BEAR[@]}" /usr/bin/make \
 		"${MAKEVARS[@]}" \
 		"$@" \
+		"${ARG_MAKEVARS[@]}" \
 		# EOL
 }
 
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+quote_or_else() {
+	local default="$1"
+	shift
+	if [[ $1 ]]
+	then echo "${1@Q}"
+	else echo "$default"
+	fi
+}
+quote_or_else_array() {
+	local default="$1"
+	shift
+	if (( $# ))
+	then echo "${*@Q}"
+	else echo "$default"
+	fi
+
+}
+
+{
+	for var in CC CXX CFLAGS CXXFLAGS LDFLAGS RUSTFLAGS; do
+		echo "\$$var"$'\t'"$(quote_or_else "(unset)" "${!var}")"
+	done
+	echo $'------------------------------\t---'
+	for c in "${COMPONENTS[@]}"; do
+		echo "Building $c"$'\t'"$(want "$c" && echo yes || echo no)${TARGETS[$c]:+ (targets: ${TARGETS[$c]})}"
+	done
+	echo $'------------------------------\t---'
+	echo "Creating compile_commands.json"$'\t'"$(want_cdb && echo yes || echo no)"
+	echo "Kernel targets"$'\t'"${KERNEL_TARGETS[*]}"
+	echo "Extra make arguments"$'\t'"$(quote_or_else_array "(none)" "${ARG_MAKEVARS[@]}")"
+} | column -Lt -s $'\t'
+
+if [[ ${ARG_HELP+set} ]]; then
+	exit
+fi
+
+
 # ============================= kernel ======================================
-echo ':: kernel'
-kmake LLVM=1 all compile_commands.json "$@"
+if want kernel; then
+	log 'kernel'
+	kmake LLVM=1 "${KERNEL_TARGETS[@]}" "$@"
+fi
 
 # ============================= tools =======================================
 
 # --- perf ------------------------------------------------------------------
-echo ':: perf'
+if want perf; then
+	log 'perf'
 (
 	cd tools/perf
 	bmake -f Makefile.perf \
@@ -144,19 +309,26 @@ echo ':: perf'
 		NO_LIBLLVM=1 \
 		PYTHON_CONFIG=python-config \
 		LIBPFM4=1 \
+		${TARGETS[perf]} \
 		# EOL
 )
+fi
 
 # --- cpupower --------------------------------------------------------------
-echo ':: cpupower'
-(cd tools/power/cpupower && bmake)
+if want cpupower; then
+	log 'cpupower'
+	(cd tools/power/cpupower && bmake ${TARGETS[cpupower]})
+fi
 
 # --- x86_energy_perf_policy -------------------------------------------------
-echo ':: x86_energy_perf_policy'
-(cd tools/power/x86/x86_energy_perf_policy && bmake)
+if want x86; then
+	log 'x86_energy_perf_policy'
+	(cd tools/power/x86/x86_energy_perf_policy && bmake ${TARGETS[x86]})
+fi
 
 # --- usbip ------------------------------------------------------------------
-echo ':: usbip'
+if want usbip; then
+	log 'usbip'
 (
 	cd tools/usb/usbip
 	if [[ ! -f configure ]]; then
@@ -165,41 +337,59 @@ echo ':: usbip'
 	if [[ ! -f Makefile ]]; then
 		./configure --prefix=/usr --sbindir=/usr/bin
 	fi
-	bmake
+	bmake ${TARGETS[usbip]}
 )
+fi
 
 # --- tmon -------------------------------------------------------------------
-echo ':: tmon'
-(cd tools/thermal/tmon && bmake)
+if want tmon; then
+	log 'tmon'
+	(cd tools/thermal/tmon && bmake ${TARGETS[tmon]})
+fi
 
 # --- turbostat --------------------------------------------------------------
-echo ':: turbostat'
-(cd tools/power/x86/turbostat && bmake)
+if want turbostat; then
+	log 'turbostat'
+	(cd tools/power/x86/turbostat && bmake ${TARGETS[turbostat]})
+fi
 
 # --- hv ---------------------------------------------------------------------
-echo ':: hv'
-(cd tools/hv && CFLAGS="$CFLAGS -DKVP_SCRIPTS_PATH=\\\"/usr/lib/hypervkvpd/\\\"" bmake)
+if want hv; then
+	log 'hv'
+	(cd tools/hv && CFLAGS="$CFLAGS -DKVP_SCRIPTS_PATH=\\\"/usr/lib/hypervkvpd/\\\"" bmake ${TARGETS[hv]})
+fi
 
 # --- bpf / bpftool ----------------------------------------------------------
-echo ':: bpf'
+if want bpf; then
+	log 'bpf'
 (
 	cd tools/bpf
 	bmake -C bpftool all doc \
 		EXTRA_CFLAGS=" ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}" \
+		${TARGETS[bpf]} \
+		|| true
 		# EOL
-	bmake -W runqslower
+	bmake -W runqslower \
+		|| true
 )
+fi
 
 # --- bootconfig -------------------------------------------------------------
-echo ':: bootconfig'
-(cd tools/bootconfig && bmake)
+if want bootconfig; then
+	log 'bootconfig'
+	(cd tools/bootconfig && bmake ${TARGETS[bootconfig]})
+fi
 
 # --- intel-speed-select -----------------------------------------------------
-echo ':: intel-speed-select'
-(cd tools/power/x86/intel-speed-select && bmake)
+if want intel-sst; then
+	log 'intel-speed-select'
+	(cd tools/power/x86/intel-speed-select && bmake ${TARGETS[intel-sst]})
+fi
 
 # --- kcpuid -----------------------------------------------------------------
-echo ':: kcpuid'
-(cd tools/arch/x86/kcpuid && bmake)
+if want kcpuid; then
+	log 'kcpuid'
+	(cd tools/arch/x86/kcpuid && bmake ${TARGETS[kcpuid]})
+fi
 
-echo ':: done'
+log 'done'
