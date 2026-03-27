@@ -93,6 +93,7 @@ export CXX="$CXX"
 export CFLAGS="$CFLAGS ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}"
 export CXXFLAGS="$CXXFLAGS ${REMAP_FLAGS[*]} ${EXTRA_FLAGS[*]}"
 export LDFLAGS="$LDFLAGS"
+export KCFLAGS="${REMAP_FLAGS[*]}"
 
 # ---------------------------------------------------------------------------
 # Helpers to run make for the kernel and tools builds
@@ -103,7 +104,6 @@ kmake() {
 	local -
 	set -x
 	/usr/bin/make \
-		KCFLAGS="${REMAP_FLAGS[*]}" \
 		"${MAKEVARS[@]}" \
 		"-j$(nproc)" \
 		"$@" \
