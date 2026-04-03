@@ -80,6 +80,18 @@ done
 
 
 #
+# functions
+#
+
+join() {
+	local IFS
+	IFS="$1"
+	shift
+	echo "$*"
+}
+
+
+#
 # main
 #
 
@@ -109,7 +121,9 @@ find "$GIT_DIR/objects/pack" \
 		mtime="$(( mtime_idx < mtime_pack ? mtime_idx : mtime_pack ))"
 	fi
 
-	PACKS+=("$mtime"$'\t'"$pack")
+	PACKS+=(
+		"$(join $'\t' "$mtime" "$pack")"
+	)
 done
 
 if ! [[ ${PACKS+set} ]]; then
