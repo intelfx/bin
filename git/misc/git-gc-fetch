@@ -187,21 +187,32 @@ if (( !FORCE && CANDIDATES < 2 )); then
 	exit
 fi
 
-if (( GIT_GC )); then
+if (( GIT_GC || GIT_GC_NO_PRUNE )); then
+	if (( ! GIT_GC_NO_PRUNE ))
+	then
+		_gc_cfg=(
+			-c gc.pruneExpire=now
+		); _gc_args=(
+			--prune=now
+		)
+	else
+		_gc_cfg=(
+			-c gc.cruftPacks=true
+			-c gc.pruneExpire=never
+			-c gc.reflogExpire=never
+			-c gc.reflogExpireUnreachable=never
+		); _gc_args=(
+			--no-prune
+		)
+	fi
 	git \
 		-c pack.depth=50 -c pack.window=1000 \
 		-c gc.writeCommitGraph=true \
-		-c gc.pruneExpire=now \
-		gc --keep-largest-pack --prune=now "$@"
-elif (( GIT_GC_NO_PRUNE )); then
-	git \
-		-c pack.depth=50 -c pack.window=1000 \
-		-c gc.writeCommitGraph=true \
-		-c gc.cruftPacks=true \
-		-c gc.pruneExpire=never \
-		-c gc.reflogExpire=never \
-		-c gc.reflogExpireUnreachable=never \
-		gc --keep-largest-pack --no-prune "$@"
+		"${_gc_cfg[@]}"
+		gc \
+		--keep-largest-pack \
+		"${_gc_args[@]}" \
+		"$@"
 else
 	git \
 		repack \
