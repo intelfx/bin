@@ -13,7 +13,7 @@ shopt -s lastpipe
 
 setup_tmpdir "." "$TMP_ROOT"
 
-for d in build cmake-build-*; do
+for d in build cmake-build-* destdir; do
 	if [[ -d $d ]]; then
 		exists=1
 		process_one_dir "$d"

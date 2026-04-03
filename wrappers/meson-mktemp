@@ -12,4 +12,14 @@ shopt -s lastpipe
 #
 
 setup_tmpdir "." "$TMP_ROOT"
-process_one_dir "build"
+
+for d in build destdir; do
+	if [[ -d $d ]]; then
+		exists=1
+		process_one_dir "$d"
+	fi
+done
+
+if (( ! exists )); then
+	process_one_dir "build"
+fi
