@@ -47,10 +47,11 @@ SMALL_PACK_BYTES="$(( 100*1024*1024 ))"
 OLD_PACK_TIME="$(( now - 24*3600 ))"
 GIT_GC=0
 GIT_GC_NO_PRUNE=0
+GIT_GEOMETRIC=0
 FORCE=0
 PACK_ARGS=()
 
-if args=$(getopt -o '+S:T:s:bmf' --long 'size:,time:,seconds:,gc,gc-no-prune,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o '+S:T:s:gbmf' --long 'size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -64,6 +65,7 @@ while :; do
 	-s|--seconds) shift; OLD_PACK_TIME="$(( now - "$1" ))" ;;
 	--gc) GIT_GC=1 ;;
 	--gc-no-prune) GIT_GC_NO_PRUNE=1 ;;
+	-g|--geometric) GIT_GEOMETRIC=1 ;;
 	-b|--bitmap) PACK_ARGS+=( --write-bitmap-index ) ;;
 	-m|--midx) PACK_ARGS+=( --write-midx ) ;;
 	-f|--force) FORCE=1 ;;
@@ -110,6 +112,7 @@ find "$GIT_DIR/objects/pack" \
 | while read pack; do
 
 	mtime="$(stat -c '%Y' "$pack")"
+	size="$(stat -c '%s' "$pack")"
 
 	# HACK: use the older of .pack and .idx mtimes.
 	# Sometimes, `git fetch` touches old packs for no good reason, breaking
@@ -122,7 +125,7 @@ find "$GIT_DIR/objects/pack" \
 	fi
 
 	PACKS+=(
-		"$(join $'\t' "$mtime" "$pack")"
+		"$(join $'\t' "$mtime" "$size" "$pack")"
 	)
 done
 
@@ -133,12 +136,17 @@ fi
 
 CANDIDATES=0
 
+if (( ! GIT_GEOMETRIC ))
+then _sort_args=(-k1)     # by mtime, ascending
+else _sort_args=(-k2 -r)  # by size, descending
+fi
+
+NR=0
 printf "%s\n" "${PACKS[@]}" \
-| sort -n -t $'\t' -k1 \
-| while read -r mtime pack; do
+| sort -n -t $'\t' "${_sort_args[@]}" \
+| while read -r mtime size pack; do
 
 	idx="${pack%.pack}.idx"
-	size="$(stat -c '%s' "$pack")"
 
 	human_size="$(du --human-readable --apparent-size "$pack" | cut -d$'\t' -f1)"
 	human_mtime="$(date -d "@$mtime")"
@@ -156,8 +164,12 @@ printf "%s\n" "${PACKS[@]}" \
 		continue
 	fi
 
+	# in geometric mode, repack everything after the largest pack
+	if (( GIT_GEOMETRIC && NR > 0 )); then
+		repack=1
+
 	# repack everything after the first candidate pack
-	if (( CANDIDATES )); then
+	elif (( CANDIDATES )); then
 		repack=1
 
 	# repack all recent packs
@@ -180,6 +192,8 @@ printf "%s\n" "${PACKS[@]}" \
 		echo "Keeping pack: ${pack##*/} @ $human_size ($human_mtime)"
 		touch "${pack%.pack}.keep"
 	fi
+
+	(( ++NR ))
 done
 
 if (( !FORCE && CANDIDATES < 2 )); then
@@ -214,9 +228,13 @@ if (( GIT_GC || GIT_GC_NO_PRUNE )); then
 		"${_gc_args[@]}" \
 		"$@"
 else
+	if (( ! GIT_GEOMETRIC ))
+	then _repack_args=( --cruft )
+	else _repack_args=( -g2 )
+	fi
 	git \
 		repack \
-		--cruft -d -l \
+		"${_repack_args[@]}" -d -l \
 		-fF --depth=50 --window=1000 \
 		"${PACK_ARGS[@]}" \
 		"$@"
