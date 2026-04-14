@@ -64,7 +64,7 @@ function adjust_gedit() {
 
 	has gedit || return 0
 
-	trace gsettings set org.gnome.gedit.preferences.editor scheme "${scheme[$1]}"
+	trace gsettings set org.gnome.gedit.preferences.editor scheme "${scheme[$1]}" || return 0
 }
 
 # $1: whether to enable dark (1 or 0)
@@ -75,7 +75,7 @@ function adjust_terminal() {
 	has gnome-terminal || return 0
 
 	# set defaults for new windows
-	trace dconf write /org/gnome/terminal/legacy/profiles:/default "'${profiles_default[$1]}'"
+	trace dconf write /org/gnome/terminal/legacy/profiles:/default "'${profiles_default[$1]}'" || return 0
 
 	# XXX: `busctl --auto-start=false tree` appears to not work (i. e. still try to activate the target service),
 	# so check availability of org.gnome.Terminal by hand
