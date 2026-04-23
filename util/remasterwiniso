@@ -7,15 +7,28 @@ shopt -s extglob
 # shellcheck source=../lib/lib.sh
 . lib.sh
 
+_usage() {
+	cat <<EOF
+Usage: $0 [(--solid|--esd)[=LEVEL] | (--solid-all|--esd-all)[=LEVEL] | (--compress|--wim)[=LEVEL] | (--nocompress|--none)] [--replace|--overwrite] [FILES...]
+EOF
+}
+
+
+#
+# args
+#
+
 declare -A ARGS=(
 	[--solid|--esd::]=ARG_COMPRESS_SOLID
 	[--solid-all|--esd-all::]=ARG_COMPRESS_SOLID_FORCE
 	[--compress|--wim::]=ARG_COMPRESS
 	[--nocompress|--none]=ARG_COMPRESS_NONE
 	[--replace|--overwrite]=ARG_REPLACE
+	[-h|--help]=ARG_USAGE
 	[--]=ARG_FILES
 )
-parse_args ARGS "$@"
+parse_args ARGS "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
 
 COMPRESS=LZX:100
 COMPRESS_SOLID=LZMS:100
