@@ -70,9 +70,13 @@ disk_fstrim() {
 			return
 		fi
 		ltrap "run_always losetup -d '$loop'"
-		run_always partprobe "$loop" 
+		run_always partprobe "$loop"
 		log "$disk: configured a loopback device at $loop"
 		disk="$loop"
+
+		# lsblk (below) uses udev database instead of querying disks directly;
+		# wait for udev to settle when the disk was just created
+		udevadm settle
 	fi
 
 	local pttype fstype
@@ -83,7 +87,7 @@ disk_fstrim() {
 
 	if [[ "$objtype" == disk ]] || [[ "$pttype" && ! "$fstype" ]]; then
 		partitions=( "$disk"?(p)[0-9]* )
-		log "$rdisk: whole disk detected ($pttype), discovered ${#partitions[@]} partitions"
+		log "$rdisk: whole disk detected ($pttype), discovered ${#partitions[@]} partitions ($(join ', ' "${partitions[@]}"))"
 	elif [[ "$fstype" ]]; then
 		partitions=( "$disk" )
 		log "$rdisk: filesystem detected ($fstype), treating as a partition"
