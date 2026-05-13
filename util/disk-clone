@@ -157,6 +157,22 @@ function maybe_loop() {
 
 
 #
+# constants
+#
+
+PARTCLONE_FLAGS=(
+	--binary-prefix
+	--prog-second
+)
+
+if [[ -t 0 && -t 1 && -t 2 ]]; then
+	PARTCLONE_FLAGS+=(
+		--ncurses
+	)
+fi
+
+
+#
 # main
 #
 
@@ -345,9 +361,9 @@ function clone_partition() {
 		log "type '$part_type'"
 	fi
 
-	if [[ "$part_type" ]] && command -v partclone.$part_type &>/dev/null; then
+	if [[ "$part_type" ]] && command -v "partclone.$part_type" &>/dev/null; then
 		log "using 'partclone.$part_type'"
-		"partclone.$part_type" -b -s "$src_part" -O "$dest_part"
+		"partclone.$part_type" "${PARTCLONE_FLAGS[@]}" -b -s "$src_part" -O "$dest_part"
 	elif [[ "$part_type" == "swap" ]]; then
 		log "recreating swapspace label '$(blkid_src LABEL)' uuid '$(blkid_src UUID)'"
 		mkswap \
@@ -359,7 +375,7 @@ function clone_partition() {
 		luks_clone "$src_part" "$dest_part"
 	else
 		log "using partclone.dd"
-		partclone.dd -s "$src_part" -O "$dest_part"
+		partclone.dd "${PARTCLONE_FLAGS[@]}" -s "$src_part" -O "$dest_part"
 	fi
 }
 
