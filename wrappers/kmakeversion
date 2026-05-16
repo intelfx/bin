@@ -1,0 +1,19 @@
+#!/bin/bash
+
+-trace() {
+	local -
+	set -x
+	"$@"
+}
+
+shopt -s nullglob
+ccat localversion.*
+
+# kmake reads ./version
+rm -f version
+
+-trace kmake -s \
+	LOCALVERSION= \
+	kernelrelease \
+| tee /dev/stderr \
+| sponge version # ditto
