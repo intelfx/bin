@@ -8,5 +8,6 @@ if [[ -t 1 ]]; then
 fi
 
 rg -uuu --no-heading --with-filename --no-line-number --field-match-separator=$'\t' "${color[@]}" . "$@" \
+	</dev/null \
 	| sort -t $'\t' -k1 \
 	| column -s $'\t' -t -l2

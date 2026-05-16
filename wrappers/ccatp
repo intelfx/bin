@@ -1,5 +1,6 @@
 #!/bin/bash
 
 rg -uuu --no-heading --with-filename --no-line-number --color=always "$@" \
+	</dev/null \
 	| sort -t: -k1 \
 	| column -s: -t -l2
