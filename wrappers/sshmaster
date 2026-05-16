@@ -1,0 +1,8 @@
+#!/bin/bash
+
+ssh_args=(
+	-o ControlPath="$HOME/.ssh/sock-%C"
+	-o ControlMaster=auto
+)
+
+exec ssh "${ssh_args[@]}" "$@"
