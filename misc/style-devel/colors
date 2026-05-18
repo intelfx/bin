@@ -4,8 +4,37 @@
 set -eo pipefail
 shopt -s lastpipe
 
-if [[ $1 == --xrdb ]]; then
-	xrdb -query \
+# shellcheck source=../lib/lib.sh
+. lib.sh
+
+_usage() {
+	cat <<-EOF
+Usage: $0 [-X|--xrdb [XRDB-ARGS...]]
+E.g.:
+       $0 --xrdb                       (runs \`xrdb -query\`)
+       $0 -X ~/.Xresources -DKEY=VALUE (runs \`xrdb -n ~/.Xresources -DKEY=VALUE\`)
+EOF
+}
+
+declare -A _args=(
+	['-h|--help']="ARG_USAGE"
+	['-X|--xrdb']="ARG_XRDB"
+	['--']="ARGS"
+	[getopt]="+"
+)
+
+parse_args _args "$@" || usage "Invalid arguments"
+
+if [[ $ARG_USAGE ]]; then
+	usage
+fi
+
+if [[ $ARG_XRDB ]]; then
+	if (( ${#ARGS[@]} ))
+	then xrdb=( -n "${ARGS[@]}" )
+	else xrdb=( -query )
+	fi
+	xrdb "${xrdb[@]}" \
 	| sed -n 's/.*color\([0-9]\)/\1/p' \
 	| sort -nu \
 	| cut -f2 \
