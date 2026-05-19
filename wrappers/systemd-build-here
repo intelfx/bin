@@ -49,7 +49,7 @@ fi
 
 args=()
 for var in "${vars[@]}"; do
-	if [[ ${!var+set} ]]; then
+	if [[ $var == *=* ]] || [[ ${!var+set} ]]; then
 		args+=( -E "$var" )
 	fi
 done
