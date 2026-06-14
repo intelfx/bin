@@ -91,7 +91,7 @@ if [[ -t 0 && -t 1 && -t 2 ]]; then
 	unset JOURNALCTL_ARGS[-F:]
 	JOURNALCTL_ARGS[-F]="ARG_FOLLOW_ALL"
 fi
-	
+
 parse_args JOURNALCTL_ARGS "$@"
 
 # transform --since/--until
