@@ -1,0 +1,78 @@
+#!/bin/bash
+
+#
+# git-commit-old -- make a commit with author/commit timestamps inferred from the files being committed
+#
+
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [git-commit args...]
+
+Make a commit with author and commit timestamps set to the newest mtime of the files being committed.
+EOF
+}
+
+
+#
+# args
+#
+
+case "$1" in
+-h|--help) usage ;;
+esac
+
+
+#
+# main
+#
+
+# get the reference to the last commit, or to an empty tree if there are no commits yet
+last="$(git rev-parse --verify --quiet HEAD || git hash-object -t tree /dev/null)"
+
+# list all files being introduced in the next commit, relative to the last commit (or to nothing)
+git diff-index --cached "$last" --diff-filter=AMT --name-only \
+	| readarray -t files
+
+# no files added to commit that may be used as timestamp source, defer to normal git-commit
+# (most likely, empty commit and git-commit will exit with a diagnostic;
+#  but also could be a commit that consists of deletions only)
+if ! (( ${#files[@]} )); then
+	exec git commit "$@"
+fi
+
+# find newest file
+toplevel="$(git rev-parse --show-toplevel)"
+(cd "$toplevel" && exec stat -c $'%Y\t%y\t%n' "${files[@]}") \
+	| sort -n -t $'\t' -k 1,1 \
+	| tail -n 1 \
+	| IFS=$'\t' read -r timestamp _ _
+
+set -x
+GIT_AUTHOR_DATE="@$timestamp" \
+GIT_COMMITTER_DATE="@$timestamp" \
+	exec git commit "$@"
