@@ -435,7 +435,7 @@ v7.0)
 
 	# main
 	make_merge \
-		work/iwlwifi-lar-v3-6.18 \
+		work/iwlwifi-lar-v3-7.0 \
 		work/amd-energy-6.18 \
 		work/btrfs-remove-ghost-subvolume-7.0 \
 		work/btrfs-allocation-hint-7.0 \
@@ -444,7 +444,7 @@ v7.0)
 		work/kbuild-6.18 \
 		work/em7565-ids-6.18 \
 		work/zswap-writeback-6.18 \
-		work/acpi-osc-6.18 \
+		work/acpi-osc-7.0 \
 		work/logitech-hidpp-6.19 \
 		work/fs-6.18-noop \
 		work/cddl-7.0 \
