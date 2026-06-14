@@ -32,10 +32,13 @@ while [[ -d "$GIT_DIR/rebase-merge" ]]; do
 		break
 	fi
 
+	# all conflicts were resolved (by user and/or rerere), try again
 	# also play along if the index turned out empty
 	if git diff-index --quiet HEAD --; then
 		git rebase --skip || rc=$?
 	else
+		# emulate `git rebase --continue --no-edit`
+		GIT_EDITOR=true \
 		git rebase --continue || rc=$?
 	fi
 done
