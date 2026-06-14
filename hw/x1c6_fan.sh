@@ -63,9 +63,8 @@ for arg; do
 		while :; do
 			rpm="$(try_read "$arg" "$SYSFS_NODE" "fan1_input")"
 			if (( rpm == 65535 )); then
-				die "bad rpm"
-			fi
-			if (( rpm > 5500 )); then
+				err "bad rpm"
+			elif (( rpm > 5500 )); then
 				break
 			fi
 			sleep 1
@@ -77,10 +76,9 @@ for arg; do
 
 		while :; do
 			rpm="$(try_read "$arg" "$SYSFS_NODE" "fan1_input")"
-			if (( rpm == 65535 )); then
-				die "bad rpm"
-			fi
-			if (( rpm > 5000 )); then
+			if (( rpm >= 65535 )); then
+				err "bad rpm"
+			elif (( rpm > 5000 )); then
 				break
 			fi
 			sleep 1
