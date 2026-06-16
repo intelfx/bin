@@ -232,6 +232,13 @@ function adjust_ddterm() {
 		/usr/share/gnome-shell/extensions/ddterm@amezin.github.com \
 	|| return 0
 
+	# differently-crude check: verify that ddterm configuration exists (i.e. ddterm did ever run)
+	dconf list "$dconf_path" | grep -q . \
+	|| return 0
+
+	# this is the correct check, but `gnome-extensions list` is extremely slow
+	#gnome-extensions list --enabled | grep -Fx "ddterm@amezin.github.com"
+
 	local -n palette="palette_$1"
 	local palette_gv
 	printf -v palette_gv "'%s', " "${palette[@]}"
