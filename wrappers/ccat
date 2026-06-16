@@ -7,7 +7,7 @@ if [[ -t 1 ]]; then
 	color=(--color=always)
 fi
 
-rg -uuu --no-heading --with-filename --no-line-number --field-match-separator=$'\t' "${color[@]}" . "$@" \
+rg -uuu --no-heading --with-filename --no-line-number --field-match-separator=$'\t' "${color[@]}" . /dev/null "$@" \
 	</dev/null \
 	| sort -t $'\t' -k1 \
 	| column -s $'\t' -t -l2
