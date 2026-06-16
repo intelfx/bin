@@ -34,6 +34,17 @@ function has() {
 	return 0
 }
 
+function has-either() {
+	local arg
+	for arg; do
+		if [[ $arg == */* ]]
+		then [[ -e $arg ]] && return ||:
+		else command -v "$arg" &>/dev/null && return ||:
+		fi
+	done
+	return 1
+}
+
 # $1: whether to enable dark (1 or 0)
 function adjust_gtk3() {
 	local gtk3_theme=( Adwaita Adwaita-dark ) #( Arc Arc-Dark )
@@ -215,7 +226,11 @@ function adjust_ddterm() {
 	local fg=( '#657b83' '#839496' )
 	local dconf_path='/com/github/amezin/ddterm/'
 
-	has "$HOME/.local/share/gnome-shell/extensions/ddterm@amezin.github.com" || return 0
+	# crude check: verify that ddterm is installed into any of the expected locations
+	has-either \
+		"$HOME/.local/share/gnome-shell/extensions/ddterm@amezin.github.com" \
+		/usr/share/gnome-shell/extensions/ddterm@amezin.github.com \
+	|| return 0
 
 	local -n palette="palette_$1"
 	local palette_gv
