@@ -83,4 +83,5 @@ git -C "$KERNEL_DIR" commit \
 
 log "done. now you can build the kernel with ZFS support."
 log "don't forget to add Kbuild integration (c3373c78b9dcbe5cabd94fcba2bcabd3464f6784)."
+log "                (...or, for zfs 2.4.3+, b1ab37bd61713ecb4faf96f9d21875deb0725d04)"
 log "make sure you enable ZFS support (CONFIG_ZFS) before building."
