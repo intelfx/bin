@@ -244,9 +244,12 @@ function adjust_ddterm() {
 	printf -v palette_gv "'%s', " "${palette[@]}"
 	palette_gv="[${palette_gv%, }]"
 
-	trace dconf write "${dconf_path}background-color" "'${bg[$1]}'"
-	trace dconf write "${dconf_path}foreground-color" "'${fg[$1]}'"
-	trace dconf write "${dconf_path}palette" "$palette_gv"
+	trace dconf load "${dconf_path}" <<EOF
+[/]
+background-color='${bg[$1]}'
+foreground-color='${fg[$1]}'
+palette=$palette_gv
+EOF
 }
 
 #function adjust_stext() {
