@@ -170,6 +170,63 @@ function adjust_delta() {
 	trace git config --file "$gitconfig" --unset "${flags[$((    $1))]}" ||:
 }
 
+# $1: whether to enable dark (1 or 0)
+function adjust_ddterm() {
+	# Solarized ANSI palette: accent colors are identical in both themes;
+	# the 8 monotone base colors swap their hex values between light and dark.
+	# See ~/.Xresources-solarized for the mapping table.
+	local palette_0=(  # light: positions of monotones in the ANSI palette is inverted wrt. normal mapping
+		'#eee8d5'  # 0  black     base2
+		'#dc322f'  # 1  red
+		'#859900'  # 2  green
+		'#b58900'  # 3  yellow
+		'#268bd2'  # 4  blue
+		'#d33682'  # 5  magenta
+		'#2aa198'  # 6  cyan
+		'#073642'  # 7  white     base02
+		'#fdf6e3'  # 8  brblack   base3
+		'#cb4b16'  # 9  brred     orange
+		'#93a1a1'  # 10 brgreen   base1
+		'#839496'  # 11 bryellow  base0
+		'#657b83'  # 12 brblue    base00
+		'#6c71c4'  # 13 brmagenta violet
+		'#586e75'  # 14 brcyan    base01
+		'#002b36'  # 15 brwhite   base03
+	)
+	local palette_1=(  # dark
+		'#073642'  # 0  black     base02
+		'#dc322f'  # 1  red
+		'#859900'  # 2  green
+		'#b58900'  # 3  yellow
+		'#268bd2'  # 4  blue
+		'#d33682'  # 5  magenta
+		'#2aa198'  # 6  cyan
+		'#eee8d5'  # 7  white     base2
+		'#002b36'  # 8  brblack   base03
+		'#cb4b16'  # 9  brred     orange
+		'#586e75'  # 10 brgreen   base01
+		'#657b83'  # 11 bryellow  base00
+		'#839496'  # 12 brblue    base0
+		'#6c71c4'  # 13 brmagenta violet
+		'#93a1a1'  # 14 brcyan    base1
+		'#fdf6e3'  # 15 brwhite   base3
+	)
+	local bg=( '#fdf6e3' '#002b36' )
+	local fg=( '#657b83' '#839496' )
+	local dconf_path='/com/github/amezin/ddterm/'
+
+	has "$HOME/.local/share/gnome-shell/extensions/ddterm@amezin.github.com" || return 0
+
+	local -n palette="palette_$1"
+	local palette_gv
+	printf -v palette_gv "'%s', " "${palette[@]}"
+	palette_gv="[${palette_gv%, }]"
+
+	trace dconf write "${dconf_path}background-color" "'${bg[$1]}'"
+	trace dconf write "${dconf_path}foreground-color" "'${fg[$1]}'"
+	trace dconf write "${dconf_path}palette" "$palette_gv"
+}
+
 #function adjust_stext() {
 #	local stext_prefs="$config_path/sublime-text-3/Packages/User/Preferences.sublime-settings"
 #	local schema=(
