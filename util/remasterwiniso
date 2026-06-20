@@ -37,7 +37,7 @@ if [[ ${ARG_COMPRESS_SOLID_FORCE+set} ]]; then
 	EXTENSION=esd
 	SKIP_WIMBOOT=1
 elif [[ ${ARG_COMPRESS_SOLID+set} ]]; then
-	[[ $ARG_COMPRESS_SOLID_FORCE == 1 ]] || COMPRESS_SOLID="$ARG_COMPRESS_SOLID"
+	[[ $ARG_COMPRESS_SOLID == 1 ]] || COMPRESS_SOLID="$ARG_COMPRESS_SOLID"
 	EXTENSION=esd
 elif [[ ${ARG_COMPRESS+set} ]]; then
 	[[ $ARG_COMPRESS == 1 ]] || COMPRESS="$ARG_COMPRESS"
@@ -117,16 +117,16 @@ process_dir() {
 	if [[ $SKIP_WIMBOOT ]]; then
 		# skip special handling of boot.{esd,wim}
 		find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) \
-			| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS[@]@Q} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
+			| parallel --tty "set -x; wimoptimize ${WIMOPTIMIZE_ARGS[@]@Q} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
 		return
 	fi
 
 	# force editable (WIM) compression for boot.{esd,wim}
 	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) -name 'boot.*' \
-		| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS_WIM[@]@Q} {} && if [[ {} != {.}.wim ]]; then mv -v {} {.}.wim; fi"
+		| parallel --tty "set -x; wimoptimize ${WIMOPTIMIZE_ARGS_WIM[@]@Q} {} && if [[ {} != {.}.wim ]]; then mv -v {} {.}.wim; fi"
 
 	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) -not -name 'boot.*' \
-		| parallel --tty "wimoptimize ${WIMOPTIMIZE_ARGS[@]@Q} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
+		| parallel --tty "set -x; wimoptimize ${WIMOPTIMIZE_ARGS[@]@Q} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
 }
 
 process_iso() {
