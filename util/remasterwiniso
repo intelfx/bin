@@ -24,6 +24,8 @@ declare -A ARGS=(
 	[--compress|--wim::]=ARG_COMPRESS
 	[--nocompress|--none]=ARG_COMPRESS_NONE
 	[--replace|--overwrite]=ARG_REPLACE
+	[--filter-drop:]="ARG_FILTER_DROP split=, append"
+	[--filter-keep:]="ARG_FILTER_KEEP split=, append"
 	[-h|--help]=ARG_USAGE
 	[--]=ARG_FILES
 )
@@ -93,22 +95,141 @@ if ! (( ${#ARG_FILES[@]} )); then
 	ARG_FILES=(.)
 fi
 
+process_wimboot() {
+	local file="$1" stem="${1%.*}"
+	local -a args
+	local out_ext out_file
+
+	args=( "${WIMOPTIMIZE_ARGS_WIM[@]}" )
+	out_ext="wim"
+	out_file="$stem.$out_ext"
+
+	log "Recompressing single file [wimboot]: $file -> $out_file"
+
+	trace wimoptimize "${args[@]}" "$file" || return
+	if [[ "$file" != "$out_file" ]]; then
+		trace mv -v "$file" "$out_file" || return
+	fi
+	return 0
+}
+
 process_image() {
-	log "Recompressing single file: $1"
-
-	local file="$1" stem="${1%.*}" args ext
+	local file="$1" stem="${1%.*}" in_ext="${1##*.}"
+	local -a args
+	local out_ext out_file tmp_file
 	if [[ ! $SKIP_WIMBOOT && ${file##*/} == boot.* ]]; then
-		args=( "${WIMOPTIMIZE_ARGS_WIM[@]}" )
-		ext="wim"
-	else
-		args=( "${WIMOPTIMIZE_ARGS[@]}" )
-		ext="$EXTENSION"
+		process_wimboot "$file"
+		return
 	fi
 
-	wimoptimize "${args[@]}" "$file"
-	if [[ "$1" != "$stem.$ext" ]]; then
-		mv -v "$file" "$stem.$ext"
+	args=( "${WIMOPTIMIZE_ARGS[@]}" )
+	out_ext="$EXTENSION"
+	out_file="$stem.$out_ext"
+	tmp_file="$stem.tmp.$out_ext"
+
+	log "Recompressing single file: $file -> $out_file"
+
+	local is_split=0
+	local -a parts ref_parts
+	case "$file" in
+	*.swm|*.ssd)
+		is_split=1
+		parts=( "$stem"[0-9]*."$in_ext" )
+		ref_parts=( --ref "${stem}[0-9]*.${in_ext}" )
+		;;
+	esac
+
+	local is_filtered=0
+	case "${ARG_FILTER_DROP+set}${ARG_FILTER_KEEP+set}" in
+	*set*) is_filtered=1 ;;
+	esac
+
+	local -a wimkeep wimdrop
+	local wimlast
+
+	if (( is_split || is_filtered )); then
+		local -a lines
+		local line
+
+		_match() {
+			# XXX: hack: crude way to distinguish between matching by image index and matching by name
+			#      (--filter-drop 1 will drop image #1, but --filter-drop 100
+			#       will drop an image whose name contains '100')
+			if [[ $term =~ ^[0-9]+$ ]] && (( term < 100 )); then
+				(( term == idx ))
+			else
+				[[ ${terms,,} == *${term,,}* ]]
+			fi
+		}
+
+		wiminfo-short --machine "$file" \
+			| readarray -t lines \
+		|| return
+
+		for line in "${lines[@]}"; do
+			IFS=$'\t' read -r idx codename fullname version arch lang <<<"$line"
+			IFS=$'\t' read -r idx terms <<<"$line"
+			wimlast="$idx"
+
+			local verdict=""
+			if [[ ${ARG_FILTER_DROP+set} ]]; then
+				verdict="${verdict:-keep}"
+				for term in "${ARG_FILTER_DROP[@]}"; do
+					_match && verdict=drop ||:
+				done
+			fi
+			if [[ ${ARG_FILTER_KEEP+set} ]]; then
+				verdict="${verdict:-drop}"
+				for term in "${ARG_FILTER_KEEP[@]}"; do
+					_match && verdict=keep ||:
+				done
+			fi
+			verdict="${verdict:-keep}"
+
+			case "$verdict" in
+			keep) wimkeep+=("$idx") ;;
+			drop) wimdrop+=("$idx") ;;
+			esac
+			log "[$file] ${verdict^^}: image=$idx code=$codename name=${fullname@Q} version=${version@Q} arch=${arch} lang=$lang"
+		done
+		IFS=, log "[$file] last=$wimlast keeping=${wimkeep[*]} dropping=${wimdrop[*]}"
 	fi
+
+	if (( ${#wimkeep[@]} < 1 )); then
+		err "[$file] no images remaining!"
+		return 1
+
+	elif (( ${#wimdrop[@]} > 0 && ${#wimkeep[@]} == 1 )); then
+		log "[$file]: one image remaining, running wimexport"
+		trace wimexport "${args[@]}" "${ref_parts[@]}" "$file" "${wimkeep[0]}" "$stem.out.$out_ext" || return
+		trace rm -v "$file" "${parts[@]}" || return
+		file="$stem.out.$out_ext"
+
+	else
+		if (( is_split )); then
+			log "[$file]: split, joining"
+			trace wimjoin "${WIMJOIN_ARGS[@]}" "$tmp_file" "$file" "${parts[@]}" || return
+			trace rm -v "$file" "${parts[@]}" || return
+			file="$tmp_file"
+		fi
+
+		if (( ${#wimdrop[@]} > 0 )); then
+			log "[$file]: have extra images, dropping"
+			while (( ${#wimdrop[@]} > 0 )); do
+				trace wimdelete --soft "$file" "${wimdrop[-1]}" || return
+				unset wimdrop[-1]
+			done
+		fi
+
+		wimoptimize "${args[@]}" "$file" || return
+	fi
+
+	if [[ "$file" != "$out_file" ]]; then
+		trace mv -v "$file" "$out_file" || return
+		file="$out_file"
+	fi
+
+	return 0
 }
 
 process_dir() {
@@ -116,7 +237,10 @@ process_dir() {
 
 	local errs=0
 
-	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) \
+	find "$1" \
+		-type f \
+		\( -name '*.wim' -or -name '*.esd' -or -name '*.swm' -or -name "*.ssd" \) \
+		-not \( -name '*[0-9].swm' -or -name '*[0-9].ssd' \) \
 	| while IFS= read -r file; do
 		log "Processing file: $file"
 
