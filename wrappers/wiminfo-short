@@ -37,7 +37,7 @@ EOF
 # args
 #
 
-if args=$(getopt -o '+vh' --long 'verbose,help' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o '+vh' --long 'verbose,machine,help' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -45,10 +45,12 @@ fi
 unset args
 
 VERBOSE=0
+MACHINE=0
 while :; do
 	case "$1" in
 	-h|--help) usge ;;
 	-v|--verbose) (( ++VERBOSE )) ;;
+	--machine) MACHINE=1; VERBOSE=1 ;;
 	--) shift; break ;;
 	*) die "getopt error" ;;
 	esac
@@ -131,4 +133,8 @@ process() {
 
 process "$@"
 
-printf "%s\n" "${ENTRIES[@]}" | column -Lt -s $'\t'
+if (( MACHINE )); then
+	printf "%s\n" "${ENTRIES[@]:1}"
+else
+	printf "%s\n" "${ENTRIES[@]}" | column -Lt -s $'\t'
+fi
