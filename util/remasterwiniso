@@ -114,19 +114,20 @@ process_image() {
 process_dir() {
 	log "Recompressing directory: $1"
 
-	if [[ $SKIP_WIMBOOT ]]; then
-		# skip special handling of boot.{esd,wim}
-		find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) \
-			| parallel --tty "set -x; wimoptimize ${WIMOPTIMIZE_ARGS[@]@Q} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
-		return
+	local errs=0
+
+	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) \
+	| while IFS= read -r file; do
+		log "Processing file: $file"
+
+		process_image "$file" || (( ++errs ))
+	done
+
+	if (( errs )); then
+		err "Failed to process $errs images in the directory"
+		return 1
 	fi
-
-	# force editable (WIM) compression for boot.{esd,wim}
-	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) -name 'boot.*' \
-		| parallel --tty "set -x; wimoptimize ${WIMOPTIMIZE_ARGS_WIM[@]@Q} {} && if [[ {} != {.}.wim ]]; then mv -v {} {.}.wim; fi"
-
-	find "$1" -type f \( -name '*.wim' -or -name '*.esd' \) -not -name 'boot.*' \
-		| parallel --tty "set -x; wimoptimize ${WIMOPTIMIZE_ARGS[@]@Q} {} && if [[ {} != {.}.$EXTENSION ]]; then mv -v {} {.}.$EXTENSION; fi"
+	return 0
 }
 
 process_iso() {
