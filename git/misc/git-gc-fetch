@@ -50,8 +50,10 @@ GIT_GC_NO_PRUNE=0
 GIT_GEOMETRIC=0
 FORCE=0
 PACK_ARGS=()
+KEEP_LARGEST_PACK=( --keep-largest-pack )
+ALL=0
 
-if args=$(getopt -o '+S:T:s:gbmf' --long 'size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o '+S:T:s:gbmf' --long 'all,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -69,6 +71,7 @@ while :; do
 	-b|--bitmap) PACK_ARGS+=( --write-bitmap-index ) ;;
 	-m|--midx) PACK_ARGS+=( --write-midx ) ;;
 	-f|--force) FORCE=1 ;;
+	--all) ALL=1; KEEP_LARGEST_PACK=() ;;
 	--) shift; break ;;
 	*) die "getopt error" ;;
 	esac
@@ -164,8 +167,12 @@ printf "%s\n" "${PACKS[@]}" \
 		continue
 	fi
 
+	# if --all is passed, repack everything
+	if (( ALL )); then
+		repack=1
+
 	# in geometric mode, repack everything after the largest pack
-	if (( GIT_GEOMETRIC && NR > 0 )); then
+	elif (( GIT_GEOMETRIC && NR > 0 )); then
 		repack=1
 
 	# repack everything after the first candidate pack
@@ -224,7 +231,7 @@ if (( GIT_GC || GIT_GC_NO_PRUNE )); then
 		-c gc.writeCommitGraph=true \
 		"${_gc_cfg[@]}"
 		gc \
-		--keep-largest-pack \
+		"${KEEP_LARGEST_PACK[@]}" \
 		"${_gc_args[@]}" \
 		"$@"
 else
