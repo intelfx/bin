@@ -1,0 +1,60 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+. lib.sh
+
+# _usage() {
+# 	cat <<EOF
+# Usage: $0 [-D CACHE-DIR | --system CACHE-SYSTEM-DIR] [ZIG-BUILD-ARGS...]
+# EOF
+# }
+#
+#
+# #
+# # args
+# #
+#
+# declare -A _args=(
+# 	[getopt]="+"
+# 	[-h|--help]=ARG_USAGE
+# 	[--dir:]=ARG_DIR
+# 	[--system:]="ARG_SYSTEM pass=ARGS_PASS"
+# 	[--]=ARGS
+# )
+# parse_args _args "$@" || usage
+# [[ ! $ARG_USAGE ]] || usage
+# set -- "${ARGS[@]}"
+
+
+#
+# main
+#
+
+# if [[ ${ARG_SYSTEM+set} ]]; then
+# 	if [[ $ARG_SYSTEM == */p ]]; then
+# 		export ZIG_GLOBAL_CACHE_DIR="${ARG_SYSTEM%/p}"
+# 		log "Fetching to (inferred): ${ZIG_GLOBAL_CACHE_DIR@Q}"
+# 	fi
+#
+# 	ZIG_SYSTEM_DIR="$ARG_SYSTEM"
+# 	log "--system dir (explicit): ${ZIG_SYSTEM_DIR@Q}"
+#
+# elif [[ ${ARG_DIR+set} ]]; then
+# 	export ZIG_GLOBAL_CACHE_DIR="$(realpath -q "$ARG_DIR")"
+# 	ZIG_SYSTEM_DIR="$ZIG_GLOBAL_CACHE_DIR/p"
+# 	log "Fetching to (cmdline): ${ZIG_GLOBAL_CACHE_DIR@Q}"
+# 	log "--system dir (cmdline): ${ZIG_SYSTEM_DIR@Q}"
+
+if [[ ${ZIG_GLOBAL_CACHE_DIR+set} ]]; then
+	ZIG_SYSTEM_DIR="$ZIG_GLOBAL_CACHE_DIR/p"
+	log "--system dir (env): ${ZIG_SYSTEM_DIR@Q}"
+
+else
+	export ZIG_GLOBAL_CACHE_DIR="$PWD/.zig-cache"
+	ZIG_SYSTEM_DIR="$ZIG_GLOBAL_CACHE_DIR/p"
+	log "--system dir (default): ${ZIG_SYSTEM_DIR@Q}"
+fi
+
+set -x
+exec zig build --system "$ZIG_SYSTEM_DIR" "$@"

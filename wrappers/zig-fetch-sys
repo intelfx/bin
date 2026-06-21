@@ -1,0 +1,53 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+. lib.sh
+
+_usage() {
+	cat <<EOF
+Usage: $0 [-D CACHE-DIR] [ZIG-FETCH-ARGS...]
+EOF
+}
+
+
+#
+# args
+#
+
+declare -A _args=(
+	[getopt]="+"
+	[-h|--help]=ARG_USAGE
+	[--dir:]=ARG_DIR
+	[--]=ARGS
+)
+parse_args _args "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
+
+
+#
+# main
+#
+
+if [[ ${ARG_DIR+set} ]]; then
+	export ZIG_GLOBAL_CACHE_DIR="$(realpath -q "$ARG_DIR")"
+	log "Fetching to (cmdline): ${ZIG_GLOBAL_CACHE_DIR@Q}"
+elif [[ ${ZIG_GLOBAL_CACHE_DIR+set} ]]; then
+	log "Fetching to (env): ${ZIG_GLOBAL_CACHE_DIR@Q}"
+else
+	export ZIG_GLOBAL_CACHE_DIR="$PWD/.zig-cache"
+	log "Fetching to (default): ${ZIG_GLOBAL_CACHE_DIR@Q}"
+fi
+
+# SCRIPT_PATH="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
+ZON_TXT_FILE="$PWD/build.zig.zon.txt"
+
+# while IFS= read -r url; do
+#   echo "Fetching: $url"
+#   zig fetch "$url" >/dev/null 2>&1 || {
+#     echo "Failed to fetch: $url" >&2
+#     exit 1
+#   }
+# done < "$ZON_TXT_FILE"
+set -x
+exec parallel --bar "zig fetch {} >/dev/null" <"$ZON_TXT_FILE"
