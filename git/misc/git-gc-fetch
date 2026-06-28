@@ -240,9 +240,10 @@ else
 	else _repack_args=( -g2 )
 	fi
 	git \
+		-c pack.depth=50 -c pack.window=1000 \
 		repack \
 		"${_repack_args[@]}" -d -l \
-		-fF --depth=50 --window=1000 \
+		-fF \
 		"${PACK_ARGS[@]}" \
 		"$@"
 	# git \
