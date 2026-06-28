@@ -253,7 +253,8 @@ else
 	git \
 		commit-graph \
 		write \
-		--reachable
+		--reachable \
+		--changed-paths
 fi
 
 rm -vf "$GIT_DIR/objects/pack"/tmp_pack_*
