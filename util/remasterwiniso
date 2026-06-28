@@ -26,6 +26,7 @@ declare -A ARGS=(
 	[--replace\|--overwrite]=ARG_REPLACE
 	[--filter-drop:]="ARG_FILTER_DROP split=, append"
 	[--filter-keep:]="ARG_FILTER_KEEP split=, append"
+	[--drop-oem]=ARG_DROP_OEM
 	[--tmpdir:]=ARG_TMPDIR
 	[-o\|--output:]=ARG_OUTPUT
 	[-h\|--help]=ARG_USAGE
@@ -288,6 +289,11 @@ process_iso() {
 
 	7z x -o"$work_dir" "$1" || return
 	process_dir "$work_dir" || return
+
+	if [[ $ARG_DROP_OEM && -e "$work_dir/sources/\$OEM\$" ]]; then
+		log "Remastering ISO file: stripping sources/\$OEM\$"
+		rm -vr "$work_dir/sources/\$OEM\$"
+	fi
 
 	local out_tmp="$(dn_slash "$out").$(bn "$out").XXXXXXXXXX.tmp"
 	out_tmp="$(mktemp -u "$out_tmp")" || return
