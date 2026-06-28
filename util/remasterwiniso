@@ -97,7 +97,7 @@ process_image() {
 	log "Recompressing single file: $1"
 
 	local file="$1" stem="${1%.*}" args ext
-	if [[ ! $SKIP_WIMBOOT && $1 == boot.* ]]; then
+	if [[ ! $SKIP_WIMBOOT && ${file##*/} == boot.* ]]; then
 		args=( "${WIMOPTIMIZE_ARGS_WIM[@]}" )
 		ext="wim"
 	else
