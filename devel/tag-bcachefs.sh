@@ -6,9 +6,9 @@ shopt -s lastpipe
 # shellcheck source=../lib/lib.sh
 . lib.sh
 
-BCACHEFS_TOOLS_DIR="$HOME/devel/ext/bcachefs-tools"
+BCACHEFS_TOOLS_DIR="$HOME/devel/tmp/bcachefs-tools"
 BCACHEFS_TOOLS_REMOTE="upstream"
-BCACHEFS_KERNEL_DIR="$HOME/devel/ext/linux"
+BCACHEFS_KERNEL_DIR="$HOME/devel/tmp/linux-bcachefs"
 BCACHEFS_KERNEL_REMOTE="bcachefs"
 
 git -C "$BCACHEFS_KERNEL_DIR" fetch "$BCACHEFS_KERNEL_REMOTE"
