@@ -19,14 +19,14 @@ EOF
 #
 
 declare -A ARGS=(
-	[--solid|--esd::]=ARG_COMPRESS_SOLID
-	[--solid-all|--esd-all::]=ARG_COMPRESS_SOLID_FORCE
-	[--compress|--wim::]=ARG_COMPRESS
-	[--nocompress|--none]=ARG_COMPRESS_NONE
-	[--replace|--overwrite]=ARG_REPLACE
+	[--solid\|--esd::]=ARG_COMPRESS_SOLID
+	[--solid-all\|--esd-all::]=ARG_COMPRESS_SOLID_FORCE
+	[--compress\|--wim::]=ARG_COMPRESS
+	[--nocompress\|--none]=ARG_COMPRESS_NONE
+	[--replace\|--overwrite]=ARG_REPLACE
 	[--filter-drop:]="ARG_FILTER_DROP split=, append"
 	[--filter-keep:]="ARG_FILTER_KEEP split=, append"
-	[-h|--help]=ARG_USAGE
+	[-h\|--help]=ARG_USAGE
 	[--]=ARG_FILES
 )
 parse_args ARGS "$@" || usage
