@@ -421,6 +421,7 @@ v6.19)
 		work/intel-rapl-hack-6.18 \
 		work/pf-no-teo-6.19 \
 		work/perf-zstd-6.18 \
+		work/mitigations-6.18 \
 		# work/gvt-failsafe-6.18 \
 		# work/gvt-workaround-6.18 \
 		# work/i915-fastboot-revert-6.18 \
@@ -453,6 +454,7 @@ v7.0)
 		work/intel-rapl-hack-6.18 \
 		work/pf-no-teo-7.0 \
 		work/perf-zstd-6.18 \
+		work/mitigations-7.0 \
 		# work/gvt-failsafe-6.18 \
 		# work/gvt-workaround-6.18 \
 		# work/i915-fastboot-revert-6.18 \
