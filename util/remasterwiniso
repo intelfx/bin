@@ -339,7 +339,7 @@ for file in "${ARG_FILES[@]}"; do
 			err "Failed to process ISO file: $file"
 			(( ++errs ))
 		fi
-	elif [[ "${file,,}" == *.wim || "${file,,}" == *.esd ]]; then
+	elif [[ "${file,,}" =~ \.(wim|esd|swm|ssd)$ ]]; then
 		if ! process_image "$file"; then
 			err "Failed to process WIM file: $file"
 			(( ++errs ))
