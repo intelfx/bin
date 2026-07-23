@@ -9,6 +9,8 @@ COLUMNS=()
 REDUCED=0
 COLOR=0
 PAGING=0
+NO_ZREPL=0
+SKIP=()
 
 case "$ARGV0" in
 zfs-listv) REDUCED=0 ;;
@@ -25,6 +27,10 @@ while (( $# )); do
 	-o*) COLUMNS+=("${1#-o}"); shift 1;;
 	-v) REDUCED=0; shift 1;;
 	-q) REDUCED=1; shift 1;;
+	-Z|--no-zrepl) SKIP+=('@zrepl'); shift 1;;
+	-X|--exclude) SKIP+=("$2"); shift 2;;
+	-X=*|--exclude=*) SKIP+=("${1#-*=}"); shift 1;;
+	-X*) SKIP+=("${1#-X}"); shift 1;;
 	*) ARGS+=("$1"); shift 1;;
 	esac
 done
@@ -55,15 +61,37 @@ unset IFS
 # IFS=','
 # exec zfs list -o "${COLUMNS[*]}" "${ARGS[@]}"
 
+RG_CMD=()
+if [[ ${SKIP+set} ]]; then
+	RG_CMD=(
+		rg -v
+	)
+	for s in "${SKIP[@]}"; do
+		RG_CMD+=(
+			-e "$s"
+		)
+	done
+fi
+
+BAT_CMD=()
 if [[ $COLOR == 1 || -t 1 ]] \
 && command -v bat &>/dev/null \
 && bat --list-languages | grep -q -w zfs-list; then
 	BAT_CMD=(
 		bat --language zfs-list --plain --color=always --paging="$( (( PAGING )) && echo always || echo never )"
 	)
-
-	# try not to leave a shell hanging around
-	exec "${ZFS_LIST_CMD[@]}" | exec "${BAT_CMD[@]}"
-else
-	exec "${ZFS_LIST_CMD[@]}"
 fi
+
+# We need to construct a pipeline with multiple optional stages.
+# To avoid combinatorial explosion, build it piecewise for eval, using @Q for safe escaping.
+#
+# Use `exec` on each stage in an effort to not leave extra shells hanging around.
+
+CMD="exec ${ZFS_LIST_CMD[*]@Q}"
+if [[ ${RG_CMD+set} ]]; then
+	CMD+=" | exec ${RG_CMD[*]@Q}"
+fi
+if [[ ${BAT_CMD+set} ]]; then
+	CMD+=" | exec ${BAT_CMD[*]@Q}"
+fi
+eval "$CMD"
