@@ -17,6 +17,7 @@ case "$ARGV0" in
 zfs-listq)  VERBOSITY=0 ;;
 zfs-list)   VERBOSITY=1 ;;
 zfs-listv)  VERBOSITY=2 ;;
+zfs-listvv) VERBOSITY=3 ;;
 esac
 
 while (( $# )); do
@@ -37,7 +38,7 @@ while (( $# )); do
 	esac
 done
 
-(( VERBOSITY <= 2 )) || VERBOSITY=2
+(( VERBOSITY <= 3 )) || VERBOSITY=3
 (( VERBOSITY >= 0 )) || VERBOSITY=0
 
 COLUMNS_PRE=(
@@ -46,11 +47,15 @@ COLUMNS_PRE=(
 COLUMNS_PRE_REDUCED=(
 	"name,used,refer"
 )
+COLUMNS_PRE_EXTRA=(
+	"compression,dedup,sync,canmount"
+)
 
 case "$VERBOSITY" in
 0) COLUMNS_PRE=( "${COLUMNS_PRE_REDUCED[@]}" ) ;;
 1) ;;  # for now, plain is identical to verbose
 2) ;;
+3) COLUMNS_PRE+=( "${COLUMNS_PRE_EXTRA[@]}" ) ;;
 esac
 
 COLUMNS=(
