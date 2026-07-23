@@ -125,7 +125,7 @@ process_wimboot() {
 }
 
 process_image() {
-	local file="$1" stem="${1%.*}" in_ext="${1##*.}"
+	local file="$1" stem="${1%.*}" in_ext="${1##*.}" in_join_ext
 	local -a args
 	local out_ext out_file tmp_file
 	if [[ ! $SKIP_WIMBOOT && ${file##*/} == boot.* ]]; then
@@ -133,17 +133,24 @@ process_image() {
 		return
 	fi
 
+	case "$in_ext" in
+	swm) in_join_ext=wim ;;
+	ssd) in_join_ext=esd ;;
+	*) in_join_ext="$in_ext" ;;
+	esac
+
 	args=( "${WIMOPTIMIZE_ARGS[@]}" )
 	out_ext="$EXTENSION"
 	out_file="$stem.$out_ext"
-	tmp_file="$stem.tmp.$out_ext"
+	tmp_file="$stem.tmp.$in_join_ext"
 
 	log "Recompressing single file: $file -> $out_file"
+	local LIBSH_LOG_PREFIX="[${file##*/}]"
 
 	local is_split=0
 	local -a parts ref_parts
-	case "$file" in
-	*.swm|*.ssd)
+	case "$in_ext" in
+	swm|ssd)
 		is_split=1
 		parts=( "$stem"[0-9]*."$in_ext" )
 		ref_parts=( --ref "${stem}[0-9]*.${in_ext}" )
@@ -201,31 +208,31 @@ process_image() {
 			keep) wimkeep+=("$idx") ;;
 			drop) wimdrop+=("$idx") ;;
 			esac
-			log "[$file] ${verdict^^}: image=$idx code=$codename name=${fullname@Q} version=${version@Q} arch=${arch} lang=$lang"
+			dbg "${verdict^^}: image=$idx code=$codename name=${fullname@Q} version=${version@Q} arch=${arch} lang=$lang"
 		done
-		IFS=, log "[$file] last=$wimlast keeping=${wimkeep[*]} dropping=${wimdrop[*]}"
+		dbg "last=$wimlast keeping=$(join + "${wimkeep[@]}") dropping=$(join + "${wimdrop[@]}")"
 	fi
 
 	if (( ${#wimkeep[@]} < 1 )); then
-		err "[$file] no images remaining!"
+		err "no images remaining!"
 		return 1
 
 	elif (( ${#wimdrop[@]} > 0 && ${#wimkeep[@]} == 1 )); then
-		log "[$file]: one image remaining, running wimexport"
-		trace wimexport "${args[@]}" "${ref_parts[@]}" "$file" "${wimkeep[0]}" "$stem.out.$out_ext" || return
+		log "one image remaining, running wimexport"
+		trace wimexport "${args[@]}" "${ref_parts[@]}" "$file" "${wimkeep[0]}" "$out_file" || return
 		trace rm -v "$file" "${parts[@]}" || return
-		file="$stem.out.$out_ext"
+		file="$out_file"
 
 	else
 		if (( is_split )); then
-			log "[$file]: split, joining"
+			log "split, joining"
 			trace wimjoin "${WIMJOIN_ARGS[@]}" "$tmp_file" "$file" "${parts[@]}" || return
 			trace rm -v "$file" "${parts[@]}" || return
 			file="$tmp_file"
 		fi
 
 		if (( ${#wimdrop[@]} > 0 )); then
-			log "[$file]: have extra images, dropping"
+			log "have extra images, dropping"
 			while (( ${#wimdrop[@]} > 0 )); do
 				trace wimdelete --soft "$file" "${wimdrop[-1]}" || return
 				unset wimdrop[-1]
