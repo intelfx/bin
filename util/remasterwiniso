@@ -214,11 +214,14 @@ process_image() {
 		dbg "last=$wimlast keeping=$(join + "${wimkeep[@]}") dropping=$(join + "${wimdrop[@]}")"
 	fi
 
-	if (( ${#wimkeep[@]} < 1 )); then
+	# only trigger an error if this is the user's fault
+	if (( ${#wimdrop[@]} > 0 && ${#wimkeep[@]} < 1 )); then
 		err "no images remaining!"
 		return 1
 
-	elif (( ${#wimdrop[@]} > 0 && ${#wimkeep[@]} == 1 )); then
+	# if !is_split && !is_filtered, the image list won't be populated and this branch won't trigger,
+	# but that's fine
+	elif (( ${#wimkeep[@]} == 1 )); then
 		log "one image remaining, running wimexport"
 		trace wimexport "${args[@]}" "${ref_parts[@]}" "$file" "${wimkeep[0]}" "$out_file" || return
 		trace rm -v "$file" "${parts[@]}" || return
