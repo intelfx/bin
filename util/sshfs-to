@@ -60,6 +60,7 @@ SSH_ARGS=(
 SSHFS_ARGS=(
 	"${SSH_ARGS[@]}"
 	"${FUSE_USER_ARGS[@]}"
+	-o no_contain_symlinks
 	-o transform_symlinks
 	-o reconnect
 	-o max_conns=8
