@@ -2,20 +2,21 @@
 
 set -eo pipefail
 shopt -s lastpipe
+shopt -s extglob
 
 ARGV0="${0##*/}"
 ARGS=()
 COLUMNS=()
-REDUCED=0
+VERBOSITY=1
 COLOR=0
 PAGING=0
 NO_ZREPL=0
 SKIP=()
 
 case "$ARGV0" in
-zfs-listv) REDUCED=0 ;;
-zfs-list)  ;&
-zfs-listq) REDUCED=1 ;;
+zfs-listq)  VERBOSITY=0 ;;
+zfs-list)   VERBOSITY=1 ;;
+zfs-listv)  VERBOSITY=2 ;;
 esac
 
 while (( $# )); do
@@ -25,8 +26,9 @@ while (( $# )); do
 	-o) COLUMNS+=("$2"); shift 2;;
 	-o=*) COLUMNS+=("${1#-o=}"); shift 1;;
 	-o*) COLUMNS+=("${1#-o}"); shift 1;;
-	-v) REDUCED=0; shift 1;;
-	-q) REDUCED=1; shift 1;;
+	# HACK, all of this needs to be converted to proper getopt, but then we will lose passthrough wrapper property
+	-+(v)) (( VERBOSITY += (${#1} - 1) )); shift 1;;
+	-+(q)) (( VERBOSITY -= (${#1} - 1) )); shift 1;;
 	-Z|--no-zrepl) SKIP+=('@zrepl'); shift 1;;
 	-X|--exclude) SKIP+=("$2"); shift 2;;
 	-X=*|--exclude=*) SKIP+=("${1#-*=}"); shift 1;;
@@ -35,6 +37,9 @@ while (( $# )); do
 	esac
 done
 
+(( VERBOSITY <= 2 )) || VERBOSITY=2
+(( VERBOSITY >= 0 )) || VERBOSITY=0
+
 COLUMNS_PRE=(
 	"name,volsize,volblocksize,recordsize,lused,used,lrefer,refer,usedds,usedsnap,compressratio,avail"
 )
@@ -42,9 +47,11 @@ COLUMNS_PRE_REDUCED=(
 	"name,used,refer"
 )
 
-if (( REDUCED ))
-then COLUMNS_PRE=( "${COLUMNS_PRE_REDUCED[@]}" )
-fi
+case "$VERBOSITY" in
+0) COLUMNS_PRE=( "${COLUMNS_PRE_REDUCED[@]}" ) ;;
+1) ;;  # for now, plain is identical to verbose
+2) ;;
+esac
 
 COLUMNS=(
 	"${COLUMNS_PRE[@]}"
