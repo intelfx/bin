@@ -281,6 +281,24 @@ process_dir() {
 	| while IFS= read -r file; do
 		log "Processing file: $file"
 
+		# XXX hack
+		filedir="$(dirname "$file")"
+		filebase="$(basename "$file")"
+		stem="${filebase%.*}"
+		ext="${filebase##*.}"
+
+		shopt -s nullglob
+		# catch split-wim subsequent volumes, if they exist
+		replacing=( "$file" "$filedir/$stem"[0-9]."$ext" )
+		adoptable=( "$2/$stem".* )
+		if [[ ${#adoptable[@]} == 1 ]]; then
+			log "XXX: hack: instead of $(join "+" "${replacing[@]}"), adopting ${adoptable[0]}"
+			rm -vf "${replacing[@]}" || { (( ++errs )); continue; }
+			cp -av "${adoptable[0]}" -t "$filedir" || { (( ++errs )); continue; }
+			continue
+		fi
+		# XXX end hack
+
 		process_image "$file" || (( ++errs ))
 	done
 
@@ -314,7 +332,7 @@ process_iso() {
 	ltrap "rm -rf '$work_dir'"
 
 	7z x -o"$work_dir" "$1" || return
-	process_dir "$work_dir" || return
+	process_dir "$work_dir" "$(dirname "$1")" || return
 
 	if [[ $ARG_DROP_OEM && -e "$work_dir/sources/\$OEM\$" ]]; then
 		log "Remastering ISO file: stripping sources/\$OEM\$"
