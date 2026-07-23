@@ -27,6 +27,10 @@ dbg() {
 	fi
 }
 
+log() {
+	echo >&2 ":: $*"
+}
+
 warn() {
 	echo >&2 "W: $*"
 }
@@ -99,6 +103,7 @@ unset file
 unset mode_both
 unset mode_tty
 unset mode_desktop
+unset mode_test
 unset raw
 
 declare -A skip
@@ -114,6 +119,7 @@ while (( $# )); do
 	-b|--both) mode_both=1 ;;
 	-t|--tty) mode_tty=1 ;;
 	-d|--desktop) mode_desktop=1 ;;
+	--test) mode_test=1 ;;
 	-i|-c|--copy) op=copy ;;
 	-o|-p|--paste) op=paste ;;
 	-*) usage "invalid flag: ${1@Q}" ;;
@@ -148,7 +154,7 @@ if [[ ! ${file+set} && ! ${op+set} ]]; then
 	fi
 fi
 
-if (( mode_both + mode_tty + mode_desktop > 1 )); then
+if (( mode_test + mode_both + mode_tty + mode_desktop > 1 )); then
 	die "multiple clipboard types specified"
 fi
 
@@ -156,7 +162,7 @@ if [[ ${mode_both+set} && $op != copy ]]; then
 	die "-b/--both does not make sense for pasting"
 fi
 
-if (( mode_both + mode_tty + mode_desktop == 0 )); then
+if (( mode_test + mode_both + mode_tty + mode_desktop == 0 )); then
 	mode_tty=1
 	mode_desktop=1
 fi
@@ -367,6 +373,30 @@ run_tty() {
 	return 1
 }
 
+run_test() {
+	case "$op" in
+	copy)
+		if [[ ${tmpfile+set} ]]; then
+			log "COPY: using tmpfile"
+		elif [[ ${file+set} ]]; then
+			log "COPY: from file: ${file@Q}"
+		else
+			log "COPY: from stdin"
+		fi
+		# ${file[@]} expands into nothing if unset
+		log "COPY: would copy:"
+		cat "${file[@]}" | hexdump -C >&2
+		;;
+	paste)
+		if [[ ${file+set} ]]; then
+			log "PASTE: into file: ${file@Q}"
+		else
+			log "PASTE: into stdout"
+		fi
+		;;
+	esac
+}
+
 
 #
 # main
@@ -379,6 +409,11 @@ if [[ $op == copy && ! ${raw+set} ]]; then
 fi
 
 fail=1
+
+if [[ ${mode_test+set} ]]; then
+	run_test && fail=0 ||:
+	exit
+fi
 
 if [[ ${mode_both+set} ]]; then
 	into_file
