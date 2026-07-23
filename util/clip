@@ -148,6 +148,10 @@ if [[ ! ${file+set} && ! ${op+set} ]]; then
 	fi
 fi
 
+if (( mode_both + mode_tty + mode_desktop > 1 )); then
+	die "multiple clipboard types specified"
+fi
+
 if [[ ${mode_both+set} && $op != copy ]]; then
 	die "-b/--both does not make sense for pasting"
 fi
