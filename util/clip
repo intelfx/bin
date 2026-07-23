@@ -53,7 +53,7 @@ help() {
 
 _usage() {
 	cat <<EOF
-Usage: $0 [--debug] [--tty|--desktop|--both] [MODE [FILE]]
+Usage: $0 [--debug] [--tty|--desktop|--both] [-R|--raw] [MODE [FILE]]
 
 Copy or paste data to/from any available clipboard.
 
@@ -73,11 +73,17 @@ Arguments:
 		If both standard streams are connected to the terminal,
 		a warning is printed and \`--paste\` is assumed.
 
+		If -R/--raw is set, no temporary file is created if possible,
+		and the input is streamed into the clipboard program directly.
+		Otherwise, if the input is a stream, it is buffered into a file
+		and preprocessed to remove any trailing newlines.
+
 Options:
 	-t, --tty	Limit operation to terminal clipboard (tmux or OSC 52)
 	-d, --desktop	Limit operation to graphical clipboard (Wayland or X11)
 	-b, --both	Attempt to work with terminal and graphical clipboards
 			in turn	(this option only makes sense with -c/--copy)
+	-R, --raw	Stream input into clipboard directly
 
 	--debug		Trace execution
 EOF
@@ -93,6 +99,7 @@ unset file
 unset mode_both
 unset mode_tty
 unset mode_desktop
+unset raw
 
 declare -A skip
 
@@ -103,6 +110,7 @@ while (( $# )); do
 	--skip-x11) skip[x11]=1 ;;
 	--skip-tmux) skip[tmux]=1 ;;
 	--skip-osc52) skip[osc52]=1 ;;
+	-R|--raw) raw=1 ;;
 	-b|--both) mode_both=1 ;;
 	-t|--tty) mode_tty=1 ;;
 	-d|--desktop) mode_desktop=1 ;;
@@ -156,6 +164,20 @@ fi
 
 unset tmpfile
 
+# buffer input (either stdin or file) into a private tmpfile,
+# so that it may be re-read or modified in place
+into_tmpfile() {
+	# at most one tmpfile
+	[[ ! ${tmpfile+set} ]] || die "internal error"
+	trap 'trace rm -f -- "$tmpfile"' EXIT
+	tmpfile="$(trace mktemp --tmpdir=/dev/shm clip.XXXXXX)"
+
+	# NOTE: also handles the stdin case (unset $file expands to no words)
+	cat "${file[@]}" >"$tmpfile"
+	file="$tmpfile"
+}
+
+# ensure input is a regular file; if not, buffer into a private tmpfile
 into_file() {
 	# if input is not a regular file, copy data via cat(1)
 	if [[ -f ${file-/dev/stdin} ]]; then
@@ -164,15 +186,31 @@ into_file() {
 			file="$(realpath -qe /dev/stdin)" || die "internal error"
 		fi
 	else
-		# at most one tmpfile
-		[[ ! ${tmpfile+set} ]] || die "internal error"
-		trap 'trace rm -f -- "$tmpfile"' EXIT
-		tmpfile="$(trace mktemp --tmpdir=/dev/shm clip.XXXXXX)"
-
-		# NOTE: also handles the stdin case (unset $file expands to no words)
-		cat "${file[@]}" >"$tmpfile"
-		file="$tmpfile"
+		into_tmpfile
 	fi
+}
+
+# like into_file(), but additionally strip all trailing newlines;
+# the input is never modified in place -- a private copy is made if needed
+into_file_stripped() {
+	into_file
+
+	# count consecutive trailing newlines
+	local trim=0 next=1
+	while (( $(tail -c"$next" -- "$file" | wc -l) == "$next" )); do
+		(( trim = next++ ))
+	done
+
+	# nothing to do unless the input ends in a trailing newline (or several)
+	(( trim )) || return 0
+
+	# don't clobber a pre-existing input file -- buffer it first
+	if [[ ! ${tmpfile+set} ]]; then
+		into_tmpfile
+	fi
+
+	# drop the trailing newline in place, avoiding a full rewrite
+	trace truncate -s -"$trim" -- "$file"
 }
 
 
@@ -329,6 +367,12 @@ run_tty() {
 #
 # main
 #
+
+# in copy mode, unless --raw, strip all trailing newlines from the input
+# (this buffers stream input, as stripping requires a regular file to work on)
+if [[ $op == copy && ! ${raw+set} ]]; then
+	into_file_stripped
+fi
 
 fail=1
 
