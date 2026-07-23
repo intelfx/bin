@@ -9,7 +9,7 @@ shopt -s extglob
 
 _usage() {
 	cat <<EOF
-Usage: $0 [(--solid|--esd)[=LEVEL] | (--solid-all|--esd-all)[=LEVEL] | (--compress|--wim)[=LEVEL] | (--nocompress|--none)] [--replace|--overwrite] [FILES...]
+Usage: $0 [(--solid|--esd)[=LEVEL] | (--solid-all|--esd-all)[=LEVEL] | (--compress|--wim)[=LEVEL] | (--nocompress|--none)] [--split=MiB] [--replace|--overwrite] [FILES...]
 EOF
 }
 
@@ -26,6 +26,7 @@ declare -A ARGS=(
 	[--replace\|--overwrite]=ARG_REPLACE
 	[--filter-drop:]="ARG_FILTER_DROP split=, append"
 	[--filter-keep:]="ARG_FILTER_KEEP split=, append"
+	[--split:]="ARG_SPLIT"
 	[--drop-oem]=ARG_DROP_OEM
 	[--tmpdir:]=ARG_TMPDIR
 	[-o\|--output:]=ARG_OUTPUT
@@ -127,7 +128,7 @@ process_wimboot() {
 process_image() {
 	local file="$1" stem="${1%.*}" in_ext="${1##*.}" in_join_ext
 	local -a args
-	local out_ext out_file tmp_file
+	local out_ext out_split_ext out_file tmp_file
 	if [[ ! $SKIP_WIMBOOT && ${file##*/} == boot.* ]]; then
 		process_wimboot "$file"
 		return
@@ -245,6 +246,21 @@ process_image() {
 	if [[ "$file" != "$out_file" ]]; then
 		trace mv -v "$file" "$out_file" || return
 		file="$out_file"
+	fi
+
+	# FIXME: wimlib does not support split esd, TODO: find out if it is possible at all
+	if [[ $ARG_SPLIT ]]; then
+		case "$out_ext" in
+		wim) out_split_ext=swm ;;
+		# esd) out_split_ext=ssd ;;
+		*) die "Unsupported output extension for split: ${out_ext@Q}" ;;
+		esac
+		out_file="$stem.$out_split_ext"
+
+		unset LIBSH_LOG_PREFIX
+		log "Splitting output: $file -> $out_file"
+
+		trace wimsplit "${WIMSPLIT_ARGS[@]}" "$file" "$out_file" "$ARG_SPLIT" || return
 	fi
 
 	return 0
