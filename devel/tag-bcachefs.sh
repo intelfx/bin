@@ -169,6 +169,11 @@ vergreater() {
 	(( ret > 0 ))
 }
 
+#
+# phase 1: extract releases up to v1.38.3, where the kernel tree was primary (but without releases)
+# and the userspace tree (which had the releases) recorded a pointer to the matching kernel commit
+#
+
 git -C "$BCACHEFS_TOOLS_DIR" ls-refs --format '%(refname:short)' 'refs/tags/v*' \
 | sort -V \
 | while IFS='' read -r tag; do
@@ -182,6 +187,11 @@ done
 # extract_one_revision branch "$last_tools_ref" bcachefs-tools/release --force-update
 # extract_one_revision branch "$BCACHEFS_TOOLS_REMOTE/master" bcachefs-tools/master --force-update
 
+#
+# phase 2: extract releases post v1.38.3, where the userspace tree has everything
+# and we need to maintain the kernel tree by hand
+#
+
 git -C "$BCACHEFS_TOOLS_DIR" ls-refs --format '%(refname:short)' 'refs/tags/v*' \
 | sort -V \
 | while IFS='' read -r tag; do
@@ -190,13 +200,15 @@ git -C "$BCACHEFS_TOOLS_DIR" ls-refs --format '%(refname:short)' 'refs/tags/v*' 
 	fi
 
 	# this is used as the parent of the generated commit
-	# set it here so that on the last iteration, both the last release tag
-	# and the release branch will all use the same parent (previous release)
 	parent_kernel_ref="$last_kernel_ref"
 	sync_one_revision tag "$tag" "bcachefs/${tag#v}"
 	last_tools_ref="$tag"
 	last_kernel_ref="bcachefs/${tag#v}"
 done
+
+# $parent_kernel_ref is inherited from the last iteration of the loop above,
+# such that the last release tag and the last release branch both share a parent
+# (and, given that we create commits deterministically, share the commit as well)
 sync_one_revision branch "$last_tools_ref" bcachefs-tools/release
 
 # master is on top of the last release, so advance the parent here
