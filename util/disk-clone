@@ -10,7 +10,7 @@ shopt -s nullglob
 
 _usage() {
 	cat <<EOF
-Usage: $0 [--luks=<dd|clone|recreate>] [--skip=PART[,PART...]] <source> <destination>
+Usage: $0 [--luks=<dd|clone|recreate>] [--skip=PART[,PART...]] [--skip-unknown] <source> <destination>
 
 Efficiently clone a disk or a disk image.
 
@@ -27,6 +27,8 @@ omitting free space within those filesystems.
 				- recreate: create a new LUKS header from scratch,
 				            then open both and copy the contents
 	--skip=PART,...		Skip cloning the specified partitions
+	--skip-unknown		(DANGEROUS) Skip cloning partitions without a
+				recognized filesystem
 EOF
 }
 
@@ -195,6 +197,7 @@ fi
 declare -A ARGS=(
 	[--luks:]=ARG_LUKS
 	[--skip:]="ARG_SKIP append split=,"
+	[--skip-unknown]="ARG_SKIP_UNKNOWN"
 	[--]=DISKS
 )
 parse_args ARGS "$@" || usage "Invalid options"
@@ -366,7 +369,7 @@ function clone_partition() {
 	part_type="$(blkid_src TYPE)"
 
 	if in_array "$idx" "${ARG_SKIP[@]}"; then
-		log "skipping clone of '$src_part' to '$dest_part'"
+		log "warning: skipping clone of '$src_part' to '$dest_part'"
 		return
 	fi
 
@@ -389,6 +392,8 @@ function clone_partition() {
 	elif  [[ "$part_type" == "crypto_LUKS" && "$ARG_LUKS" != "dd" ]]; then
 		log "entering LUKS container"
 		luks_clone "$src_part" "$dest_part"
+	elif [[ ${ARG_SKIP_UNKNOWN+set} ]]; then
+		log "warning: skipping clone of unknown filesystem on '$src_part'"
 	else
 		log "using partclone.dd"
 		partclone.dd "${PARTCLONE_FLAGS[@]}" -s "$src_part" -O "$dest_part"
