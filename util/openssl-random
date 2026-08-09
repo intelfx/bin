@@ -4,6 +4,7 @@ set -eo pipefail
 shopt -s lastpipe
 
 CIPHER=-aes-128-ctr
+QUIET_ARGS=(--quiet)
 ARGS=()
 
 if (( $# )); then
@@ -19,6 +20,11 @@ if (( $# )); then
 			fi
 			exit
 		fi
+		if [[ $arg == -v || $arg == --verbose || $arg == -p || $arg == --progress ]]; then
+			QUIET_ARGS=()
+			ARGS=(-ptebar "${ARGS[@]}")
+			continue
+		fi
 		for c in "${CIPHERS[@]}"; do
 			if [[ $arg == $c ]]; then
 				CIPHER="$arg"
@@ -30,7 +36,7 @@ if (( $# )); then
 fi
 
 if (( ${#ARGS[@]} )); then
-	exec < <(pv --quiet "${ARGS[@]}" /dev/zero)
+	exec < <(pv "${QUIET_ARGS[@]}" "${ARGS[@]}" /dev/zero)
 else
 	exec < /dev/zero
 fi
