@@ -11,6 +11,22 @@ shopt -s nullglob
 _usage() {
 	cat <<EOF
 Usage: $0 [--luks=<dd|clone|recreate>] [--skip=PART[,PART...]] <source> <destination>
+
+Efficiently clone a disk or a disk image.
+
+If a partition table is found, it will be cloned verbatim, then each partition
+will be cloned separately.
+
+Partitions with recognized filesystems will be copied using partclone,
+omitting free space within those filesystems.
+
+	--luks=METHOD		Clone LUKS containers using METHOD
+				- dd: block copy the entire LUKS partition
+				- clone: clone the LUKS header,
+				         open and copy the contents
+				- recreate: create a new LUKS header from scratch,
+				            then open both and copy the contents
+	--skip=PART,...		Skip cloning the specified partitions
 EOF
 }
 
