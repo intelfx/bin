@@ -29,7 +29,7 @@ pv_yaml="$(mktemp)"
 
 log "Setting PV to Retain"
 kubectl get pv "$pv" -oyaml >"$pv_yaml"
-inplace "$pv_yaml" yq -y '.spec.persistentVolumeReclaimPolicy = "Retain"'
+inplace yq -y '.spec.persistentVolumeReclaimPolicy = "Retain"' "$pv_yaml"
 kubectl apply -f "$pv_yaml"
 
 log "Deleting PVC"
@@ -37,15 +37,15 @@ kubectl delete -f "$pvc_yaml"
 
 log "Clearing PV claimRef"
 kubectl get pv "$pv" -oyaml >"$pv_yaml"
-inplace "$pv_yaml" yq -y '.spec.claimRef = null'
+inplace yq -y '.spec.claimRef = null' "$pv_yaml"
 kubectl apply -f "$pv_yaml"
 
 log "Recreating PVC"
 pvc_new="$2"
-inplace "$pvc_yaml" yq --arg name "$pvc_new" -y '.metadata.name = $name'
+inplace yq --arg name "$pvc_new" -y '.metadata.name = $name' "$pvc_yaml"
 kubectl apply -f "$pvc_yaml"
 
 log "Setting PV to Delete"
 kubectl get pv "$pv" -oyaml >"$pv_yaml"
-inplace "$pv_yaml" yq -y '.spec.persistentVolumeReclaimPolicy = "Delete"'
+inplace yq -y '.spec.persistentVolumeReclaimPolicy = "Delete"' "$pv_yaml"
 kubectl apply -f "$pv_yaml"
