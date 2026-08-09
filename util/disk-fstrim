@@ -16,6 +16,9 @@ Attempt to discard all unused space within a disk or a disk image.
 Free space within (recognized) filesystems will be discarded by way of mounting
 the filesystem with \`-o discard\` and running \`fstrim\` on it.
 
+(If \`--resize\` is specified, supported filesystems will also be resized
+ to fit their entire partition prior to discarding free space.)
+
 Unpartitioned space will be discarded by parsing the partition table and issuing
 \`blkdiscard\` commands for all contiguous regions not allocated to a partition.
 
@@ -25,6 +28,7 @@ ON SUCH PARTITIONS.
 
 	-f, --filesystems	Discard free space within recognized filesystems
 	-F, --free-space	Discard unpartitioned space
+	-R, --resize		Resize supported filesystems
 	--destroy-unknown	(DANGEROUS) Discard partitions without a
 				recognized filesystem
 	-n, --dry-run		Do not actually perform any modifications
@@ -164,6 +168,10 @@ part_fstrim() {
 	ltrap "rm -d '$mount_dir'"
 	mkdir -p "$mount_dir"
 
+	# Compute mount options to enable online discard on the filesystem.
+	# This is typically required to use FITRIM ioctl in fstrim(8).
+	# Where supported, request a readonly mount (some filesystems allow
+	# FITRIM even while mounted `ro`).
 	local mount_opts
 	case "$fstype" in
 	btrfs) mount_opts="ro,discard=async" ;;
@@ -171,11 +179,46 @@ part_fstrim() {
 	*) mount_opts="ro,discard" ;;
 	esac
 
+	# Compute the command to perform filesystem resize (expansion).
+	# Perform offline or online resize as appropriate.
+	local -a resize_cmd_offline resize_cmd_online
+	if (( ARG_RESIZE )); then
+		case "$fstype" in
+		ext[234]) resize_cmd_offline=( resize2fs "$part" ) ;;
+		btrfs)    resize_cmd_online=( btrfs filesystem resize max "$mount_dir" ) ;;
+		esac
+	fi
+
+	# If this filesystem supports offline resize, do it now
+	if [[ ${resize_cmd_offline+set} ]]; then
+		if ! run "${resize_cmd_offline[@]}"; then
+			err "$rpart: could not offline resize $fstype, skipping"
+			(( ++errs ))
+			return
+		fi
+	fi
+
+	# If this filesystem supports online resize, prepare to mount it as `rw`
+	# (an `ro` mount would likely refuse to accept a resize)
+	if [[ ${resize_cmd_online+set} ]]; then
+		mount_opts="${mount_opts/ro/rw}"
+	fi
+
 	ltrap "run umount '$mount_dir' || run umount -l '$mount_dir'"
 	if ! run mount "$part" "$mount_dir" -o "$mount_opts"; then
 		err "$rpart: could not mount at $mount_dir ($mount_opts), skipping"
 		(( ++errs ))
 		return
+	fi
+
+	# If this filesystem supports online resize, perform it on the mounted
+	# filesystem prior to running fstrim(8).
+	if [[ ${resize_cmd_online+set} ]]; then
+		if ! run "${resize_cmd_online[@]}"; then
+			err "$rpart: could not online resize $fstype at $mount_dir, skipping"
+			(( ++errs ))
+			return
+		fi
 	fi
 
 	if ! run fstrim -v "$mount_dir"; then
@@ -219,6 +262,7 @@ disk_pttrim() {
 declare -A ARGS=(
 	[-f|--fs|--filesystem|--filesystems]=ARG_TRIM_FILESYSTEMS
 	[-F|--free-space]=ARG_TRIM_FREE_SPACE
+	[-R|--resize]=ARG_RESIZE
 	[-n|--dry-run]=ARG_DRY_RUN
 	[-v|--verbose]=ARG_VERBOSE
 	[--destroy-unknown]=ARG_TRIM_UNKNOWN
