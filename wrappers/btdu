@@ -19,7 +19,7 @@ declare -A ARGS=(
 	[-o|--export:]="pass=ARGS_PASS"
 	[-f|--import:]="pass=ARGS_PASS"
 	[--du]="pass=ARGS_PASS"
-	[--]="ARGS_PATH pass=ARGS_PASS"
+	[--]="ARGS_PATH"
 )
 parse_args ARGS "$@" || exec /usr/bin/btdu "$@"
 [[ ${ARGS_PATH+set} ]] || exec /usr/bin/btdu "$@"
