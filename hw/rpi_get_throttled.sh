@@ -20,6 +20,7 @@ BOX_WIDTH=72
 BOX_WIDTH_MIN=66
 BOX_CHARSET=unicode
 COLOR=0
+LOOP_INTERVAL=2
 
 _usage() {
 	cat <<EOF
@@ -35,6 +36,8 @@ Options:
 					1: one-line summary
 					2: two-line display
 					3: list of reasons
+	-l, --loop[=SECONDS]	Redraw in place until interrupted, with
+					optional redraw interval (default: $LOOP_INTERVAL seconds)
 	-w, --width=N		Block width, in characters
 				(default: $BOX_WIDTH, minimum: $BOX_WIDTH_MIN)
 	    --ascii		Draw blocks with ASCII instead of Unicode
@@ -48,11 +51,25 @@ EOF
 # ANSI SGR (Solarized palette)
 #
 
+# Solarized, as ANSI palette indices rather than literal colors, so that the
+# output follows whichever variant (dark or light) the terminal is themed with
+# -- base03..base3 swap ends between the two, and hardcoding either is wrong.
+#
+#	name    dark      light     ANSI  terminal color
+#	base03  #002b36   #fdf6e3   8     brblack
+#	base02  #073642   #eee8d5   0     black
+#	base01  #586e75   #93a1a1   10    brgreen
+#	base00  #657b83   #839496   11    bryellow
+#	base0   #839496   #657b83   12    brblue
+#	base1   #93a1a1   #586e75   14    brcyan
+#	base2   #eee8d5   #073642   7     white
+#	base3   #fdf6e3   #002b36   15    brwhite
+#	(accents are identical in both variants)
 declare -A SGR_COLORS=(
-	[base03]=002b36  [base02]=073642  [base01]=586e75  [base00]=657b83
-	[base0]=839496   [base1]=93a1a1   [base2]=eee8d5   [base3]=fdf6e3
-	[yellow]=b58900  [orange]=cb4b16  [red]=dc322f     [magenta]=d33682
-	[violet]=6c71c4  [blue]=268bd2    [cyan]=2aa198    [green]=859900
+	[base03]=8   [base02]=0   [base01]=10  [base00]=11
+	[base0]=12   [base1]=14   [base2]=7    [base3]=15
+	[yellow]=3   [orange]=9   [red]=1      [magenta]=5
+	[violet]=13  [blue]=4     [cyan]=6     [green]=2
 )
 
 declare -A SGR_ATTRS=(
@@ -67,19 +84,18 @@ declare -A SGR_ATTRS=(
 sgr() {
 	if ! (( COLOR )); then return; fi
 
-	local arg name hex
+	local arg name color
 	local -a params=()
 	for arg; do
 		case "$arg" in
 		fg=*|bg=*)
 			name="${arg#??=}"
-			hex="${SGR_COLORS[$name]-}"
-			[[ $hex ]] || die "sgr: unknown color: $name"
+			color="${SGR_COLORS[$name]-}"
+			[[ $color ]] || die "sgr: unknown color: $name"
 			case "$arg" in
-			fg=*) params+=( 38 2 ) ;;
-			bg=*) params+=( 48 2 ) ;;
+			fg=*) params+=( 38 5 "$color" ) ;;
+			bg=*) params+=( 48 5 "$color" ) ;;
 			esac
-			params+=( "$(( 16#${hex:0:2} ))" "$(( 16#${hex:2:2} ))" "$(( 16#${hex:4:2} ))" )
 			;;
 		*)
 			[[ ${SGR_ATTRS[$arg]+set} ]] || die "sgr: unknown attribute: $arg"
@@ -751,6 +767,90 @@ _power_row() {
 
 
 #
+# terminal control
+#
+# ryzen_monitor(1) redraws with ESC[1;1H ESC[2J, i.e. it blanks the whole
+# screen and paints it again; on a slow or remote terminal that is visible as
+# a flicker, because the screen is briefly empty. Instead, home the cursor and
+# overwrite in place: every line is terminated with EL (erase to end of line)
+# to clean up after a line that got shorter, and the frame is terminated with
+# ED (erase to end of display) to clean up after a frame that got shorter.
+#
+# Cursor hiding is likewise bracketed around the whole run rather than emitted
+# per iteration (ryzen_monitor hides it only *after* painting the first frame,
+# so the cursor is visible for the duration of that frame).
+#
+
+CSI_HOME=$'\e[H'		# cursor to 1;1
+CSI_EL=$'\e[K'			# erase from cursor to end of line
+CSI_ED=$'\e[J'			# erase from cursor to end of display
+CSI_CURSOR_HIDE=$'\e[?25l'	# DECTCEM
+CSI_CURSOR_SHOW=$'\e[?25h'
+
+# whether we may drive the terminal (as opposed to just writing lines out)
+TERM_CTL=0
+
+term_begin() {
+	(( TERM_CTL )) || return 0
+	eval "$(globaltraps)"
+	# shellcheck disable=SC2016 # trap bodies are expanded when they run
+	ltrap 'printf "%s" "$CSI_CURSOR_SHOW"'
+	# make sure the EXIT trap above also runs when we are interrupted
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	printf '%s' "$CSI_CURSOR_HIDE"
+}
+
+# term_frame <TEXT>: emit one full-screen frame, overwriting the previous one
+term_frame() {
+	local frame="$1"
+
+	if ! (( TERM_CTL )); then
+		printf '%s\n' "$frame"
+		return
+	fi
+	printf '%s%s%s\n%s' \
+		"$CSI_HOME" "${frame//$'\n'/"$CSI_EL"$'\n'}" "$CSI_EL" "$CSI_ED"
+}
+
+
+#
+# refresh & render
+#
+
+PMIC_WARNED=0
+
+refresh() {
+	throttle_read || die "failed to read the throttling status"
+
+	if ! (( ARG_NO_POWER )) && ! pmic_read; then
+		# in --loop mode, complain once rather than on every iteration
+		if ! (( PMIC_WARNED )); then
+			PMIC_WARNED=1
+			warn "failed to read the PMIC ADCs, skipping power rails"
+		fi
+	fi
+}
+
+render() {
+	block_system
+	case "$ARG_THROTTLING" in
+	1) block_throttling_summary ;;
+	2) block_throttling_summary2 ;;
+	3) block_throttling_list ;;
+	all) block_throttling_list; block_throttling_summary2; block_throttling_summary ;;
+	esac
+	block_temps
+	block_clocks
+	block_volts
+	block_ring_osc
+	if (( ${#PMIC_RAILS[@]} )); then
+		block_power
+	fi
+}
+
+
+#
 # args
 #
 
@@ -759,6 +859,7 @@ declare -A _args=(
 	[-c\|--clocks]=ARG_CLOCKS
 	[-P\|--no-power]=ARG_NO_POWER
 	[-t\|--throttling:]="ARG_THROTTLING"
+	[-l\|--loop::]="ARG_LOOP default=$LOOP_INTERVAL"
 	[-w\|--width:]=ARG_WIDTH
 	[--ascii]=ARG_ASCII
 	[--color::]="ARG_COLOR default=auto"
@@ -771,6 +872,12 @@ case "$ARG_THROTTLING" in
 1|2|3|all) ;;
 *) usage "bad throttling style: ${ARG_THROTTLING@Q}" ;;
 esac
+
+if [[ $ARG_LOOP ]]; then
+	if ! [[ $ARG_LOOP == +([0-9])?(.+([0-9])) ]] || [[ $ARG_LOOP == +(0|.) ]]; then
+		usage "bad loop interval: $ARG_LOOP"
+	fi
+fi
 
 if [[ $ARG_WIDTH ]]; then
 	if ! [[ $ARG_WIDTH == +([0-9]) ]] || (( ARG_WIDTH < BOX_WIDTH_MIN )); then
@@ -786,7 +893,7 @@ fi
 case "${ARG_COLOR:-auto}" in
 always) COLOR=1 ;;
 never) COLOR=0 ;;
-auto) if [[ -t 1 && -z ${NO_COLOR-} ]]; then COLOR=1; else COLOR=0; fi ;;
+auto) if [[ -t 1 && ${TERM-} != dumb && -z ${NO_COLOR-} ]]; then COLOR=1; else COLOR=0; fi ;;
 *) usage "bad color mode: $ARG_COLOR" ;;
 esac
 
@@ -797,25 +904,22 @@ esac
 
 command -v vcgencmd &>/dev/null || die "vcgencmd not found (not a Raspberry Pi?)"
 
+if [[ -t 1 && ${TERM-} != dumb ]]; then
+	TERM_CTL=1
+fi
+
 setup_sgr
 setup_box
 
-throttle_read || die "failed to read the throttling status"
-if ! (( ARG_NO_POWER )); then
-	pmic_read || warn "failed to read the PMIC ADCs, skipping power rails"
+if ! [[ $ARG_LOOP ]]; then
+	refresh
+	render
+	exit
 fi
 
-block_system
-case "$ARG_THROTTLING" in
-1) block_throttling_summary ;;
-2) block_throttling_summary2 ;;
-3) block_throttling_list ;;
-all) block_throttling_list; block_throttling_summary2; block_throttling_summary ;;
-esac
-block_temps
-block_clocks
-block_volts
-block_ring_osc
-if (( ${#PMIC_RAILS[@]} )); then
-	block_power
-fi
+term_begin
+while :; do
+	refresh
+	term_frame "$(render)"
+	sleep "$ARG_LOOP"
+done
