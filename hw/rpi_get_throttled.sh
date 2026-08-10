@@ -43,6 +43,8 @@ Options:
 	    --ascii		Draw blocks with ASCII instead of Unicode
 	    --color=WHEN	Colorize output: always, auto or never
 				(default: auto; honors \$TERM and \$NO_COLOR)
+	    --term=WHEN		Use terminal control sequences: always, auto
+				or never (default: auto; honors \$TERM)
 EOF
 }
 
@@ -863,6 +865,7 @@ declare -A _args=(
 	[-w\|--width:]=ARG_WIDTH
 	[--ascii]=ARG_ASCII
 	[--color::]="ARG_COLOR default=auto"
+	[--term::]="ARG_TERM default=auto"
 )
 parse_args _args "$@" || usage
 [[ ! $ARG_USAGE ]] || usage
@@ -897,16 +900,19 @@ auto) if [[ -t 1 && ${TERM-} != dumb && -z ${NO_COLOR-} ]]; then COLOR=1; else C
 *) usage "bad color mode: $ARG_COLOR" ;;
 esac
 
+case "${ARG_TERM:-auto}" in
+always) TERM_CTL=1 ;;
+never) TERM_CTL=0 ;;
+auto) if [[ -t 1 && ${TERM-} != dumb ]]; then TERM_CTL=1; else TERM_CTL=0; fi ;;
+*) usage "bad terminal mode: $ARG_TERM" ;;
+esac
+
 
 #
 # main
 #
 
 command -v vcgencmd &>/dev/null || die "vcgencmd not found (not a Raspberry Pi?)"
-
-if [[ -t 1 && ${TERM-} != dumb ]]; then
-	TERM_CTL=1
-fi
 
 setup_sgr
 setup_box
