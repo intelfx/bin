@@ -80,16 +80,44 @@ declare -A SGR_ATTRS=(
 	[under]=4  [blink]=5  [invert]=7  [strike]=9
 )
 
-# sgr <ATTR...>: build an SGR escape sequence.
-# ATTR is either "fg=COLOR"/"bg=COLOR" (see $SGR_COLORS) or an attribute name
-# (see $SGR_ATTRS). Expands to nothing if colorization is disabled, which is
-# what makes it safe to bake the result into cell contents.
+STYLE_TITLE="fg=base1 bold"
+STYLE_FOOTER="fg=base01"
+STYLE_TOTAL="fg=base2 bold"
+
+# Throttling severity. "never" is deliberately near-invisible; the eye
+# should only be caught by the states that actually mean something.
+STYLE_NEVER="fg=base02" #bg=base03
+STYLE_PAST="fg=yellow" #bg=base03
+STYLE_NOW="fg=base3 bg=red bold"
+STYLE_NONE="fg=green"
+
+setup_sgr() {
+	sgr -v SGR_OFF reset
+}
+
+# sgr [-v VAR] <ATTR...>: build an SGR escape sequence.
+# ATTRs are split on spaces and interpreted as a list of elements, where each
+# is either "fg=COLOR"/"bg=COLOR" (see $SGR_COLORS), "fg=default"/"bg=default",
+# or an attribute name (see $SGR_ATTRS).
+# -v VAR: write the output to a variable VAR (`printf -v VAR`) instead of stdout.
+# Produces empty output if $COLOR is zero.
 sgr() {
+	# NB: `_`-prefix all locals because we assign to a name in the outer scope
+
+	local -a _var=()
+	if [[ $1 == -v ]]; then
+		_var=(-v "$2")
+		# clear the output variable
+		printf -v "$2" ''
+		shift 2
+	fi
+
 	if ! (( COLOR )); then return; fi
 
 	local _arg _name _color
 	local -a _params=()
-	for _arg; do
+	# shellcheck disable=SC2048  # arguments encode a whitespace-separated list
+	for _arg in $*; do
 		case "$_arg" in
 		fg=default)
 			_params+=( 39 ) ;;
@@ -113,22 +141,9 @@ sgr() {
 
 	if (( ${#_params[@]} )); then
 		local IFS=';'
-		printf '\e[%sm' "${_params[*]}"
+		# shellcheck disable=SC2059  # $_var[@] contains flags only
+		printf "${_var[@]}" '\e[%sm' "${_params[*]}"
 	fi
-}
-
-setup_sgr() {
-	SGR_OFF="$(sgr reset)"
-	SGR_TITLE="$(sgr fg=base1 bold)"
-	SGR_FOOTER="$(sgr fg=base01)"
-	SGR_TOTAL="$(sgr fg=base2 bold)"
-
-	# Throttling severity. "never" is deliberately near-invisible; the eye
-	# should only be caught by the states that actually mean something.
-	SGR_NEVER="$(sgr fg=base02 bg=base03)"
-	SGR_PAST="$(sgr fg=yellow bg=base03)"
-	SGR_NOW="$(sgr fg=base3 bg=red bold)"
-	SGR_NONE="$(sgr fg=green)"
 }
 
 
@@ -275,8 +290,8 @@ _box_cell() {
 # (given as an array of single characters) with <TEXT>, rendered as <STYLE>.
 _box_rule_text() {
 	declare -n _chars="$1"
-	local text=" $2 " align="$3" textsgr="$4"
-	local i first last
+	local text=" $2 " align="$3" style="$4"
+	local i first last textsgr
 
 	# both alignments leave two rule characters between the text and the border
 	case "$align" in
@@ -291,6 +306,7 @@ _box_rule_text() {
 	for (( i = first; i <= last; ++i )); do
 		_chars[i]="${text:i-first:1}"
 	done
+	sgr -v textsgr "$style"
 	_chars[first]="${textsgr}${_chars[first]}"
 	_chars[last]="${_chars[last]}${SGR_OFF}"
 }
@@ -315,8 +331,8 @@ _box_draw_rule() {
 		chars+=( "$c" )
 	done
 
-	[[ ! $title ]] || _box_rule_text chars "$title" l "$SGR_TITLE"
-	[[ ! $footer ]] || _box_rule_text chars "$footer" r "$SGR_FOOTER"
+	[[ ! $title ]] || _box_rule_text chars "$title" l "$STYLE_TITLE"
+	[[ ! $footer ]] || _box_rule_text chars "$footer" r "$STYLE_FOOTER"
 
 	local IFS=''
 	printf '%s%s%s\n' "$left" "${chars[*]}" "$right"
@@ -374,25 +390,54 @@ box_reclose() {
 	fi
 }
 
-# box_row [-s <SGR>] [CELL...]: draw a data row. With -s, the entire inner
-# width of the row (separators and padding included) is wrapped in <SGR>.
+# box_row [-s|-S <STYLE>] [CELL...]: draw a data row.
+# -s STYLE: the entire inner width of the row (separators and paddings included) is rendered as <STYLE>.
+# -S STYLE: the contents of the cells of the row are separately rendered as <STYLE>.
+#
+# Policy decisions made by this function:
+# - if row foreground is set, all separators are forcibly drawn in plain foreground;
+# - if row background is set, all separators are not drawn (behave as if the style contains `none`).
 box_row() {
-	local rowsgr=
-	if [[ ${1-} == -s ]]; then
-		rowsgr="$2"
-		shift 2
+	local row_style cell_style
+	while (( $# )); do
+		case "$1" in
+		-s) shift; row_style="$1" ;;
+		-S) shift; cell_style="$1" ;;
+		--) shift; break ;;
+		-*) die "box_row: invalid invocation" ;;
+		*) break ;;
+		esac
+		shift
+	done
+
+	local rowsgr cellsgr sepsgr sep_hide
+	sgr -v rowsgr "$row_style"
+	sgr -v cellsgr "$cell_style"
+	if [[ $rowsgr && $row_style == *"bg="* ]]; then
+		sep_hide=1
+	elif [[ $rowsgr && $row_style == *"fg="* ]]; then
+		sgr -v sepsgr "fg=default"
 	fi
 
-	local i n="${#_BOX_WIDTHS[@]}" cell inner=''
+	local i n="${#_BOX_WIDTHS[@]}" cell sep inner=''
 	for (( i = 0; i < n; ++i )); do
 		if (( i )); then
 			case "${_BOX_STYLES[i]}" in
-			hard) inner+="${BOX[v]}" ;;
-			bar|soft) inner+="${BOX[b]}" ;;
-			none) inner+=' ' ;;
+			hard) sep="${BOX[v]}" ;;
+			bar|soft) sep="${BOX[b]}" ;;
+			none) sep=' ' ;;
 			esac
+
+			if [[ $sep_hide ]]; then
+				inner+=' '
+			elif [[ $sepsgr && $sep != ' ' ]]; then
+				inner+="$sepsgr$sep$rowsgr"
+			else
+				inner+="$sep"
+			fi
 		fi
-		_box_cell cell "${_BOX_ALIGNS[i]}" "${_BOX_WIDTHS[i]}" "${@:i+1:1}"
+		_box_cell cell "${_BOX_ALIGNS[i]}" "${_BOX_WIDTHS[i]}" \
+			"$cellsgr${*:i+1:1}${cellsgr:+$SGR_OFF}"
 		inner+=" $cell "
 	done
 
@@ -578,18 +623,19 @@ throttle_state() {
 # throttle_chip <BIT> <STATE>: render a highlighted, fixed-width status word.
 # Without colors, severity is conveyed by capitalization instead.
 throttle_chip() {
-	local chip="${THROTTLE_CHIPS[$1]}" state="$2" sgr text
+	local chip="${THROTTLE_CHIPS[$1]}" state="$2" style textsgr text
 
 	case "$state" in
-	now)   sgr="$SGR_NOW";   text="$chip" ;;
-	past)  sgr="$SGR_PAST";  text="${chip,,}"; text="${text^}" ;;
-	never) sgr="$SGR_NEVER"; text="${chip,,}" ;;
+	now)   style="$STYLE_NOW";   text="$chip" ;;
+	past)  style="$STYLE_PAST";  text="${chip,,}"; text="${text^}" ;;
+	never) style="$STYLE_NEVER"; text="${chip,,}" ;;
 	esac
 	if (( COLOR )); then
 		text="$chip"
 	fi
 
-	printf '%s%s%s' "$sgr" "$text" "$SGR_OFF"
+	sgr -v textsgr "$style"
+	printf '%s%s%s' "$textsgr" "$text" "$SGR_OFF"
 }
 
 
@@ -634,20 +680,20 @@ block_system() {
 
 # throttling display: one row per cause, whole row highlighted by severity
 block_throttling_list() {
-	local bit sgr text
+	local bit style text
 
 	if ! (( THROTTLED )); then
 		box_open L_FULL "Throttling Causes ($THROTTLED_RAW)"
-		box_row -s "$SGR_NONE" 'No throttling observed since boot'
+		box_row -s "$STYLE_NONE" 'No throttling observed since boot'
 	else
 		box_open L_THROTTLE "Throttling Causes ($THROTTLED_RAW)"
 		for bit in "${THROTTLE_BITS[@]}"; do
 			case "$(throttle_state "$bit")" in
-			now)   sgr="$SGR_NOW";   text='THROTTLING NOW' ;;
-			past)  sgr="$SGR_PAST";  text='in the past' ;;
-			never) sgr="$SGR_NEVER"; text='never' ;;
+			now)   style="$STYLE_NOW";   text='THROTTLING NOW' ;;
+			past)  style="$STYLE_PAST";  text='in the past' ;;
+			never) style="$STYLE_NEVER"; text='never' ;;
 			esac
-			box_row -s "$sgr" "${THROTTLE_LABELS[$bit]}" "$text"
+			box_row -s "$style" "${THROTTLE_LABELS[$bit]}" "$text"
 		done
 	fi
 	box_close
@@ -792,7 +838,7 @@ block_power() {
 	fi
 
 	box_rule -l L_POWER_TOTAL
-	box_row -s "$SGR_TOTAL" 'Total board power' "$(printf '%.3f W' "$PMIC_TOTAL_POWER")"
+	box_row -S "$STYLE_TOTAL" 'Total board power' "$(printf '%.3f W' "$PMIC_TOTAL_POWER")"
 	box_close
 }
 
