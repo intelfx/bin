@@ -40,6 +40,7 @@ Options:
 					optional redraw interval (default: $LOOP_INTERVAL seconds)
 	-w, --width=N		Block width, in characters
 				(default: $BOX_WIDTH, minimum: $BOX_WIDTH_MIN)
+	-D, --debug		Report per-frame render time and fork count
 	    --ascii		Draw blocks with ASCII instead of Unicode
 	    --color=WHEN	Colorize output: always, auto or never
 				(default: auto; honors \$TERM and \$NO_COLOR)
@@ -114,6 +115,7 @@ sgr() {
 setup_sgr() {
 	SGR_OFF="$(sgr reset)"
 	SGR_TITLE="$(sgr fg=base1 bold)"
+	SGR_FOOTER="$(sgr fg=base01)"
 	SGR_TOTAL="$(sgr fg=base2 bold)"
 
 	# Throttling severity. "never" is deliberately near-invisible; the eye
@@ -264,9 +266,34 @@ _box_cell() {
 	_out="$out"
 }
 
-# _box_draw_rule <LEFT> <RIGHT> [TITLE]
+# _box_rule_text <CHARS> <TEXT> <ALIGN> <STYLE>: overwrite a part of a rule
+# (given as an array of single characters) with <TEXT>, rendered as <STYLE>.
+_box_rule_text() {
+	declare -n _chars="$1"
+	local text=" $2 " align="$3" textsgr="$4"
+	local i first last
+
+	# both alignments leave two rule characters between the text and the border
+	case "$align" in
+	l) first=2 ;;
+	r) first=$(( ${#_chars[@]} - 2 - ${#text} )) ;;
+	esac
+	(( first >= 2 )) || first=2
+	last=$(( first + ${#text} - 1 ))
+	(( last < ${#_chars[@]} )) || last=$(( ${#_chars[@]} - 1 ))
+	(( last >= first )) || return 0
+
+	for (( i = first; i <= last; ++i )); do
+		_chars[i]="${text:i-first:1}"
+	done
+	_chars[first]="${textsgr}${_chars[first]}"
+	_chars[last]="${_chars[last]}${SGR_OFF}"
+}
+
+# _box_draw_rule <LEFT> <RIGHT> [TITLE] [FOOTER]: titles are drawn on the left,
+# footers on the right.
 _box_draw_rule() {
-	local left="$1" right="$2" title="${3-}"
+	local left="$1" right="$2" title="${3-}" footer="${4-}"
 	local -a chars=()
 	local off c
 
@@ -283,18 +310,8 @@ _box_draw_rule() {
 		chars+=( "$c" )
 	done
 
-	if [[ $title ]]; then
-		local text=" $title " i first=2 last
-		last=$(( first + ${#text} - 1 ))
-		(( last < ${#chars[@]} )) || last=$(( ${#chars[@]} - 1 ))
-		for (( i = first; i <= last; ++i )); do
-			chars[i]="${text:i-first:1}"
-		done
-		if (( last >= first )); then
-			chars[first]="${SGR_TITLE}${chars[first]}"
-			chars[last]="${chars[last]}${SGR_OFF}"
-		fi
-	fi
+	[[ ! $title ]] || _box_rule_text chars "$title" l "$SGR_TITLE"
+	[[ ! $footer ]] || _box_rule_text chars "$footer" r "$SGR_FOOTER"
 
 	local IFS=''
 	printf '%s%s%s\n' "$left" "${chars[*]}" "$right"
@@ -319,14 +336,37 @@ box_rule() {
 	_box_draw_rule "${BOX[ml]}" "${BOX[mr]}" "${1-}"
 }
 
+# box_close [FOOTER]: close the block, embedding FOOTER into the closing line
+# (right-aligned, as opposed to the left-aligned title on the opening line).
 box_close() {
+	local footer="${1-}"
+
 	_BOX_TICKS_PREV=()
 	local off
 	for off in "${!_BOX_TICKS[@]}"; do
 		_BOX_TICKS_PREV[$off]=1
 	done
 	_BOX_TICKS=()
-	_box_draw_rule "${BOX[bl]}" "${BOX[br]}"
+	_box_draw_rule "${BOX[bl]}" "${BOX[br]}" '' "$footer"
+}
+
+# box_reclose <FOOTER>: rewind over the closing line drawn by box_close() and
+# draw it again, this time with FOOTER. For text that is only known once the
+# block has been drawn.
+#
+# Requires the ability to address the terminal ($TERM_CTL); without it, FOOTER
+# is emitted as a separate line instead, aligned to the right edge of the block.
+# NB: relies on box_close() leaving the tick marks of the block behind in
+# $_BOX_TICKS_PREV, so that the rule comes out exactly as it did the first time.
+box_reclose() {
+	local footer="$1"
+
+	if (( TERM_CTL )); then
+		printf '%s' "$CSI_CPL"
+		_box_draw_rule "${BOX[bl]}" "${BOX[br]}" '' "$footer"
+	else
+		printf '%*s\n' "$_BOX_TOTAL" "($footer)"
+	fi
 }
 
 # box_row [-s <SGR>] [CELL...]: draw a data row. With -s, the entire inner
@@ -784,6 +824,7 @@ _power_row() {
 #
 
 CSI_HOME=$'\e[H'		# cursor to 1;1
+CSI_CPL=$'\e[F'			# cursor to the start of the previous line
 CSI_EL=$'\e[K'			# erase from cursor to end of line
 CSI_ED=$'\e[J'			# erase from cursor to end of display
 CSI_CURSOR_HIDE=$'\e[?25l'	# DECTCEM
@@ -813,6 +854,50 @@ term_frame() {
 	fi
 	printf '%s%s%s\n%s' \
 		"$CSI_HOME" "${frame//$'\n'/"$CSI_EL"$'\n'}" "$CSI_EL" "$CSI_ED"
+}
+
+
+#
+# debug instrumentation
+#
+
+_FRAME_TIME=0
+_FRAME_PID=0
+
+# _pid_sample <OUT>: sample the kernel PID counter, at the cost of one fork
+# (a background job runs in a subshell even if it is a builtin).
+_pid_sample() {
+	# NB: `_`-prefix all locals because we take a name from the outer scope
+	declare -n _out="$1"
+	: &
+	_out="$!"
+	wait "$_out" &>/dev/null ||:
+}
+
+frame_begin() {
+	(( ARG_DEBUG )) || return 0
+	_pid_sample _FRAME_PID
+	_FRAME_TIME="${EPOCHREALTIME/./}"
+}
+
+# frame_stats <OUT>: time elapsed and processes spawned since frame_begin().
+# The fork count is approximate: PIDs are handed out sequentially, so anything
+# else forking on the system in the meantime is counted in as well.
+frame_stats() {
+	declare -n _out="$1"
+	local _pid _elapsed _forks
+
+	_elapsed=$(( ${EPOCHREALTIME/./} - _FRAME_TIME ))
+	_pid_sample _pid
+	# less one for the fork _pid_sample() just did itself
+	_forks=$(( _pid - _FRAME_PID - 1 ))
+	if (( _forks < 0 )); then
+		# the counter wrapped around
+		_forks=$(( _forks + $(</proc/sys/kernel/pid_max) ))
+	fi
+
+	printf -v _out '%d.%03d ms, %d forks' \
+		"$(( _elapsed / 1000 ))" "$(( _elapsed % 1000 ))" "$_forks"
 }
 
 
@@ -849,6 +934,13 @@ render() {
 	if (( ${#PMIC_RAILS[@]} )); then
 		block_power
 	fi
+
+	# reclose the last block, so that the stats cover the entire frame
+	if (( ARG_DEBUG )); then
+		local stats
+		frame_stats stats
+		box_reclose "$stats"
+	fi
 }
 
 
@@ -863,6 +955,7 @@ declare -A _args=(
 	[-t\|--throttling:]="ARG_THROTTLING"
 	[-l\|--loop::]="ARG_LOOP default=$LOOP_INTERVAL"
 	[-w\|--width:]=ARG_WIDTH
+	[-D\|--debug]=ARG_DEBUG
 	[--ascii]=ARG_ASCII
 	[--color::]="ARG_COLOR default=auto"
 	[--term::]="ARG_TERM default=auto"
@@ -918,6 +1011,7 @@ setup_sgr
 setup_box
 
 if ! [[ $ARG_LOOP ]]; then
+	frame_begin
 	refresh
 	render
 	exit
@@ -925,6 +1019,7 @@ fi
 
 term_begin
 while :; do
+	frame_begin
 	refresh
 	term_frame "$(render)"
 	sleep "$ARG_LOOP"
