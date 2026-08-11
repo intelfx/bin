@@ -518,19 +518,9 @@ read_dt_u32() {
 	local _path="/proc/device-tree/$2"
 	[[ -r $_path ]] || return 1
 
-	# device tree cells are big-endian; read the four bytes one at a time,
-	# because a NUL byte (of which there are usually three) cannot be stored
-	# in a shell variable and would terminate the read early anyway
-	local _i _byte _value=0
-	{
-		for (( _i = 0; _i < 4; ++_i )); do
-			IFS= read -r -d '' -n 1 _byte || return 1
-			# a NUL byte reads as the empty string, for which `printf %d "'"`
-			# conveniently yields zero
-			printf -v _byte '%d' "'$_byte"
-			(( _value = (_value << 8) | _byte )) ||:
-		done
-	} <"$_path"
+	# device tree cells are big-endian; read with od(1) and strip whitespace
+	local _value
+	od -An -t u4 -w4 --endian=big "$_path" 2>/dev/null | read -r _value || return 1
 
 	_out="$_value"
 }
