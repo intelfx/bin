@@ -668,13 +668,15 @@ psu_read() {
 #
 
 # display order, most severe first; bit N is "now", bit N+16 is "since boot"
-declare -a THROTTLE_BITS=( 2 3 1 0 )
+declare -a THROTTLE_BITS=( 2 0 1 3 )
 declare -A THROTTLE_LABELS=(
-	[2]='Overall throttled'  [3]='Thermal soft limit'
-	[1]='ARM frequency reduced'  [0]='Under-voltage'
+	[2]='Overall throttled'
+	[0]='Low voltage'
+	[1]='ARM frequency reduced'
+	[3]='Thermal soft limit'
 )
 declare -A THROTTLE_CHIPS=(
-	[2]='THROTTLED'  [3]='SOFT-TEMP'  [1]='FREQ'  [0]='UNDER-VOLTAGE'
+	[2]='THROTTLED'  [0]='LOW-VOLTAGE'  [1]='FREQ-CAP'  [3]='SOFT-TEMP'
 )
 
 THROTTLED_RAW=
@@ -728,7 +730,7 @@ declare -a L_POWER=( 'hard r 24' 'hard r 11' 'bar r 11' 'bar r *' )
 declare -a L_POWER_TOTAL=( 'hard r 24' 'hard r *' )
 declare -a L_THROTTLE=( 'hard l 24' 'hard r *' )
 declare -a L_THROTTLE_CHIPS=(
-	'hard l 11' 'none c 9' 'none c 9' 'none c 4' 'none c 13' 'none l *'
+	'hard l *' 'none c 9' 'none c 11' 'none c 8' 'none c 9'
 )
 
 block_system() {
@@ -789,8 +791,8 @@ block_throttling_summary2() {
 
 	box_open L_THROTTLE_CHIPS "Throttling Causes ($THROTTLED_RAW)"
 	box_blank
-	box_row 'In the past' "${past[@]}" ''
-	box_row 'Currently' "${now[@]}" ''
+	box_row 'In the past' "${past[@]}"
+	box_row 'Currently' "${now[@]}"
 	box_blank
 	box_close
 }
@@ -806,7 +808,7 @@ block_throttling_summary() {
 
 	box_open L_THROTTLE_CHIPS "Throttling Causes ($THROTTLED_RAW)"
 	box_blank
-	box_row 'Throttling' "${chips[@]}" ''
+	box_row 'Summary' "${chips[@]}"
 	box_blank
 	box_close
 }
