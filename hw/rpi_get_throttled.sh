@@ -91,6 +91,10 @@ sgr() {
 	local -a _params=()
 	for _arg; do
 		case "$_arg" in
+		fg=default)
+			_params+=( 39 ) ;;
+		bg=default)
+			_params+=( 49 ) ;;
 		fg=*|bg=*)
 			_name="${_arg#??=}"
 			_color="${SGR_COLORS[$_name]-}"
