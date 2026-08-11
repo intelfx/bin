@@ -87,28 +87,28 @@ declare -A SGR_ATTRS=(
 sgr() {
 	if ! (( COLOR )); then return; fi
 
-	local arg name color
-	local -a params=()
-	for arg; do
-		case "$arg" in
+	local _arg _name _color
+	local -a _params=()
+	for _arg; do
+		case "$_arg" in
 		fg=*|bg=*)
-			name="${arg#??=}"
-			color="${SGR_COLORS[$name]-}"
-			[[ $color ]] || die "sgr: unknown color: $name"
-			case "$arg" in
-			fg=*) params+=( 38 5 "$color" ) ;;
-			bg=*) params+=( 48 5 "$color" ) ;;
+			_name="${_arg#??=}"
+			_color="${SGR_COLORS[$_name]-}"
+			[[ $_color ]] || die "sgr: unknown color: $_name"
+			case "$_arg" in
+			fg=*) _params+=( 38 5 "$_color" ) ;;
+			bg=*) _params+=( 48 5 "$_color" ) ;;
 			esac
 			;;
 		*)
-			[[ ${SGR_ATTRS[$arg]+set} ]] || die "sgr: unknown attribute: $arg"
-			params+=( "${SGR_ATTRS[$arg]}" )
+			[[ ${SGR_ATTRS[$_arg]+set} ]] || die "sgr: unknown attribute: $_arg"
+			_params+=( "${SGR_ATTRS[$_arg]}" )
 			;;
 		esac
 	done
 
-	if (( ${#params[@]} )); then
-		printf '\e[%sm' "$(join ';' "${params[@]}")"
+	if (( ${#_params[@]} )); then
+		printf '\e[%sm' "$(join ';' "${_params[@]}")"
 	fi
 }
 
