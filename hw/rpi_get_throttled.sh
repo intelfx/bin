@@ -108,7 +108,8 @@ sgr() {
 	done
 
 	if (( ${#_params[@]} )); then
-		printf '\e[%sm' "$(join ';' "${_params[@]}")"
+		local IFS=';'
+		printf '\e[%sm' "${_params[*]}"
 	fi
 }
 
