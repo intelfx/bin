@@ -501,6 +501,42 @@ fmt_hz() {
 
 
 #
+# device tree
+#
+
+# read_dt <NODE>: read a string property from the device tree
+read_dt() {
+	local path="/proc/device-tree/$1"
+	[[ -r $path ]] || return 1
+	tr -d '\0' <"$path"
+}
+
+# read_dt_u32 <OUT> <NODE>: read a 32-bit cell property from the device tree.
+read_dt_u32() {
+	# NB: `_`-prefix all locals because we take a name from the outer scope
+	declare -n _out="$1"
+	local _path="/proc/device-tree/$2"
+	[[ -r $_path ]] || return 1
+
+	# device tree cells are big-endian; read the four bytes one at a time,
+	# because a NUL byte (of which there are usually three) cannot be stored
+	# in a shell variable and would terminate the read early anyway
+	local _i _byte _value=0
+	{
+		for (( _i = 0; _i < 4; ++_i )); do
+			IFS= read -r -d '' -n 1 _byte || return 1
+			# a NUL byte reads as the empty string, for which `printf %d "'"`
+			# conveniently yields zero
+			printf -v _byte '%d' "'$_byte"
+			(( _value = (_value << 8) | _byte )) ||:
+		done
+	} <"$_path"
+
+	_out="$_value"
+}
+
+
+#
 # PMIC
 #
 
@@ -585,6 +621,37 @@ pmic_read() {
 
 
 #
+# power supply
+#
+# The Raspberry Pi 5 firmware negotiates a power contract with the USB-C PSU
+# and publishes the outcome under /proc/device-tree/chosen/power; the USB ports
+# are restricted to 600 mA in total unless the PSU can supply enough for the
+# 1.6 A profile. Earlier models do not have this node at all.
+#
+
+PSU_PRESENT=0
+PSU_MAX_CURRENT=	# mA the power supply advertises
+PSU_USB_MAX_CURRENT=	# whether the high-current USB profile is enabled
+PSU_USB_OVERCURRENT=	# whether an USB overcurrent condition was detected
+
+psu_read() {
+	PSU_PRESENT=0
+	PSU_MAX_CURRENT=
+	PSU_USB_MAX_CURRENT=
+	PSU_USB_OVERCURRENT=
+
+	[[ -d /proc/device-tree/chosen/power ]] || return 1
+
+	read_dt_u32 PSU_MAX_CURRENT chosen/power/max_current ||:
+	read_dt_u32 PSU_USB_MAX_CURRENT chosen/power/usb_max_current_enable ||:
+	read_dt_u32 PSU_USB_OVERCURRENT chosen/power/usb_over_current_detected ||:
+
+	[[ $PSU_MAX_CURRENT || $PSU_USB_MAX_CURRENT || $PSU_USB_OVERCURRENT ]] || return 1
+	PSU_PRESENT=1
+}
+
+
+#
 # throttling
 #
 # https://www.raspberrypi.com/documentation/computers/os.html#get_throttled
@@ -653,13 +720,6 @@ declare -a L_THROTTLE=( 'hard l 24' 'hard r *' )
 declare -a L_THROTTLE_CHIPS=(
 	'hard l 11' 'none c 9' 'none c 9' 'none c 4' 'none c 13' 'none l *'
 )
-
-# read_dt <NODE>: read a string property from the device tree
-read_dt() {
-	local path="/proc/device-tree/$1"
-	[[ -r $path ]] || return 1
-	tr -d '\0' <"$path"
-}
 
 block_system() {
 	local value
@@ -795,6 +855,29 @@ block_ring_osc() {
 		"$(printf '%.3f MHz' "$freq")" \
 		"$(printf '%.4f V' "$volts")" \
 		"$(printf '%.1f C' "$temp")"
+	box_close
+}
+
+block_psu() {
+	local value
+
+	box_open L_KV 'Power Supply'
+	if [[ $PSU_MAX_CURRENT ]]; then
+		printf -v value '%d.%d A' \
+			"$(( PSU_MAX_CURRENT / 1000 ))" "$(( (PSU_MAX_CURRENT % 1000) / 100 ))"
+		box_row 'Maximum supply current' "$value"
+	fi
+	if [[ $PSU_USB_MAX_CURRENT ]]; then
+		if (( PSU_USB_MAX_CURRENT )); then value='enabled'; else value='disabled'; fi
+		box_row 'USB high current mode' "$value"
+	fi
+	if [[ $PSU_USB_OVERCURRENT ]]; then
+		if (( PSU_USB_OVERCURRENT )); then
+			box_row -s "$STYLE_NOW" 'USB overcurrent' 'DETECTED'
+		else
+			box_row 'USB overcurrent' 'never'
+		fi
+	fi
 	box_close
 }
 
@@ -960,6 +1043,7 @@ PMIC_WARNED=0
 
 refresh() {
 	throttle_read || die "failed to read the throttling status"
+	psu_read ||:
 
 	if ! (( ARG_NO_POWER )) && ! pmic_read; then
 		# in --loop mode, complain once rather than on every iteration
@@ -982,6 +1066,9 @@ render() {
 	block_clocks
 	block_volts
 	block_ring_osc
+	if (( PSU_PRESENT )); then
+		block_psu
+	fi
 	if (( ${#PMIC_RAILS[@]} )); then
 		block_power
 	fi
