@@ -527,6 +527,26 @@ read_dt_u32() {
 
 
 #
+# hwmon
+#
+
+# read_hwmon <OUT> <NAME> <ATTR>: read attribute <ATTR> of the hwmon device
+# registered under <NAME>. Hwmon indices are not stable, hence the search.
+read_hwmon() {
+	declare -n _out="$1"
+	local _dir
+
+	for _dir in /sys/class/hwmon/hwmon*; do
+		[[ -r $_dir/name && -r $_dir/$3 ]] || continue
+		[[ $(<"$_dir/name") == "$2" ]] || continue
+		_out="$(<"$_dir/$3")"
+		return 0
+	done
+	return 1
+}
+
+
+#
 # PMIC
 #
 
@@ -800,6 +820,12 @@ block_temps() {
 	fi
 	if value="$(vcgen_value measure_temp pmic)"; then
 		box_row 'PMIC' "$(printf '%.1f C' "${value%\'C}")"
+	fi
+	# the RP1 I/O controller only exists on the Raspberry Pi 5; its sensor is
+	# untrimmed and the driver quantizes it to ~0.6 C, so it is good for
+	# trends only
+	if read_hwmon value rp1_adc temp1_input; then
+		box_row 'RP1' "$(printf '%.1f C' "${value}e-3")"
 	fi
 	box_close
 }
