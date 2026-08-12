@@ -1,0 +1,126 @@
+#!/bin/bash
+#
+# Refresh the local mail store used by the lore/b4 patch workflow.
+#
+# Three sources land in ~/mail and are then indexed as one by notmuch:
+#   ~/mail/gmail/*  -- the "Dev" Gmail label, via mbsync
+#   ~/mail/lei/*    -- public-inbox saved searches, via lei up
+#   ~/mail/local/*  -- locally generated mail (sent copies, b4 output)
+#
+# Self-contained on purpose: this runs from a systemd user timer, where $PATH
+# and ~/bin/lib are not guaranteed.
+
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [-i|--imap-only] [-l|--lei-only] [-n|--no-index] [-q|--quiet]
+
+Synchronize IMAP (mbsync) and public-inbox (lei) mail, then reindex notmuch.
+
+  -i, --imap-only   only run mbsync
+  -l, --lei-only    only run lei up
+  -n, --no-index    skip 'notmuch new'
+  -q, --quiet       pass quiet flags to the underlying tools
+EOF
+}
+
+
+#
+# args
+#
+
+do_imap=1
+do_lei=1
+do_index=1
+quiet=0
+
+if args=$(getopt -o 'ilnqh' --long 'imap-only,lei-only,no-index,quiet,help' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+while :; do
+	case "$1" in
+	-i|--imap-only) do_lei=0 ;;
+	-l|--lei-only) do_imap=0 ;;
+	-n|--no-index) do_index=0 ;;
+	-q|--quiet) quiet=1 ;;
+	-h|--help) _usage; exit 0 ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+(( $# == 0 )) || usage "wrong number of positional arguments"
+
+
+#
+# main
+#
+
+# notmuch chokes on a maildir that does not exist yet; lei and mbsync both
+# create their own, but the local one is ours to make.
+mkdir -p ~/mail/local/sent/{cur,new,tmp}
+
+rc=0
+
+if (( do_imap )); then
+	log "mbsync: syncing Gmail 'Dev'"
+	mbsync_args=( --all )
+	(( ! quiet )) || mbsync_args+=( --quiet )
+	if ! mbsync "${mbsync_args[@]}"; then
+		err "mbsync failed"
+		rc=1
+	fi
+fi
+
+if (( do_lei )); then
+	# 'lei up --all=local' refreshes every saved search that writes to a local
+	# output. It is not fatal if a single external is unreachable.
+	log "lei: refreshing saved searches"
+	lei_args=( up --all=local )
+	(( ! quiet )) || lei_args+=( --quiet )
+	if ! lei "${lei_args[@]}"; then
+		err "lei up failed"
+		rc=1
+	fi
+fi
+
+if (( do_index )); then
+	log "notmuch: indexing"
+	notmuch_args=( new )
+	(( ! quiet )) || notmuch_args+=( --quiet )
+	if ! notmuch "${notmuch_args[@]}"; then
+		err "notmuch new failed"
+		rc=1
+	fi
+fi
+
+exit "$rc"
