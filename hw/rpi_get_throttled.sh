@@ -25,7 +25,7 @@ LOOP_INTERVAL=2
 
 _usage() {
 	cat <<EOF
-Usage: ${0##*/} [OPTIONS]
+Usage: ${LIB_ARGV0} [OPTIONS]
 
 Display Raspberry Pi throttling state, temperatures, clocks, voltages, and PMIC
 per-rail power, decoded from vcgencmd(1) and sysfs.
