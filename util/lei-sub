@@ -1,0 +1,373 @@
+#!/bin/bash
+#
+# Manage lei(1) saved searches -- the set of public-inbox queries that get
+# mirrored into ~/mail/lei and picked up by notmuch/neomutt.
+#
+# lei's own CLI is query-oriented: you write the query, you name the output
+# maildir, you remember what you called it. This wraps it in the operations
+# that actually come up while working on patches -- follow this thread, watch
+# these files, watch this list -- and keeps the naming consistent.
+
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
+
+LEI_ROOT="${LEI_ROOT:-$HOME/mail/lei}"
+
+# Bounds the file-watch queries. Without it, `lei-sub files` on a
+# long-lived file pulls a decade of list traffic.
+DEFAULT_WINDOW='6.months.ago'
+
+# public-inbox rejects absurdly long queries and they are useless anyway.
+MAX_FILES=25
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} COMMAND [ARGS...]
+
+Manage lei saved searches under $LEI_ROOT.
+
+Inspecting:
+  ls                        list saved searches, with their queries
+  show NAME                 print the query behind one saved search
+  up [NAME...]              refresh saved searches (default: all)
+
+Editing:
+  add NAME QUERY...         create or replace a saved search
+  rm NAME...                forget a saved search and delete its maildir
+  edit NAME                 edit a saved search's query in \$EDITOR
+
+Subscribing:
+  thread [MSGID|-]          follow the thread containing MSGID; '-' or no
+                            argument reads a message from stdin, which is how
+                            the neomutt macro invokes it
+  files [-n NAME] [REV]     watch mail touching the files that REV changes
+                            (default: HEAD; accepts A..B ranges)
+  list ADDR                 watch a mailing list by its posting address,
+                            e.g. linux-wireless@vger.kernel.org
+  me                        (re)create the catch-all search for mail to, from
+                            or Cc'ing me
+
+Options:
+  -n, --name NAME           name the saved search explicitly
+  -w, --window WHEN         only match mail newer than WHEN (default: $DEFAULT_WINDOW
+                            for 'files' and 'list'; unbounded for 'thread')
+  -h, --help                this message
+EOF
+}
+
+
+#
+# helpers
+#
+
+# lei identifies a saved search by its output path, so name <-> path is the
+# only mapping we need.
+name_to_path() {
+	printf '%s/%s\n' "$LEI_ROOT" "$1"
+}
+
+path_to_name() {
+	local p="$1"
+	p="${p#"$LEI_ROOT/"}"
+	printf '%s\n' "${p%/}"
+}
+
+# Turn arbitrary text into something usable as a directory name.
+slugify() {
+	local s="$1"
+	s="${s,,}"
+	s="${s//[^a-z0-9]/-}"
+	while [[ $s == *--* ]]; do s="${s//--/-}"; done
+	# Truncate first, then trim: a cut in the middle of a word otherwise
+	# leaves a trailing separator.
+	s="${s:0:60}"
+	s="${s#-}"
+	s="${s%-}"
+	printf '%s\n' "$s"
+}
+
+# Read an RFC822 message from stdin, emit its unfolded header block.
+unfold_headers() {
+	sed -e '/^\r\?$/q' \
+	| sed -e ':a' -e '$!N' -e 's/\n[ \t]\+/ /' -e 'ta' -e 'P' -e 'D'
+}
+
+# Absent headers are normal (a message need not have a Subject), so suppress
+# grep's failure -- under pipefail it would otherwise abort the script.
+header_value() {
+	local name="$1" line
+	{ grep -i "^$name:" || true; } \
+	| head -n1 \
+	| { IFS='' read -r line || true; printf '%s\n' "${line#*: }"; }
+}
+
+# Strip the angle brackets lei does not want.
+strip_brackets() {
+	local s="$1"
+	s="${s#*<}"
+	s="${s%>*}"
+	printf '%s\n' "$s"
+}
+
+require_lei_search() {
+	local path="$1"
+	lei ls-search | grep -qxF "$path" \
+		|| die "no such saved search: $(path_to_name "$path") (try '${0##*/} ls')"
+}
+
+# lei has no command that prints a saved search's query, but each one is a
+# plain git-config file keyed by its output maildir.
+LEI_SAVED="${LEI_SAVED:-${XDG_DATA_HOME:-$HOME/.local/share}/lei/saved-searches}"
+
+search_file() {
+	local path="$1" f
+	for f in "$LEI_SAVED"/*/lei.saved-search; do
+		[[ -f $f ]] || continue
+		if [[ "$(git config --file "$f" --get lei.q.output 2>/dev/null)" == "maildir:$path" ]]; then
+			printf '%s\n' "$f"
+			return 0
+		fi
+	done
+	return 1
+}
+
+search_query() {
+	local f
+	f="$(search_file "$1")" || return 1
+	git config --file "$f" --get-all lei.q | paste -sd' '
+}
+
+# Create or replace a saved search. lei refuses to reuse an output path that
+# already has a different query attached, so drop the old one first.
+save_search() {
+	local name="$1" query="$2"
+	shift 2
+	local path
+	path="$(name_to_path "$name")"
+
+	if lei ls-search | grep -qxF "$path"; then
+		log "replacing existing saved search ${name@Q}"
+		lei forget-search "$path"
+	fi
+
+	log "query: $query"
+	mkdir -p "$(dirname "$path")"
+	# No '--' before the query: lei passes it through to public-inbox as a
+	# literal search term rather than treating it as an end-of-options marker.
+	lei q -o "$path" -f maildir --dedupe=mid "$@" "$query"
+	say "saved search ${name@Q} -> $path"
+	say "run 'notmuch new' (or mail-sync) to index it"
+}
+
+
+#
+# commands
+#
+
+cmd_ls() {
+	(( $# == 0 )) || usage "'ls' takes no arguments"
+
+	local path name query count
+	lei ls-search | while IFS='' read -r path; do
+		name="$(path_to_name "$path")"
+		query="$(search_query "$path" || true)"
+		count="$(find "$path" -type f 2>/dev/null | wc -l)"
+		printf '%-24s %6s  %s\n' "$name" "$count" "${query:-(unknown)}"
+	done
+}
+
+cmd_show() {
+	(( $# == 1 )) || usage "'show' takes exactly one saved search name"
+
+	local path
+	path="$(name_to_path "$1")"
+	require_lei_search "$path"
+	cat "$(search_file "$path")"
+}
+
+cmd_up() {
+	if (( $# == 0 )); then
+		log "refreshing all saved searches"
+		lei up --all=local
+	else
+		local name path
+		for name; do
+			path="$(name_to_path "$name")"
+			require_lei_search "$path"
+			log "refreshing ${name@Q}"
+			lei up "$path"
+		done
+	fi
+}
+
+cmd_add() {
+	(( $# >= 2 )) || usage "'add' takes a name and a query"
+
+	local name="$1"
+	shift
+	save_search "$name" "$*" --threads
+}
+
+cmd_rm() {
+	(( $# >= 1 )) || usage "'rm' takes at least one saved search name"
+
+	local name path
+	for name; do
+		path="$(name_to_path "$name")"
+		require_lei_search "$path"
+		lei forget-search "$path"
+		rm -rf -- "$path"
+		say "removed ${name@Q}"
+	done
+	say "run 'notmuch new' to drop the messages from the index"
+}
+
+cmd_edit() {
+	(( $# == 1 )) || usage "'edit' takes exactly one saved search name"
+
+	local path
+	path="$(name_to_path "$1")"
+	require_lei_search "$path"
+	lei edit-search "$path"
+}
+
+cmd_thread() {
+	(( $# <= 1 )) || usage "'thread' takes at most one message-id"
+
+	local msgid subject headers
+	if (( $# == 0 )) || [[ $1 == - ]]; then
+		headers="$(unfold_headers)"
+		msgid="$(header_value 'message-id' <<<"$headers")"
+		subject="$(header_value 'subject' <<<"$headers")"
+		[[ $msgid ]] || die "no Message-Id in the message on stdin"
+	else
+		msgid="$1"
+	fi
+	msgid="$(strip_brackets "$msgid")"
+
+	local name="$ARG_NAME"
+	if [[ ! $name ]]; then
+		# Prefer a name a human can recognise in the sidebar. Strip the
+		# [PATCH v2 3/7] and Re: noise first.
+		local base="$subject"
+		base="${base//\[*\]/}"
+		base="${base#Re: }"
+		base="$(slugify "$base")"
+		[[ $base ]] || base="$(slugify "$msgid")"
+		name="thread/$base"
+	fi
+
+	log "following thread containing <$msgid>"
+	save_search "$name" "mid:$msgid" --threads
+}
+
+cmd_files() {
+	(( $# <= 1 )) || usage "'files' takes at most one revision or range"
+
+	git rev-parse --git-dir >/dev/null 2>&1 \
+		|| die "'files' must be run inside a git repository"
+
+	local rev="${1:-HEAD}"
+	local -a files
+	if [[ $rev == *..* ]]; then
+		git diff --name-only "$rev" | readarray -t files
+	else
+		git show --pretty=format: --name-only "$rev" | grep -v '^$' | readarray -t files
+	fi
+
+	(( ${#files[@]} )) || die "${rev@Q} touches no files"
+
+	if (( ${#files[@]} > MAX_FILES )); then
+		warn "${rev@Q} touches ${#files[@]} files, watching only the first $MAX_FILES"
+		files=( "${files[@]:0:$MAX_FILES}" )
+	fi
+
+	local -a terms
+	local f
+	for f in "${files[@]}"; do
+		terms+=( "dfn:$f" )
+	done
+
+	local query
+	query="($(join ' OR ' "${terms[@]}"))"
+	query+=" AND rt:${ARG_WINDOW:-$DEFAULT_WINDOW}.."
+
+	local name="$ARG_NAME"
+	if [[ ! $name ]]; then
+		local repo
+		repo="$(basename "$(git rev-parse --show-toplevel)")"
+		# Name after the deepest common directory, which is usually the
+		# subsystem: fs/btrfs/inode.c + fs/btrfs/file.c -> fs-btrfs.
+		local common="${files[0]%/*}"
+		for f in "${files[@]}"; do
+			while [[ ${f%/*} != "$common"* ]]; do
+				common="${common%/*}"
+				[[ $common == */* ]] || break
+			done
+		done
+		name="watch/$(slugify "$repo-$common")"
+	fi
+
+	log "watching ${#files[@]} file(s) from ${rev@Q}"
+	save_search "$name" "$query"
+}
+
+cmd_list() {
+	(( $# == 1 )) || usage "'list' takes exactly one list posting address"
+
+	local addr="$1"
+	[[ $addr == *@* ]] || die "${addr@Q} does not look like an email address"
+
+	# List-Id is conventionally the posting address with '@' replaced by '.'.
+	local listid="${addr/@/.}"
+	local name="${ARG_NAME:-${addr%%@*}}"
+	local query="l:$listid AND rt:${ARG_WINDOW:-$DEFAULT_WINDOW}.."
+
+	log "watching list ${addr@Q} (List-Id $listid)"
+	save_search "$name" "$query" --threads
+}
+
+cmd_me() {
+	(( $# == 0 )) || usage "'me' takes no arguments"
+
+	local email
+	email="$(git config --get user.email)" || die "user.email is not set"
+
+	local query="tcf:$email"
+	[[ ! $ARG_WINDOW ]] || query+=" AND rt:$ARG_WINDOW.."
+
+	log "watching every thread involving ${email@Q}"
+	save_search "${ARG_NAME:-mine}" "$query" --threads
+}
+
+
+#
+# args
+#
+
+declare -A _args=(
+	[-n\|--name:]=ARG_NAME
+	[-w\|--window:]=ARG_WINDOW
+	[-h\|--help]=ARG_USAGE
+	[--]=ARGS
+	[getopt]='+'
+)
+parse_args _args "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
+
+(( ${#ARGS[@]} )) || usage "no command given"
+
+command="${ARGS[0]}"
+ARGS=( "${ARGS[@]:1}" )
+
+case "$command" in
+ls|show|up|add|rm|edit|thread|files|list|me)
+	"cmd_$command" "${ARGS[@]}"
+	;;
+*)
+	usage "unknown command: ${command@Q}"
+	;;
+esac
