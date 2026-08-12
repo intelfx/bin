@@ -31,7 +31,8 @@ Display Raspberry Pi throttling state, temperatures, clocks, voltages, and PMIC
 per-rail power, decoded from vcgencmd(1) and sysfs.
 
 Options:
-	-c, --clocks		Report all clock domains, not just ARM
+	-c, --clocks		Report GPU clock domains in addition to ARM
+	-C, --all-clocks	Report all known clock domains
 	-P, --no-power		Do not read the PMIC ADCs (Pi 5 only)
 	-t, --throttling=STYLE	Throttling display style, 1-3 or "all" (def.: 1)
 					1: one-line summary
@@ -478,7 +479,10 @@ vcgen_value() {
 	printf '%s\n' "${out#*=}"
 }
 
+# TODO: sort clock domains by applicability (Pi3 and earlier, Pi4-only, Pi5-only)
 declare -a CLOCK_DOMAINS=( arm core h264 isp v3d uart pwm emmc pixel vec hdmi dpi )
+declare -a CLOCK_DOMAINS_ESSENTIAL=( arm core v3d )
+declare -a CLOCK_DOMAINS_ARM=( arm )
 declare -A CLOCK_LABELS=(
 	[arm]='ARM'       [core]='Core (VPU)' [h264]='H.264'  [isp]='ISP'
 	[v3d]='V3D (GPU)' [uart]='UART'       [pwm]='PWM'     [emmc]='eMMC / SD'
@@ -835,12 +839,18 @@ block_temps() {
 
 block_clocks() {
 	local domain value
+	local -a clocks
+
+	if (( ARG_ALL_CLOCKS )); then
+		clocks=("${CLOCK_DOMAINS[@]}")
+	elif (( ARG_CLOCKS )); then
+		clocks=("${CLOCK_DOMAINS_ESSENTIAL[@]}")
+	else
+		clocks=("${CLOCK_DOMAINS_ARM[@]}")
+	fi
 
 	box_open L_KV 'Clocks'
-	for domain in "${CLOCK_DOMAINS[@]}"; do
-		if [[ $domain != arm ]] && ! (( ARG_CLOCKS )); then
-			continue
-		fi
+	for domain in "${clocks[@]}"; do
 		if value="$(vcgen_value measure_clock "$domain")"; then
 			box_row "${CLOCK_LABELS[$domain]}" "$(fmt_hz "$value")"
 		fi
@@ -1108,6 +1118,7 @@ render() {
 declare -A _args=(
 	[-h\|--help]=ARG_USAGE
 	[-c\|--clocks]=ARG_CLOCKS
+	[-C\|--all-clocks]=ARG_ALL_CLOCKS
 	[-P\|--no-power]=ARG_NO_POWER
 	[-t\|--throttling:]="ARG_THROTTLING"
 	[-l\|--loop::]="ARG_LOOP default=$LOOP_INTERVAL"
@@ -1125,6 +1136,11 @@ case "$ARG_THROTTLING" in
 1|2|3|all) ;;
 *) usage "bad throttling style: ${ARG_THROTTLING@Q}" ;;
 esac
+
+if (( ARG_CLOCKS + ARG_ALL_CLOCKS > 1 )); then
+	usage "-c/--clocks and -C/--all-clocks are mutually exclusive"
+fi
+
 
 if [[ $ARG_LOOP ]]; then
 	if ! [[ $ARG_LOOP == +([0-9])?(.+([0-9])) ]] || [[ $ARG_LOOP == +(0|.) ]]; then
