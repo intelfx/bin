@@ -1,0 +1,94 @@
+#!/bin/bash
+#
+# Extract references out of an RFC822 message on stdin: its Message-Id, the
+# lore URL for it, or a ready-to-paste b4 command line.
+#
+# Exists so that the neomutt macros in ~/.config/neomutt/patch-workflow.rc stay
+# legible -- doing this with sed inline in a muttrc is an escaping nightmare.
+
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
+
+LORE_URL='https://lore.kernel.org/r'
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [-c|--copy] [FORMAT]
+
+Read a message from stdin and print a reference to it.
+
+Formats:
+  msgid       the bare Message-Id
+  link        lore permalink (default)
+  patchlink   patch.msgid.link permalink, as used in Link: trailers
+  trailer     a "Link: <url>" trailer line
+  am          'b4 am' command line: fetch the containing series as an mbox
+  shazam      'b4 shazam' command line: apply the containing series to HEAD
+  fetchhead   'b4 shazam -H': stage the series as FETCH_HEAD to merge
+
+Options:
+  -c, --copy  also put the result on the clipboard
+  -h, --help  this message
+EOF
+}
+
+
+#
+# args
+#
+
+declare -A _args=(
+	[-c\|--copy]=ARG_COPY
+	[-h\|--help]=ARG_USAGE
+	[--]=ARGS
+)
+parse_args _args "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
+
+case "${#ARGS[@]}" in
+0) format=link ;;
+1) format="${ARGS[0]}" ;;
+*) usage "wrong number of positional arguments" ;;
+esac
+
+
+#
+# main
+#
+
+# Unfold continuation lines before matching: Message-Id is short enough that it
+# is rarely folded, but "rarely" is not "never".
+# The `|| true` matters: without it, grep finding nothing trips pipefail and
+# set -e aborts before the diagnostic below can run.
+msgid="$(
+	{
+		sed -e '/^\r\?$/q' \
+		| sed -e ':a' -e '$!N' -e 's/\n[ \t]\+/ /' -e 'ta' -e 'P' -e 'D' \
+		| grep -i '^message-id:' \
+		| head -n1 \
+		| sed -e 's/^[^:]*:\s*//' -e 's/^<//' -e 's/>\s*$//'
+	} || true
+)"
+
+[[ $msgid ]] || die "no Message-Id found in the message on stdin"
+
+case "$format" in
+msgid)     out="$msgid" ;;
+link)      out="$LORE_URL/$msgid" ;;
+patchlink) out="https://patch.msgid.link/$msgid" ;;
+trailer)   out="Link: $LORE_URL/$msgid" ;;
+am)        out="b4 am $LORE_URL/$msgid" ;;
+shazam)    out="b4 shazam $LORE_URL/$msgid" ;;
+fetchhead) out="b4 shazam -H $LORE_URL/$msgid" ;;
+*)         usage "unknown format: ${format@Q}" ;;
+esac
+
+printf '%s\n' "$out"
+
+if [[ $ARG_COPY ]]; then
+	printf '%s' "$out" | clip --copy
+	log "copied to clipboard"
+fi
