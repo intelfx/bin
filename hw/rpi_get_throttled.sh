@@ -6,7 +6,8 @@ shopt -s extglob
 
 # we both parse and print floating-point numbers, and we measure box-drawing
 # characters with ${#var}
-export LC_ALL=C.UTF-8
+unset LANG "${!LC_@}"
+export LANG=C.UTF-8
 
 # shellcheck source=../lib/lib.sh
 . lib.sh
