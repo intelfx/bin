@@ -308,7 +308,10 @@ cmd_files() {
 				[[ $common == */* ]] || break
 			done
 		done
-		name="watch/$(slugify "$repo-$common")"
+		name="$(slugify "$repo-$common")"
+	fi
+	if ! [[ $name == watch/* ]]; then
+		name="watch/$name"
 	fi
 
 	log "watching ${#files[@]} file(s) from ${rev@Q}"
