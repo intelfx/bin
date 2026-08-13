@@ -54,6 +54,8 @@ Options:
   -n, --name NAME           name the saved search explicitly
   -w, --window WHEN         only match mail newer than WHEN (default: $DEFAULT_WINDOW
                             for 'files' and 'list'; unbounded for 'thread')
+  --common                  (files) watch common subdirectory instead of
+                                    individual files
   -h, --help                this message
 EOF
 }
@@ -280,9 +282,34 @@ cmd_files() {
 
 	(( ${#files[@]} )) || die "${rev@Q} touches no files"
 
+	# Find the deepest common directory, which is usually the
+	# subsystem: fs/btrfs/inode.c + fs/btrfs/file.c -> fs/btrfs.
+	local common="${files[0]%/*}"
+	for f in "${files[@]}"; do
+		while [[ ${f%/*} != "$common"* ]]; do
+			common="${common%/*}"
+			[[ $common == */* ]] || break
+		done
+	done
+
+	if (( ARG_WATCH_COMMON )) && [[ ! $common || $common == / ]]; then
+		die "$LIB_ARGV0 files: --common: cannot determine a common subdirectory"
+	fi
+
+	if (( ARG_WATCH_COMMON )); then
+		log "Watching common subdirectory:"
+		sayf "   - %s\n" "$common"
+		files=( "$common" )
+	fi
+
 	if (( ${#files[@]} > MAX_FILES )); then
 		warn "${rev@Q} touches ${#files[@]} files, watching only the first $MAX_FILES"
 		files=( "${files[@]:0:$MAX_FILES}" )
+	fi
+
+	if ! (( ARG_WATCH_COMMON )); then
+		log "Watching files:"
+		sayf "   - %s\n" "${files[@]}"
 	fi
 
 	local -a terms
@@ -301,13 +328,6 @@ cmd_files() {
 		repo="$(basename "$(git rev-parse --show-toplevel)")"
 		# Name after the deepest common directory, which is usually the
 		# subsystem: fs/btrfs/inode.c + fs/btrfs/file.c -> fs-btrfs.
-		local common="${files[0]%/*}"
-		for f in "${files[@]}"; do
-			while [[ ${f%/*} != "$common"* ]]; do
-				common="${common%/*}"
-				[[ $common == */* ]] || break
-			done
-		done
 		name="$(slugify "$repo-$common")"
 	fi
 	if ! [[ $name == watch/* ]]; then
@@ -355,6 +375,7 @@ declare -A _args=(
 	[-n\|--name:]=ARG_NAME
 	[-w\|--window:]=ARG_WINDOW
 	[-h\|--help]=ARG_USAGE
+	[--common]=ARG_WATCH_COMMON
 	[--]=ARGS
 	[getopt]='+'
 )
