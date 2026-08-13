@@ -34,10 +34,11 @@ Options:
 	-c, --clocks		Report GPU clock domains in addition to ARM
 	-C, --all-clocks	Report all known clock domains
 	-P, --no-power		Do not read the PMIC ADCs (Pi 5 only)
-	-t, --throttling=STYLE	Throttling display style, 1-3 or "all" (def.: 1)
+	-t, --throttling=STYLE	Throttling display style, 1-4 or "all" (def.: 1)
 					1: one-line summary
 					2: two-line display
 					3: list of reasons
+					4: list of reasons (always expanded)
 	-l, --loop[=SECONDS]	Redraw in place until interrupted, with
 					optional redraw interval (default: $LOOP_INTERVAL seconds)
 	-w, --width=N		Block width, in characters
@@ -757,9 +758,13 @@ block_system() {
 
 # throttling display: one row per cause, whole row highlighted by severity
 block_throttling_list() {
-	local bit style text
+	local bit style text expand=0
+	if [[ $1 == --expand ]]; then
+		expand=1
+		shift
+	fi
 
-	if ! (( THROTTLED )); then
+	if ! (( THROTTLED || expand )); then
 		box_open L_FULL "Throttling Causes ($THROTTLED_RAW)"
 		box_row -s "$STYLE_NONE" 'No throttling observed since boot'
 	else
@@ -1089,6 +1094,7 @@ render() {
 	1) block_throttling_summary ;;
 	2) block_throttling_summary2 ;;
 	3) block_throttling_list ;;
+	4) block_throttling_list --expand ;;
 	all) block_throttling_list; block_throttling_summary2; block_throttling_summary ;;
 	esac
 	block_temps
@@ -1133,7 +1139,7 @@ parse_args _args "$@" || usage
 
 : "${ARG_THROTTLING=1}"
 case "$ARG_THROTTLING" in
-1|2|3|all) ;;
+1|2|3|4|all) ;;
 *) usage "bad throttling style: ${ARG_THROTTLING@Q}" ;;
 esac
 
