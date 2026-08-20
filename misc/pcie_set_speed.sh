@@ -109,7 +109,7 @@ if_not_silent() {
 get_bw() {
     local arg="$1" text
     case "$arg" in
-    '') text='-' ;;
+    0|'') text='-' ;;
     1) text='2.5GT/s' ;;
     2) text='5GT/s' ;;
     3) text='8GT/s' ;;
