@@ -84,7 +84,10 @@ for branch_old in "${PATCHES_OLD[@]}"; do
 	if [[ $based_on =~ ^patch/master/(.+)$ ]]; then
 		target="patch/$NEW_REF/${BASH_REMATCH[1]}"
 		target_rev="$(git rev-parse --verify "$target")" \
-			|| die "Could not resolve rebase target (perhaps the base patch was not rebased yet?): $target"
+			|| {
+			err "Could not resolve rebase target $target (perhaps the base patch was not rebased yet?), continuing"
+			continue
+		}
 		# do not rewrite based-on, keep "patch/master/..."
 		target_based_on="$based_on"
 	elif [[ $based_on == "$OLD_REV" ]]; then
