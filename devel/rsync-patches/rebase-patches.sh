@@ -57,11 +57,45 @@ log "           to: $NEW_REF ($NEW_REV)"
 git ls-refs refs/heads/patch/"$OLD_REF"/ \
 	| readarray -t PATCHES_OLD
 
+# some of the patches are based on others, come up with a topological sorting
 for branch_old in "${PATCHES_OLD[@]}"; do
-	# our patch is always a single commit on the tip of this branch
 	stem="${branch_old#"patch/$OLD_REF/"}"
 	[[ $stem != */* ]] || die "Unexpected branch name: $branch_old"
 
+	# extract commit message
+	commit_msg="$(git log -1 --format=%B "$branch_old")"
+	# strip the subject line (and the next) to get the original patch preamble
+	preamble="$(<<<"$commit_msg" tail -n +3)"
+
+	awk <<<"$preamble" -F ': ' '
+		/^based-on: / { print $2; exit }
+	' | IFS= read -r based_on
+	[[ $based_on ]] || die "Could not extract based-on:"
+
+	# extract dependency patch name, if there is one
+	# (based-on: patch/master/$other_patch)
+	if [[ $based_on =~ ^patch/master/(.+)$ ]]; then
+		parent="${BASH_REMATCH[1]}"
+	elif [[ $based_on =~ ^[0-9a-f]+$ ]]; then
+		parent=
+	else
+		die "Unexpected based-on: $based_on"
+	fi
+
+	if [[ $parent ]]; then
+		printf "%s\t%s\n" "$parent" "$stem"
+	else
+		printf "%s\n" "$stem"
+	fi
+done \
+| readarray -t TREE
+
+printf "%s\n" "${TREE[@]}" \
+| tsort \
+| readarray -t ORDER
+
+for stem in "${ORDER[@]}"; do
+	branch_old="patch/$OLD_REF/$stem"
 	branch_new="patch/$NEW_REF/$stem"
 	if git rev-parse --verify --quiet "$branch_new"; then
 		log "Skipping patch: $stem (already rebased)"
