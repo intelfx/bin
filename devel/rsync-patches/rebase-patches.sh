@@ -72,7 +72,7 @@ for branch_old in "${PATCHES_OLD[@]}"; do
 	# extract commit message
 	commit_msg="$(git log -1 --format=%B "$branch_old")"
 	# strip the subject line (and the next) to get the original patch preamble
-	preamble="$(<<<"$commit_msg" tail -n +3)"
+	preamble="$(tail <<<"$commit_msg" -n +3)"
 
 	awk <<<"$preamble" -F ': ' '
 		/^based-on: / { print $2; exit }
@@ -97,7 +97,15 @@ for branch_old in "${PATCHES_OLD[@]}"; do
 	fi
 
 	Trace git checkout -B "$branch_new" "$branch_old"
-	Trace git-rebase-repeatedly --onto "$target" "$branch_new~1" "$branch_new"
+	if Trace git-rebase-repeatedly --onto "$target" "$branch_new~1" "$branch_new"; then
+		log "Rebase OK"
+	else
+		rc=$?
+		log "Rebase FAIL: $rc deleting and continuing"
+		Trace git checkout --detach
+		Trace git branch -D "$branch_new"
+		continue
+	fi
 
 	# update commit message if desired
 	if [[ $target_based_on != "$based_on" ]]; then
@@ -113,7 +121,9 @@ for branch_old in "${PATCHES_OLD[@]}"; do
 		log "Test-build OK"
 	else
 		rc=$?
-		err "Test-build FAIL: $rc, exiting"
-		exit $rc
+		err "Test-build FAIL: $rc, deleting and continuing"
+		Trace git checkout --detach
+		Trace git branch -D "$branch_new"
+		continue
 	fi
 done
