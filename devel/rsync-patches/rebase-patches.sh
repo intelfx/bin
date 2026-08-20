@@ -94,6 +94,15 @@ printf "%s\n" "${TREE[@]}" \
 | tsort \
 | readarray -t ORDER
 
+log "Found branches:"
+sayf "  - %s\n" "${PATCHES_OLD[@]}"
+
+log "Tree:"
+sayf "  - %s\n" "${TREE[@]}"
+
+log "Ordered patches:"
+sayf "  - %s\n" "${ORDER[@]}"
+
 for stem in "${ORDER[@]}"; do
 	branch_old="patch/$OLD_REF/$stem"
 	branch_new="patch/$NEW_REF/$stem"
