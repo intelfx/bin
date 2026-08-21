@@ -27,8 +27,8 @@ _usage() {
 	cat <<EOF
 Usage: ${LIB_ARGV0} [OPTIONS]
 
-Display Raspberry Pi throttling state, temperatures, clocks, voltages, and PMIC
-per-rail power, decoded from vcgencmd(1) and sysfs.
+Display Raspberry Pi throttling state, temperatures, fan, clocks, voltages, and
+PMIC per-rail power, decoded from vcgencmd(1) and sysfs.
 
 Options:
 	-c, --clocks		Report GPU clock domains in addition to ARM
@@ -531,24 +531,49 @@ read_dt_u32() {
 	_out="$_value"
 }
 
+# read_dt_u32_array <OUT> <NODE>: read a property of several 32-bit cells.
+read_dt_u32_array() {
+	declare -n _cells="$1"
+	local _path="/proc/device-tree/$2"
+	[[ -r $_path ]] || return 1
+
+	local -a _values
+	readarray -t _values < <(od -An -t u4 -w4 --endian=big "$_path" 2>/dev/null)
+	(( ${#_values[@]} )) || return 1
+
+	# od(1) right-aligns each cell within a fixed field width
+	_cells=( "${_values[@]//[[:space:]]/}" )
+}
+
 
 #
 # hwmon
 #
 
-# read_hwmon <OUT> <NAME> <ATTR>: read attribute <ATTR> of the hwmon device
+# find_hwmon <OUT> <NAME>: locate the sysfs directory of the hwmon device
 # registered under <NAME>. Hwmon indices are not stable, hence the search.
-read_hwmon() {
+find_hwmon() {
 	declare -n _out="$1"
 	local _dir
 
 	for _dir in /sys/class/hwmon/hwmon*; do
-		[[ -r $_dir/name && -r $_dir/$3 ]] || continue
+		[[ -r $_dir/name ]] || continue
 		[[ $(<"$_dir/name") == "$2" ]] || continue
-		_out="$(<"$_dir/$3")"
+		_out="$_dir"
 		return 0
 	done
 	return 1
+}
+
+# read_hwmon <OUT> <NAME> <ATTR>: read attribute <ATTR> of the hwmon device
+# registered under <NAME>.
+read_hwmon() {
+	declare -n _out="$1"
+	local _hwmon
+
+	find_hwmon _hwmon "$2" || return 1
+	[[ -r $_hwmon/$3 ]] || return 1
+	_out="$(<"$_hwmon/$3")"
 }
 
 
@@ -664,6 +689,106 @@ psu_read() {
 
 	[[ $PSU_MAX_CURRENT || $PSU_USB_MAX_CURRENT || $PSU_USB_OVERCURRENT ]] || return 1
 	PSU_PRESENT=1
+}
+
+
+#
+# fan
+#
+# The Raspberry Pi 5 firmware probes the 4-pin fan connector and only adds the
+# fan node to the device tree if something answers, so on a board without a fan
+# the hwmon device is simply absent.
+#
+# The fan is driven by the kernel thermal framework rather than by the
+# firmware: the config.txt fan_tempN{,_hyst,_speed} parameters are device tree
+# overrides that the firmware applies to the trip points of the CPU thermal
+# zone and to the cooling levels of the fan node. Both are readable back out of
+# /proc/device-tree, so recovering the curve does not involve config.txt.
+#
+# NB: pwm1_enable is not the usual hwmon manual/automatic selector. pwm-fan(4)
+# uses it to pick what happens to the PWM output and to the fan regulator once
+# a zero duty cycle is requested: 0 turns off both, 1 stops the PWM but keeps
+# the regulator up, 2 keeps both up, 3 turns off both. The driver hardcodes 1
+# at probe time and only ever changes it on an explicit write, which is why it
+# reads 1 on a fan that is very much under automatic control -- thermal control
+# runs through the cooling device interface and never looks at this attribute.
+#
+
+FAN_PRESENT=0
+FAN_DIR=	# sysfs directory of the hwmon device
+FAN_RPM=	# tachometer reading, if the fan has a tachometer
+FAN_PWM=	# duty cycle currently requested, out of 255
+FAN_ENABLE=	# pwm-fan power mode, see above
+FAN_CURVE=()	# control curve as "<temperature, mC>:<duty cycle>", ascending
+
+fan_read() {
+	FAN_RPM=
+	FAN_PWM=
+	FAN_ENABLE=
+
+	if ! (( FAN_PRESENT )); then
+		find_hwmon FAN_DIR pwmfan || return 1
+		FAN_PRESENT=1
+		fan_curve_read ||:
+	fi
+
+	[[ ! -r $FAN_DIR/fan1_input ]] || FAN_RPM="$(<"$FAN_DIR/fan1_input")"
+	[[ ! -r $FAN_DIR/pwm1 ]] || FAN_PWM="$(<"$FAN_DIR/pwm1")"
+	[[ ! -r $FAN_DIR/pwm1_enable ]] || FAN_ENABLE="$(<"$FAN_DIR/pwm1_enable")"
+}
+
+# fan_curve_read: recover the control curve by joining the cooling levels of
+# the fan node with the trip points that the cooling maps of the thermal zones
+# bind it to. Static, hence read once rather than per frame.
+fan_curve_read() {
+	local node phandle zone trip map type temp tripref
+	local -a levels cdev zones trips maps
+	# trip point temperatures of the zone being walked, keyed by phandle
+	local -a points
+
+	FAN_CURVE=()
+
+	# of_node points into /sys/firmware/devicetree/base, the very same tree
+	node="$(readlink -f "$FAN_DIR/of_node")" || return 1
+	node="${node#*/devicetree/base/}/"
+	[[ $node != /* ]] || return 1
+
+	read_dt_u32 phandle "${node}phandle" || return 1
+	read_dt_u32_array levels "${node}cooling-levels" || return 1
+
+	zones=( /proc/device-tree/thermal-zones/*/ )
+	for zone in "${zones[@]#/proc/device-tree/}"; do
+		# the cooling maps refer to trip points by phandle and by nothing
+		# else, so index the whole set of them up front
+		points=()
+		trips=( "/proc/device-tree/${zone}trips/"*/ )
+		for trip in "${trips[@]#/proc/device-tree/}"; do
+			# the critical trip is the thermal shutdown, not a fan step
+			type="$(read_dt "${trip}type")" || continue
+			[[ $type == active || $type == passive ]] || continue
+			read_dt_u32 tripref "${trip}phandle" || continue
+			read_dt_u32 temp "${trip}temperature" || continue
+			points[tripref]="$temp"
+		done
+
+		maps=( "/proc/device-tree/${zone}cooling-maps/"*/ )
+		for map in "${maps[@]#/proc/device-tree/}"; do
+			# <phandle, lowest state, highest state>; a map may name
+			# several cooling devices, but ours can only be the first
+			read_dt_u32_array cdev "${map}cooling-device" || continue
+			(( ${#cdev[@]} >= 2 && cdev[0] == phandle )) || continue
+			(( cdev[1] < ${#levels[@]} )) || continue
+
+			read_dt_u32 tripref "${map}trip" || continue
+			[[ ${points[tripref]+set} ]] || continue
+
+			FAN_CURVE+=( "${points[tripref]}:${levels[cdev[1]]}" )
+		done
+	done
+
+	(( ${#FAN_CURVE[@]} )) || return 1
+	# the maps come out in glob order, which is not temperature order
+	readarray -t FAN_CURVE < <(printf '%s\n' "${FAN_CURVE[@]}" | sort -n)
 }
 
 
@@ -838,6 +963,42 @@ block_temps() {
 	# trends only
 	if read_hwmon value rp1_adc temp1_input; then
 		box_row 'RP1' "$(printf '%.1f C' "${value}e-3")"
+	fi
+	box_close
+}
+
+block_fan() {
+	local point temp duty entry value sep
+	local sgron sgroff="$SGR_OFF"
+
+	box_open L_KV 'Fan'
+	if [[ $FAN_RPM ]]; then
+		box_row 'Speed' "$FAN_RPM rpm"
+	fi
+	if [[ $FAN_PWM ]]; then
+		box_row 'Duty cycle' \
+			"$(printf '%d/255 (%d%%)' "$FAN_PWM" "$(( (FAN_PWM * 100 + 127) / 255 ))")"
+	fi
+	# 0 and 3 both cut the PWM output regardless of what the thermal
+	# framework asks for, i.e. someone has taken the fan out of service
+	if [[ $FAN_ENABLE == 0 || $FAN_ENABLE == 3 ]]; then
+		box_row -s "$STYLE_NOW" 'Control' 'DISABLED'
+	fi
+	if (( ${#FAN_CURVE[@]} )); then
+		sgr -v sgron "$STYLE_TOTAL"
+		value=
+		sep=
+		for point in "${FAN_CURVE[@]}"; do
+			temp="${point%:*}"
+			duty="${point#*:}"
+			printf -v entry '%dC %d%%' \
+				"$(( (temp + 500) / 1000 ))" "$(( (duty * 100 + 127) / 255 ))"
+			# mark the point the fan is currently sitting at
+			[[ $duty != "$FAN_PWM" ]] || entry="$sgron$entry$sgroff"
+			value+="$sep$entry"
+			sep='  '
+		done
+		box_row 'Curve' "$value"
 	fi
 	box_close
 }
@@ -1078,6 +1239,7 @@ PMIC_WARNED=0
 refresh() {
 	throttle_read || die "failed to read the throttling status"
 	psu_read ||:
+	fan_read ||:
 
 	if ! (( ARG_NO_POWER )) && ! pmic_read; then
 		# in --loop mode, complain once rather than on every iteration
@@ -1098,6 +1260,9 @@ render() {
 	all) block_throttling_list; block_throttling_summary2; block_throttling_summary ;;
 	esac
 	block_temps
+	if (( FAN_PRESENT )); then
+		block_fan
+	fi
 	block_clocks
 	block_volts
 	block_ring_osc
