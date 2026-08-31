@@ -19,6 +19,8 @@ Options:
 	-n, -name[=NAME]	Prefix branch name with "NAME-"
 				(if empty, do not create a named branch)
 	-d, --dir[=DIR]		Kernel source directory (default: \$HOME/devel/ext/linux or variants)
+	--aarch64, --arm64	HACK: use aarch64-specific branches
+	--armv7, --arm		HACK: use armv7-specific branches
 EOF
 }
 
@@ -27,6 +29,9 @@ declare -A _args=(
 	[--lts]=ARG_LTS
 	['-n|--name::']="ARG_NAME default="
 	['-d|--dir:']=ARG_KERNEL_DIR
+	['--aarch64|--arm64']=ARG_ARM64
+	['--armv7|--arm']=ARG_ARM32
+	['--rpi']=ARG_RPI
 	[--]=ARGS
 )
 parse_args _args "$@" || usage
@@ -39,12 +44,51 @@ if [[ ${ARG_LTS+set} && ${ARG_NAME+set} ]]; then
 	usage "--name and --lts cannot be used together"
 fi
 
+if (( ARG_ARM32 + ARG_ARM64 > 1 )); then
+	die "--arm/--armv7 and --arm64/--aarch64 are mutually exclusive"
+fi
+
 ARG_MAJOR="${ARGS[0]}"
 ARGS=( "${ARGS[@]:1}" )
 
 unset KERNEL_DIR
 if [[ ${ARG_KERNEL_DIR+set} ]]; then
 	KERNEL_DIR="$ARG_KERNEL_DIR"
+fi
+
+KERNEL_TRY_DIRS=()
+
+# HACK: ZFS configuration (zfs_config.h) is checked into the repo, and it is not arch-invariant
+ZFS_BRANCH_SUFFIX=
+TARGET_BRANCH_SUFFIX=
+if [[ ${ARG_ARM64+set} ]]; then
+	ZFS_BRANCH_SUFFIX=-aarch64
+	TARGET_BRANCH_SUFFIX=-aarch64
+	NAMED_BRANCH_SUFFIX=-aarch64
+	KERNEL_TRY_DIRS+=(
+		"$HOME/devel/tmp/linux-aarch64"
+	)
+elif [[ ${ARG_ARM32+set} ]]; then
+	ZFS_BRANCH_SUFFIX=-armv7
+	TARGET_BRANCH_SUFFIX=-armv7
+	NAMED_BRANCH_SUFFIX=-armv7
+	KERNEL_TRY_DIRS+=(
+		"$HOME/devel/tmp/linux-armv7"
+	)
+fi
+
+if [[ ${ARG_RPI+set} ]]; then
+	if ! (( ARG_ARM64 + ARG_ARM32 )); then
+		die "--rpi without --arm{,64}; are you daft?"
+	fi
+	TARGET_BRANCH_SUFFIX="-rpi$TARGET_BRANCH_SUFFIX"
+	NAMED_BRANCH_SUFFIX="-rpi$NAMED_BRANCH_SUFFIX"
+	if ! [[ $ARG_NAME ]]; then
+		ARG_NAME=rpi
+	fi
+	if [[ $ARG_NAME == *rpi* ]]; then
+		NAMED_BRANCH_SUFFIX="${NAMED_BRANCH_SUFFIX#-rpi}"
+	fi
 fi
 
 #
@@ -57,10 +101,15 @@ tag="v${ARG_MAJOR#v}"
 major="${tag#v}"
 
 if ! [[ ${KERNEL_DIR+set} ]]; then
-	case "$major" in
-	6.12|6.18) KERNEL_DIR="$HOME/devel/ext/linux-$major" ;;
-	*) KERNEL_DIR="$HOME/devel/ext/linux" ;;
-	esac
+	KERNEL_TRY_DIRS+=(
+		"$HOME/devel/ext/linux-$major"
+		"$HOME/devel/ext/linux"
+	)
+	for KERNEL_DIR in "${KERNEL_TRY_DIRS[@]}"; do
+		if [[ -d "$KERNEL_DIR" ]]; then
+			break
+		fi
+	done
 fi
 KERNEL_TOPLEVEL="$(git -C "$KERNEL_DIR" rev-parse --show-toplevel)" \
 	&& [[ $KERNEL_TOPLEVEL ]] \
@@ -69,22 +118,22 @@ Trace cd "$KERNEL_TOPLEVEL"
 
 declare -A target
 target[base_prefix]=base/base-
-target[patch_prefix]=my/my-
+target[patch_prefix]=my/my$TARGET_BRANCH_SUFFIX-
 if [[ $ARG_NAME ]]; then
 	target[base]=base/$ARG_NAME
-	target[patch]=my/$ARG_NAME
-	log "Using named branches: .../$ARG_NAME"
+	target[patch]=my/$ARG_NAME$NAMED_BRANCH_SUFFIX
+	log "Using named branches: {base,my}/${target[patch]##*/}"
 elif [[ ${ARG_NAME+set} ]]; then
 	:
 	log "Not using named branches"
 elif [[ ${ARG_LTS+set} ]]; then
 	target[base]=base/lts
-	target[patch]=my/lts
-	log "Using \"lts\" branches: .../lts"
+	target[patch]=my/lts$NAMED_BRANCH_SUFFIX
+	log "Using \"lts\" branches: .../${target[patch]##*/}"
 else
 	target[base]=base/latest
-	target[patch]=my/latest
-	log "Using \"latest\" branches: .../latest"
+	target[patch]=my/latest$NAMED_BRANCH_SUFFIX
+	log "Using \"latest\" branches: .../${target[patch]##*/}"
 fi
 
 Trace ~/bin/devel/merge_arch_and_pf.sh --major "$tag" "${ARGS[@]}"
@@ -99,7 +148,21 @@ if [[ ${target[base]} ]]; then
 fi
 
 function make_merge() {
-	Trace git merge-repeatedly --ff --no-edit "$@"
+	local -a branches
+	local arg varname branchname
+	for arg; do
+		IFS='=' read -r varname branchname <<<"$arg"
+		if [[ $varname && $branchname ]]; then
+			if [[ ${!varname+set} ]]; then
+				log "Applying: ${branchname@Q} (${varname}=1)"
+				branches+=("$branchname")
+			fi
+		else
+			branches+=("$arg")
+		fi
+	done
+
+	Trace git merge-repeatedly --ff --no-edit "${branches[@]}"
 }
 
 case "$tag" in
@@ -363,14 +426,21 @@ v6.17)
 	;;
 
 v6.18)
-	# bcachefs
-	make_merge \
-		work/bcachefs-6.18 \
-		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
-		# EOL
+	# # bcachefs
+	# make_merge \
+	# 	# EOL
+
+	if [[ ${ARG_RPI+set} ]]; then
+		make_merge \
+			raspberrypi/rpi-6.18.y \
+			pikvm/pikvm-6.18 \
+			# EOL
+	fi
 
 	# main
 	make_merge \
+		work/bcachefs-6.18 \
+		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
 		work/iwlwifi-lar-v3-6.18 \
 		work/amd-energy-6.18 \
 		work/btrfs-remove-ghost-subvolume-6.18 \
@@ -384,12 +454,14 @@ v6.18)
 		work/logitech-hidpp-6.18.15 \
 		work/fs-6.18 \
 		work/cddl-6.18 \
-		work/zfs-6.18 \
+		work/zfs-6.18$ZFS_BRANCH_SUFFIX \
 		work/fonts-6.18 \
 		work/intel-rapl-hack-6.18 \
 		work/pf-no-teo-6.18 \
 		work/perf-zstd-6.18.52 \
 		work/mitigations-6.18 \
+		ARG_ARM32=work/arm-ioport-map-6.18 \
+		ARG_RPI=work/rpi-6.18 \
 		# work/gvt-failsafe-6.18 \
 		# work/gvt-workaround-6.18 \
 		# work/i915-fastboot-revert-6.18 \
@@ -462,14 +534,21 @@ v7.0)
 	;;
 
 v7.1)
-	# bcachefs
-	make_merge \
-		work/bcachefs-7.1 \
-		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
-		# EOL
+	# # bcachefs
+	# make_merge \
+	# 	# EOL
+
+	if [[ ${ARG_RPI+set} ]]; then
+		make_merge \
+			raspberrypi/rpi-7.1.y \
+			pikvm/pikvm-7.1 \
+			# EOL
+	fi
 
 	# main
 	make_merge \
+		work/bcachefs-7.1 \
+		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
 		work/iwlwifi-lar-v3-7.0 \
 		work/amd-energy-6.18 \
 		work/btrfs-remove-ghost-subvolume-7.0 \
@@ -483,13 +562,15 @@ v7.1)
 		work/logitech-hidpp-6.19 \
 		work/fs-6.18 \
 		work/cddl-7.1 \
-		work/zfs-7.1 \
+		work/zfs-7.1$ZFS_BRANCH_SUFFIX \
 		work/fonts-7.1 \
 		work/intel-rapl-hack-6.18 \
 		work/pf-no-teo-7.0 \
 		work/perf-zstd-7.1 \
 		work/mitigations-7.0 \
 		work/thinkpad-ucsi-7.1.12 \
+		ARG_ARM32=work/arm-ioport-map-6.18 \
+		ARG_RPI=work/rpi-7.1 \
 		# work/gvt-failsafe-6.18 \
 		# work/gvt-workaround-6.18 \
 		# work/i915-fastboot-revert-6.18 \
