@@ -51,9 +51,10 @@ GIT_GEOMETRIC=0
 FORCE=0
 PACK_ARGS=()
 KEEP_LARGEST_PACK=( --keep-largest-pack )
+NO_REUSE=( -fF )
 ALL=0
 
-if args=$(getopt -o '+S:T:s:gbmf' --long 'all,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o '+S:T:s:gbmf' --long 'all,all-no-reuse,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -71,7 +72,8 @@ while :; do
 	-b|--bitmap) PACK_ARGS+=( --write-bitmap-index ) ;;
 	-m|--midx) PACK_ARGS+=( --write-midx ) ;;
 	-f|--force) FORCE=1 ;;
-	--all) ALL=1; KEEP_LARGEST_PACK=() ;;
+	--all) NO_REUSE=() ;&
+	--all-no-reuse) ALL=1; KEEP_LARGEST_PACK=() ;;
 	--) shift; break ;;
 	*) die "getopt error" ;;
 	esac
@@ -243,7 +245,7 @@ else
 		-c pack.depth=50 -c pack.window=1000 \
 		repack \
 		"${_repack_args[@]}" -d -l \
-		-fF \
+		"${NO_REUSE[@]}" \
 		"${PACK_ARGS[@]}" \
 		"$@"
 	# git \
