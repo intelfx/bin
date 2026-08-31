@@ -49,7 +49,7 @@ esac
 if ! [[ -e zfs_config.h ]]; then
 	err "you did not run configure, or you're not in the ZFS source directory."
 	err "run configure with --with-linux=$KERNEL_DIR and --enable-linux-builtin."
-	log "./autogen.sh && ./configure --prefix=/usr --with-config=all --with-linux=$KERNEL_DIR --enable-linux-experimental --enable-linux-builtin=yes --disable-debug && $0 $KERNEL_DIR"
+	log "./autogen.sh && ./configure --prefix=/usr --with-config=kernel --with-linux=$KERNEL_DIR --enable-linux-experimental --enable-linux-builtin=yes --disable-debug && $0 $KERNEL_DIR"
 	exit 1
 fi >&2
 
