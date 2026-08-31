@@ -720,6 +720,7 @@ FAN_RPM=	# tachometer reading, if the fan has a tachometer
 FAN_PWM=	# duty cycle currently requested, out of 255
 FAN_ENABLE=	# pwm-fan power mode, see above
 FAN_CURVE=()	# control curve as "<temperature, mC>:<duty cycle>", ascending
+FAN_CTL_TEMP=  # set to the last observed SoC temperature
 
 fan_read() {
 	FAN_RPM=
@@ -954,6 +955,7 @@ block_temps() {
 	box_open L_KV 'Temperatures'
 	if value="$(vcgen_value measure_temp)"; then
 		box_row 'SoC' "$(printf '%.1f C' "${value%\'C}")"
+		printf -v FAN_CTL_TEMP "%.0f" "${value%\'C}e3"
 	fi
 	if value="$(vcgen_value measure_temp pmic)"; then
 		box_row 'PMIC' "$(printf '%.1f C' "${value%\'C}")"
