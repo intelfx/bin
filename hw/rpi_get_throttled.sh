@@ -757,6 +757,8 @@ fan_curve_read() {
 	read_dt_u32 phandle "${node}phandle" || return 1
 	read_dt_u32_array levels "${node}cooling-levels" || return 1
 
+	dbg "fan: node=${node@Q} phandle=${phandle@Q} levels=$(declare -p levels)"
+
 	zones=( /proc/device-tree/thermal-zones/*/ )
 	for zone in "${zones[@]#/proc/device-tree/}"; do
 		# the cooling maps refer to trip points by phandle and by nothing
@@ -766,9 +768,11 @@ fan_curve_read() {
 		for trip in "${trips[@]#/proc/device-tree/}"; do
 			# the critical trip is the thermal shutdown, not a fan step
 			type="$(read_dt "${trip}type")" || continue
-			[[ $type == active || $type == passive ]] || continue
 			read_dt_u32 tripref "${trip}phandle" || continue
 			read_dt_u32 temp "${trip}temperature" || continue
+			dbg "trip: node=${trip@Q} phandle=${tripref@Q} type=${type@Q} temp=${temp@Q}"
+
+			[[ $type == active || $type == passive ]] || continue
 			points[tripref]="$temp"
 		done
 
@@ -777,10 +781,13 @@ fan_curve_read() {
 			# <phandle, lowest state, highest state>; a map may name
 			# several cooling devices, but ours can only be the first
 			read_dt_u32_array cdev "${map}cooling-device" || continue
+			read_dt_u32 tripref "${map}trip" || continue
+
+			dbg "map: ${map@Q} tripref=${tripref@Q} cdev=$(declare -p cdev)"
+
 			(( ${#cdev[@]} >= 2 && cdev[0] == phandle )) || continue
 			(( cdev[1] < ${#levels[@]} )) || continue
 
-			read_dt_u32 tripref "${map}trip" || continue
 			[[ ${points[tripref]+set} ]] || continue
 
 			FAN_CURVE+=( "${points[tripref]}:${levels[cdev[1]]}" )
@@ -971,7 +978,8 @@ block_temps() {
 
 block_fan() {
 	local point temp duty entry value sep
-	local last_duty
+	local last_temp last_duty
+	local temp_c
 	local sgron sgroff="$SGR_OFF"
 
 	box_open L_KV 'Fan'
@@ -991,6 +999,7 @@ block_fan() {
 		sgr -v sgron "$STYLE_TOTAL"
 		value=
 		sep=
+		last_temp=0
 		last_duty=0
 		for point in "${FAN_CURVE[@]}"; do
 			temp="${point%:*}"
