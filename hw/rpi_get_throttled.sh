@@ -991,8 +991,8 @@ block_fan() {
 		for point in "${FAN_CURVE[@]}"; do
 			temp="${point%:*}"
 			duty="${point#*:}"
-			printf -v entry '%dC %d%%' \
-				"$(( (temp + 500) / 1000 ))" "$(( (duty * 100 + 127) / 255 ))"
+			printf -v entry '%.1fC %d%%' \
+				"${temp}e-3" "$(( (duty * 100 + 127) / 255 ))"
 			# mark the point the fan is currently sitting at
 			[[ $duty != "$FAN_PWM" ]] || entry="$sgron$entry$sgroff"
 			value+="$sep$entry"
