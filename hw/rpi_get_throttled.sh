@@ -969,6 +969,7 @@ block_temps() {
 
 block_fan() {
 	local point temp duty entry value sep
+	local last_duty
 	local sgron sgroff="$SGR_OFF"
 
 	box_open L_KV 'Fan'
@@ -988,9 +989,15 @@ block_fan() {
 		sgr -v sgron "$STYLE_TOTAL"
 		value=
 		sep=
+		last_duty=0
 		for point in "${FAN_CURVE[@]}"; do
 			temp="${point%:*}"
 			duty="${point#*:}"
+			if [[ $duty == '*' ]]
+			then duty="$last_duty"
+			else last_duty="$duty"
+			fi
+
 			printf -v entry '%.1fC %d%%' \
 				"${temp}e-3" "$(( (duty * 100 + 127) / 255 ))"
 			# mark the point the fan is currently sitting at
