@@ -73,12 +73,19 @@ mv -vf "$KERNEL_DIR/fs/zfs/Kbuild" "$KERNEL_DIR/fs/zfs/Makefile"
 sed -r '/zfs_gitrev\.h/d' -i "$KERNEL_DIR/include/zfs/.gitignore"
 sed -r '/Kbuild/d' -i "$KERNEL_DIR/fs/zfs/.gitignore"
 
+# If this is being applied _over_ Kbuild integration, preserve it.
+if ! git -C "$KERNEL_DIR" diff-index HEAD --quiet -- fs/zfs/Kconfig; then
+	git -C "$KERNEL_DIR" checkout -f fs/zfs/Kconfig
+fi
+
 git -C "$KERNEL_DIR" add -A \
 	fs/zfs \
 	include/zfs \
 	# EOL
-git -C "$KERNEL_DIR" commit \
-	-m "zfs: add $(git describe --long --tags) ($(git show --no-patch --format='"%s"'))"
+if ! git -C "$KERNEL_DIR" diff-index --cached HEAD --quiet; then
+	git -C "$KERNEL_DIR" commit \
+		-m "zfs: add $(git describe --long --tags) ($(git show --no-patch --format='"%s"'))"
+fi
 { set +x; } &>/dev/null
 
 log "done. now you can build the kernel with ZFS support."
