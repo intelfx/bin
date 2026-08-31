@@ -372,6 +372,7 @@ log " Final tag: $final_tag"
 
 if [[ "$ARG_KEEP" ]] && git_verify "$final_tag"; then
 	log "Tag $final_tag already exists and -k/--keep specified, not overwriting"
+	git checkout -f "$final_tag"
 	exit 0
 fi
 
