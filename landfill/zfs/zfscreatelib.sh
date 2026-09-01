@@ -104,7 +104,7 @@ _zfs_create_one() {
         case "$mountpoint" in
         "") ;;
         /)   options+=( -o mountpoint="$MOUNTPOINT" ) ;;
-        /?*) options+=( -o mountpoint="$MOUNTPOINT$mountpoint" ) ;;
+        /?*) options+=( -o mountpoint="${MOUNTPOINT%%/}$mountpoint" ) ;;
         *)   die "zfs_create: invalid mountpoint: ${mountpoint@Q}" ;;
         esac
     else
