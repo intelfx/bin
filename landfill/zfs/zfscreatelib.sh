@@ -8,7 +8,22 @@ set -e
 # args
 #
 
+_usage() {
+    cat <<EOF
+Usage: $LIB_ARGV0 -n|--name MACHINE-NAME --pool POOL-NAME -P|--prefix /path/to/prefix [-M MOUNTPOINT] [-u|--users LIST,OF,USERS] [--dedup]
+
+Options:
+    -n, --name MACHINE-NAME     Inserted into dataset names (pool/ROOT/machine/var/log)
+    --pool POOL-NAME            Pool name to create datasets on (default: rpool)
+    --prefix /path/to/prefix    Pool mountpoint prefix (default: /target)
+    -M, --mountpoint MOUNTPOINT Pool mountpoint (default: \$prefix/\$poolname)
+    -u, --users USER-LIST       Which users to create datasets for (comma-separated)
+    --dedup                     Enable deduplication on OS datasets
+EOF
+}
+
 declare -A _ARGS=(
+    [--help]="ARG_USAGE"
     [-n|--name:]="ARG_NAME"
     [-o|--option:]="ARG_OPTIONS append"
     [--pool:]="ARG_POOL"
@@ -18,6 +33,10 @@ declare -A _ARGS=(
     [--dedup::]="ARG_DEDUP default=on"
 )
 parse_args _ARGS "$@"
+
+if [[ ${ARG_USAGE+set} ]]; then
+    usage
+fi
 
 NAME="${ARG_NAME-"test"}"
 PREFIX="${ARG_PREFIX-"/target"}"
