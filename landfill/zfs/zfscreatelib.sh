@@ -89,6 +89,41 @@ print_header() {
     read -r -s -n1 _
 }
 
+_do_mount() {
+    local -
+    set -x
+    zfs mount -R "$1"
+}
+_do_unmount() {
+    local -
+    set -x
+    ! mountpoint -q "$1" || umount -R "$1"
+}
+_do_destroy() {
+    local -
+    set -x
+    zfs destroy -R "$@" ||:
+}
+
+pool_mount() {
+    log "Mounting target hierarchy: ${DATASET_ROOT@Q}, ${DATASET_DATA@Q}, ${DATASET_SCRATCH@Q}"
+    _do_mount "$DATASET_ROOT"
+    _do_mount "$DATASET_DATA"
+    _do_mount "$DATASET_SCRATCH"
+}
+pool_unmount() {
+    local mp
+    mp="$POOL_ALTROOT$MOUNTPOINT"
+    log "Unmounting target hierarchy: ${mp@Q}"
+    _do_unmount "$mp"
+}
+pool_destroy_hierarchy() {
+    log "Destroying target hierarchy: ${DATASET_ROOT@Q}, ${DATASET_DATA@Q}, ${DATASET_SCRATCH@Q}"
+    _do_destroy "$DATASET_SCRATCH"
+    _do_destroy "$DATASET_DATA"
+    _do_destroy "$DATASET_ROOT"
+}
+
 _zfs_create_one() {
     local dataset="$1" mountpoint="$2"
     local -a options=("${@:3}")
