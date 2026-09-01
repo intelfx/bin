@@ -25,8 +25,8 @@ ZPOOL_CREATE_OPTS=(
     # -O compression=zstd-8  # 735 MiB/s (745 MiB/S)
     # -O compression=zstd-9  # 480 MiB/s (508 MiB/s)
     # -O compression=zstd-10  # 288 MiB/s (296 MiB/s)
-    -O compression=zstd-11  # 207 MiB/s (220 MiB/s)
-    -O checksum=sha256
+    # -O compression=zstd-11  # 207 MiB/s (220 MiB/s)
+    # -O checksum=sha256
     # -O dedup=sha256
 
     # -O recordsize=1M
