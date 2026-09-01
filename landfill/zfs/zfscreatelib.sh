@@ -64,7 +64,18 @@ if [[ $value == /?* ]]; then
 elif [[ $value == - ]]; then
     :
 else
-    err "Unexpected altroot: ${value@Q}"
+    err "Unexpected pool altroot: ${value@Q}"
+fi
+
+zfs get -H mountpoint "$POOL" \
+    | IFS=$'\t' read _ _ value _
+POOL_MOUNTPOINT=""
+if [[ $value == /* ]]; then
+    POOL_MOUNTPOINT="${value#"$POOL_ALTROOT"}"
+elif [[ $value == none ]]; then
+    :
+else
+    err "Unexpected pool own mountpoint: ${value@Q} (altroot=${POOL_ALTROOT@Q})"
 fi
 
 DATASET_ROOT="$POOL/ROOT/$NAME"
@@ -81,12 +92,21 @@ print_header() {
     log "Target mountpoint:               ${MOUNTPOINT@Q}"
     log "Target pool:                     ${POOL@Q}"
     log "Target pool altroot:             $(<<<"${POOL_ALTROOT:+"${POOL_ALTROOT@Q}"}" print_or "(none)")"
+    log "Target pool own mountpoint:      $(<<<"${POOL_MOUNTPOINT:+"${POOL_MOUNTPOINT@Q}"}" print_or "(none)")"
     log "Target users to create:          $(join ', ' "${USERS[@]@Q}" | print_or "(none)")"
     log "Target dataset options:          $(join ', ' "${OPTIONS[@]@Q}" | print_or "(none)")"
     log "Target dataset for OS:           ${DATASET_ROOT@Q}"
     log "Target dataset for user data:    ${DATASET_DATA@Q}"
     log "Target dataset for scratch data: ${DATASET_SCRATCH@Q}"
     read -r -s -n1 _
+}
+
+# $1: /path/a
+# $2: /path/b
+# Returns whether $2 is a descendant of $1
+_path_beneath() {
+    local parent="$1" child="$2"
+    [[ $child && $parent && ( $child == "$parent" || $child == "${parent%%/}"/?* ) ]]
 }
 
 _do_mount() {
@@ -110,9 +130,27 @@ pool_mount() {
     _do_mount "$DATASET_ROOT"
     _do_mount "$DATASET_DATA"
     _do_mount "$DATASET_SCRATCH"
+
+    if _path_beneath "$MOUNTPOINT" "$POOL_MOUNTPOINT"; then
+        log "Mounting pool own mountpoint: ${mp@Q}"
+        # FIXME: mount only the protected parts,
+        #        i.e. only those datasets whose mountpoints are descendants
+        #        of the root dataset mountpoint (the one we unmounted before)
+        _do_mount "$POOL"
+    fi
 }
 pool_unmount() {
     local mp
+    # 1. If pool's own mountpoint, aka root dataset mountpoint (e.g. /mnt/zfs/poolname)
+    #    is beneath the target hierarchy mountpoint (e.g. / if we are deploying
+    #    the primary OS on a newly-created pool under altroot), unmount the former
+    #    to avoid overmounting
+    if _path_beneath "$MOUNTPOINT" "$POOL_MOUNTPOINT"; then
+        mp="$POOL_ALTROOT$POOL_MOUNTPOINT"
+        log "Unmounting pool own mountpoint: ${mp@Q}"
+        _do_unmount "$mp"
+    fi
+    # 2. Unmount hierarchy mountpoint itself
     mp="$POOL_ALTROOT$MOUNTPOINT"
     log "Unmounting target hierarchy: ${mp@Q}"
     _do_unmount "$mp"
