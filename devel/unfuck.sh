@@ -489,6 +489,7 @@ v7.1)
 		work/pf-no-teo-7.0 \
 		work/perf-zstd-6.18 \
 		work/mitigations-7.0 \
+		work/thinkpad-ucsi-7.1.12 \
 		# work/gvt-failsafe-6.18 \
 		# work/gvt-workaround-6.18 \
 		# work/i915-fastboot-revert-6.18 \
