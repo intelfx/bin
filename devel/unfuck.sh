@@ -331,14 +331,10 @@ v6.16)
 	;;
 
 v6.17)
-	# bcachefs
+	# main
 	make_merge \
 		work/bcachefs-6.17 \
 		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
-		# EOL
-
-	# main
-	make_merge \
 		work/iwlwifi-lar-v3-6.17 \
 		work/amd-energy-6.16 \
 		work/btrfs-remove-ghost-subvolume-6.12 \
@@ -363,14 +359,10 @@ v6.17)
 	;;
 
 v6.18)
-	# bcachefs
+	# main
 	make_merge \
 		work/bcachefs-6.18 \
 		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
-		# EOL
-
-	# main
-	make_merge \
 		work/iwlwifi-lar-v3-6.18 \
 		work/amd-energy-6.18 \
 		work/btrfs-remove-ghost-subvolume-6.18 \
@@ -396,14 +388,10 @@ v6.18)
 	;;
 
 v6.19)
-	# bcachefs
+	# main
 	make_merge \
 		work/bcachefs-6.18 \
 		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
-		# EOL
-
-	# main
-	make_merge \
 		work/iwlwifi-lar-v3-6.18 \
 		work/amd-energy-6.18 \
 		work/btrfs-remove-ghost-subvolume-6.18 \
@@ -429,14 +417,10 @@ v6.19)
 	;;
 
 v7.0)
-	# bcachefs
+	# main
 	make_merge \
 		work/bcachefs-6.18 \
 		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
-		# EOL
-
-	# main
-	make_merge \
 		work/iwlwifi-lar-v3-7.0 \
 		work/amd-energy-6.18 \
 		work/btrfs-remove-ghost-subvolume-7.0 \
@@ -462,14 +446,10 @@ v7.0)
 	;;
 
 v7.1)
-	# bcachefs
+	# main
 	make_merge \
 		work/bcachefs-7.1 \
 		"$(git describe --tags --match 'bcachefs/*' --exact-match --always bcachefs-tools/release)" \
-		# EOL
-
-	# main
-	make_merge \
 		work/iwlwifi-lar-v3-7.0 \
 		work/amd-energy-6.18 \
 		work/btrfs-remove-ghost-subvolume-7.0 \
