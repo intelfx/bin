@@ -8,8 +8,8 @@ shopt -s lastpipe
 
 _usage() {
 	cat <<EOF
-Usage: $0 [--guid GUID-FILE] [--with KEY-DIR] [--as PK|KEK|db] INPUTS... [-o] OUTPUT
-       $0 [--guid GUID-FILE] [--with KEY-DIR] [--as PK|KEK|db]            -o  OUTPUT
+Usage: $0 [--guid GUID-FILE] [--with KEY-DIR] [--as PK|KEK|db] [-a|--append] INPUTS... [-o] OUTPUT
+       $0 [--guid GUID-FILE] [--with KEY-DIR] [--as PK|KEK|db] [-a|--append]            -o  OUTPUT
 
 GUID-FILE must contain the signature owner GUID (specified via a file rather
 than immediately on the command line).
@@ -22,6 +22,9 @@ which case an empty authenticated update will be created.
 
 OUTPUT may be specified as either the last positional argument
 or using the \`-o\` flag.
+
+If -a/--append is specified, the authenticated update will be created with an
+append flag set.
 EOF
 }
 
