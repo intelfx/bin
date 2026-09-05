@@ -426,10 +426,6 @@ v6.17)
 	;;
 
 v6.18)
-	# # bcachefs
-	# make_merge \
-	# 	# EOL
-
 	if [[ ${ARG_RPI+set} ]]; then
 		make_merge \
 			raspberrypi/rpi-6.18.y \
@@ -534,10 +530,6 @@ v7.0)
 	;;
 
 v7.1)
-	# # bcachefs
-	# make_merge \
-	# 	# EOL
-
 	if [[ ${ARG_RPI+set} ]]; then
 		make_merge \
 			raspberrypi/rpi-7.1.y \
