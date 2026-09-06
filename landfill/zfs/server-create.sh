@@ -17,14 +17,8 @@ DATASET_SCRATCH="$POOL/SCRATCH/$NAME"
 
 print_header
 
-set -x
-
-! mountpoint -q "$POOL_ALTROOT$MOUNTPOINT" || umount -R "$POOL_ALTROOT$MOUNTPOINT"
-zfs destroy -R "$DATASET_SCRATCH" ||:
-zfs destroy -R "$DATASET_DATA" ||:
-zfs destroy -R "$DATASET_ROOT" ||:
-
-{ set +x; } &>/dev/null
+pool_unmount
+pool_destroy_hierarchy
 
 ### "ROOT" ###
 zfs_create --root   "ROOT"                                  "/"
@@ -84,10 +78,4 @@ zfs_create          "SCRATCH/cache/$user"                   "/home/$user/.cache"
 zfs_create_podman   "SCRATCH/containers/$user"              "/home/$user/.local/share/containers"
 done
 
-set -x
-
-# zfs mount -R "$DATASET_ROOT"
-# zfs mount -R "$DATASET_DATA"
-# zfs mount -R "$DATASET_SCRATCH"
-
-{ set +x; } &>/dev/null
+pool_mount
