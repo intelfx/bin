@@ -1,7 +1,10 @@
 #!/bin/bash
 
-set -e
-. ${BASH_SOURCE%/*}/zfslib.sh
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=./zfslib.sh
+. "${BASH_SOURCE%/*}/zfslib.sh"
 
 
 #

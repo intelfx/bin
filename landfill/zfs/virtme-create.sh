@@ -1,7 +1,10 @@
 #!/bin/bash
 
-set -e
-. ${BASH_SOURCE%/*}/zfslib.sh
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=./zfslib.sh
+. "${BASH_SOURCE%/*}/zfslib.sh"
 
 #
 # definitions
@@ -41,4 +44,3 @@ zpool create \
     "${RPOOL_DEVICES[@]}" \
 
 zfs_allow_create virtme intelfx
-

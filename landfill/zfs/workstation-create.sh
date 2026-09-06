@@ -1,7 +1,10 @@
 #!/bin/bash
 
-set -e
-. ${BASH_SOURCE%/*}/zfscreatelib.sh
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=./zfscreatelib.sh
+. "${BASH_SOURCE%/*}/zfscreatelib.sh"
 
 
 #

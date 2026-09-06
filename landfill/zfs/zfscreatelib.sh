@@ -1,7 +1,10 @@
 #!/bin/bash
 
-set -e
-. ${BASH_SOURCE%/*}/zfslib.sh
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=./zfslib.sh
+. "${BASH_SOURCE%/*}"/zfslib.sh
 
 
 #
@@ -268,4 +271,3 @@ zfs_create_docker() {
     zfs_create --os "${options[@]}" "$dataset/overlay2"
     zfs_create      "${options[@]}" "$dataset/volumes"
 }
-
