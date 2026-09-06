@@ -102,5 +102,5 @@ par1() {
         shift
     done
 
-    parallel -j1 --tty "set -x; ${cmd[@]@Q}" "$@"
+    parallel -j1 --tty "set -x; ${cmd[*]@Q}" "$@"
 }

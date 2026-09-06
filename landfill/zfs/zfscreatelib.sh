@@ -24,12 +24,12 @@ EOF
 
 declare -A _ARGS=(
     [--help]="ARG_USAGE"
-    [-n|--name:]="ARG_NAME"
-    [-o|--option:]="ARG_OPTIONS append"
+    [-n\|--name:]="ARG_NAME"
+    [-o\|--option:]="ARG_OPTIONS append"
     [--pool:]="ARG_POOL"
-    [-P|--prefix:]="ARG_PREFIX"
-    [-M|--mountpoint:]="ARG_MOUNTPOINT"
-    [-u|--users:]="ARG_USERS split=, append"
+    [-P\|--prefix:]="ARG_PREFIX"
+    [-M\|--mountpoint:]="ARG_MOUNTPOINT"
+    [-u\|--users:]="ARG_USERS split=, append"
     [--dedup::]="ARG_DEDUP default=on"
 )
 parse_args _ARGS "$@"
@@ -219,7 +219,7 @@ zfs_create() {
     case "${#args[@]}" in
     2) mountpoint="${args[1]}" ;&
     1) dataset="${args[0]}" ;;
-    *) die "zfs_create: invalid args, expected 1 or 2: ${args[@]@Q}" ;;
+    *) die "zfs_create: invalid args, expected 1 or 2: ${args[*]@Q}" ;;
     esac
 
     _zfs_create_one "$dataset" "$mountpoint" "${options[@]}"
@@ -239,7 +239,7 @@ zfs_create_podman() {
     local dataset mountpoint
     case "${#args[@]}" in
     2) dataset="${args[0]}"; mountpoint="${args[1]}" ;;
-    *) die "zfs_create_podman: invalid args, expected 2: ${args[@]@Q}" ;;
+    *) die "zfs_create_podman: invalid args, expected 2: ${args[*]@Q}" ;;
     esac
 
     zfs_create      "${options[@]}" "$dataset" "$mountpoint"
@@ -261,7 +261,7 @@ zfs_create_docker() {
     local dataset mountpoint
     case "${#args[@]}" in
     2) dataset="${args[0]}"; mountpoint="${args[1]}" ;;
-    *) die "zfs_create_docker: invalid args, expected 2: ${args[@]@Q}" ;;
+    *) die "zfs_create_docker: invalid args, expected 2: ${args[*]@Q}" ;;
     esac
 
     zfs_create      "${options[@]}" "$dataset" "$mountpoint"
