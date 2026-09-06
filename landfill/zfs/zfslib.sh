@@ -85,7 +85,8 @@ zfs_allow_to() {
     local pool="$1"
     shift
 
-    zfs allow "$@" \
+    local IFS=,
+    zfs allow "$*" \
         @allops,@allprops,@allquota \
         "$pool"
 }
