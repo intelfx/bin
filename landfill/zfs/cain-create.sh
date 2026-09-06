@@ -61,7 +61,7 @@ zpool create \
     bpool -R /target -m /mnt/zfs/bpool -O canmount=off \
     "${BPOOL_DEVICES[@]}"
 
-zfs_allow_to bpool operator
+zfs_allow_create bpool operator
 
 zpool destroy rpool ||:
 blkdiscard -v -f "${RPOOL_DEVICES[@]}"
@@ -70,7 +70,7 @@ zpool create \
     rpool -R /target -m /mnt/zfs/rpool -O canmount=off \
     "${RPOOL_DEVICES[@]}"
 
-zfs_allow_to rpool operator
+zfs_allow_create rpool operator
 
 zfs create -u \
     -o canmount=off \

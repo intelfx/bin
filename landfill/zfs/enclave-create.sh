@@ -42,4 +42,4 @@ zpool create \
     "$TANK_NAME" -m "/mnt/zfs/$TANK_NAME" -O canmount=off \
     "${TANK_DEVICES[@]}"
 
-zfs_allow_to "$TANK_NAME" operator
+zfs_allow_create "$TANK_NAME" operator

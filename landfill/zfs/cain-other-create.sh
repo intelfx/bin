@@ -43,5 +43,4 @@ set -x
 #     tank -m /mnt/zfs/tank -O canmount=off \
 #     "${TANK_DEVICES[@]}"
 
-zfs_allow_create tank
-zfs_allow_to tank intelfx
+zfs_allow_create tank intelfx

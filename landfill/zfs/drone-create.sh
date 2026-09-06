@@ -33,5 +33,4 @@ zpool create \
     "$RPOOL_NAME" -R /target -m "/mnt/zfs/$RPOOL_NAME" \
     "${RPOOL_DEVICES[@]}" \
 
-zfs_allow_create "$RPOOL_NAME"
-zfs_allow_to "$RPOOL_NAME" operator
+zfs_allow_create "$RPOOL_NAME" operator
