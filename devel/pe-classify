@@ -1472,8 +1472,17 @@ def render_format(spec: str, values: dict[str, str]) -> str:
 	return '' if formatter.missing else text
 
 
+def _safe(text: str) -> str:
+	"""Drop undecodable bytes smuggled in by os.fsdecode.
+
+	Archive members often carry CP1251 or Shift-JIS names that Python surfaces
+	as surrogate escapes; writing those to a UTF-8 stream raises.
+	"""
+	return text.encode('utf-8', 'surrogateescape').decode('utf-8', 'replace')
+
+
 def _md_escape(text: str) -> str:
-	return text.replace('|', '\\|').replace('\n', ' ')
+	return _safe(text).replace('|', '\\|').replace('\n', ' ')
 
 
 def _archive_row(item: Item) -> list[str]:
@@ -1540,7 +1549,7 @@ def _kv(console: Console, key: str, value: str, style: str = '') -> None:
 
 def render_archive_detail(console: Console, item: Item) -> None:
 	arc, v = item.archive, item.verdict
-	console.print(f'[bold]{escape(item.display)}[/bold]')
+	console.print(f'[bold]{escape(_safe(item.display))}[/bold]')
 	if not arc.ok:
 		console.print(f'    [red]{escape(arc.error)}[/red]\n')
 		return
@@ -1606,7 +1615,7 @@ def render_detail(console: Console, item: Item, show_strings: int) -> None:
 		return
 	facts, v = item.facts, item.verdict
 	f = fields(item)
-	console.print(f'[bold]{escape(item.display)}[/bold]')
+	console.print(f'[bold]{escape(_safe(item.display))}[/bold]')
 	if not facts.ok:
 		console.print(f'    [red]{escape(facts.error)}[/red]\n')
 		return
@@ -1751,7 +1760,7 @@ def analyse(path: Path, display: str, scratch: Scratch, opts: 'Options',
 			rel = member.relative_to(arc.root)
 			entry = sources.get(member.suffix.upper()) or sources.get(str(rel).upper())
 			label = entry.installed if entry else str(rel)
-			yield from analyse(member, f'{display}!/{label}', scratch, opts, depth + 1)
+			yield from analyse(member, _safe(f'{display}!/{label}'), scratch, opts, depth + 1)
 	finally:
 		# bound peak scratch usage; the namespace would reclaim it at exit anyway
 		shutil.rmtree(arc.root, ignore_errors=True)
@@ -1835,7 +1844,7 @@ def main(
 	results: list[Item] = []
 	for path in _collect(paths):
 		shown = path.relative_to(base) if base and path.is_relative_to(base) else path
-		results.extend(analyse(path, str(shown), scratch, opts))
+		results.extend(analyse(path, _safe(str(shown)), scratch, opts))
 
 	if not results:
 		raise typer.Exit(1)
