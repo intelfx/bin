@@ -495,7 +495,9 @@ class Facts:
 	resource_types: list[str] = field(default_factory=list)
 	# langid -> {resource type: count}
 	resource_langs: dict[int, dict[str, int]] = field(default_factory=dict)
-	# langid -> [strings]
+	# langid -> number of strings in that language's string tables
+	string_counts: dict[int, int] = field(default_factory=dict)
+	# langid -> the strings themselves, retained only when asked for
 	string_tables: dict[int, list[str]] = field(default_factory=dict)
 	version_info: dict[str, str] = field(default_factory=dict)
 	translations: list[tuple[int, int]] = field(default_factory=list)
@@ -531,7 +533,7 @@ def _parse_string_table(data: bytes) -> list[str]:
 	return out
 
 
-def _probe_resources(pe: pefile.PE, facts: Facts) -> None:
+def _probe_resources(pe: pefile.PE, facts: Facts, keep_strings: bool) -> None:
 	root = getattr(pe, 'DIRECTORY_ENTRY_RESOURCE', None)
 	if root is None:
 		return
@@ -550,7 +552,10 @@ def _probe_resources(pe: pefile.PE, facts: Facts) -> None:
 					                   lang_entry.data.struct.Size)
 				except pefile.PEFormatError:
 					continue
-				facts.string_tables.setdefault(lang, []).extend(_parse_string_table(data))
+				strings = _parse_string_table(data)
+				facts.string_counts[lang] = facts.string_counts.get(lang, 0) + len(strings)
+				if keep_strings:
+					facts.string_tables.setdefault(lang, []).extend(strings)
 
 	for file_info in getattr(pe, 'FileInfo', []):
 		for entry in file_info:
@@ -620,7 +625,7 @@ def _read_assembly_refs(tables, net: NetFacts) -> None:
 		))
 
 
-def probe(path: Path) -> Facts:
+def probe(path: Path, keep_strings: bool = False) -> Facts:
 	"""Extract raw facts from one file. Never raises for bad input."""
 	facts = Facts(path=path)
 	try:
@@ -708,7 +713,7 @@ def probe(path: Path) -> Facts:
 	facts.overlay = max(0, facts.size - (start or facts.size) - facts.signed_bytes)
 	facts.embedded_cabs = raw.count(b'MSCF')
 
-	_probe_resources(pe, facts)
+	_probe_resources(pe, facts, keep_strings)
 
 	if facts.has_clr:
 		_probe_net(raw, facts)
@@ -1680,7 +1685,8 @@ def render_detail(console: Console, item: Item, show_strings: int) -> None:
 			kinds = facts.resource_langs[lang]
 			detail = ' '.join(f'{k.removeprefix("RT_")}({n})' for k, n in sorted(kinds.items()))
 			strings = facts.string_tables.get(lang)
-			count = f'  [dim]{len(strings)} strings[/dim]' if strings else ''
+			total = facts.string_counts.get(lang, 0)
+			count = f'  [dim]{total} strings[/dim]' if total else ''
 			console.print(f'      [bold]{lcid_name(lang):<14}[/bold] '
 			              f'[dim]0x{lang:04X}[/dim]  {escape(detail)}{count}')
 			if strings and show_strings:
@@ -1716,7 +1722,7 @@ def analyse(path: Path, display: str, scratch: Scratch, opts: 'Options',
 	"""Classify one file, descending into it when it is an archive."""
 	kind = archive_kind(path) if depth < opts.max_depth else ''
 	if not kind:
-		facts = probe(path)
+		facts = probe(path, opts.keep_strings)
 		if facts.ok or not opts.skip_non_pe:
 			yield Item(display=display, facts=facts, verdict=classify(facts), depth=depth)
 		return
@@ -1756,6 +1762,7 @@ class Options:
 	recurse: bool = True
 	max_depth: int = 3
 	skip_non_pe: bool = False
+	keep_strings: bool = False
 	serial: Iterator[int] = field(default_factory=lambda: iter(range(1 << 30)))
 
 
@@ -1820,7 +1827,8 @@ def main(
 
 	if recurse is None:
 		recurse = not fmt
-	opts = Options(recurse=recurse, max_depth=max_depth, skip_non_pe=skip_non_pe)
+	opts = Options(recurse=recurse, max_depth=max_depth, skip_non_pe=skip_non_pe,
+	               keep_strings=bool(strings))
 	scratch = Scratch()
 	base = Path.cwd() if relative else None
 
