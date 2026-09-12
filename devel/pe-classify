@@ -13,16 +13,23 @@ The three layers below are kept apart on purpose:
   - render_*()   -- presentation
 """
 
+import ctypes
+import ctypes.util
 import hashlib
 import logging
+import os
 import re
+import shutil
 import string
 import struct
+import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Iterator
+from xml.etree import ElementTree
 
 import pefile
 import structlog
@@ -334,6 +341,91 @@ LINKER_ERAS = {
 }
 
 
+# archive container magic -> kind
+ARCHIVE_MAGIC = (
+	(b'MSCF', 'cab'),
+	(b'PK\x03\x04', 'zip'),
+	(b'PK\x05\x06', 'zip'),
+	(b'PK\x07\x08', 'zip'),
+	(b'Rar!\x1a\x07', 'rar'),
+	(b'7z\xbc\xaf\x27\x1c', '7z'),
+)
+
+# extractors to try in order, per kind. 7-Zip is uniformly the fastest and
+# handles every container here; the format-specific tools are fallbacks for
+# archives it rejects.
+EXTRACTORS = {
+	'cab': (['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
+	        ['cabextract', '-q', '-d', '{dest}', '--', '{src}']),
+	'zip': (['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
+	        ['unzip', '-qq', '-o', '-P', '', '--', '{src}', '-d', '{dest}']),
+	'rar': (['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
+	        ['unrar', 'x', '-inul', '-o+', '-p-', '--', '{src}', '{dest}/']),
+	'7z': (['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],),
+}
+
+# [CEDevice] ProcessorType from the source INF, as PROCESSOR_* constants
+PROCESSOR_TYPES = {
+	0: ('', 'any processor'),
+	386: ('x86', 'Intel 386'),
+	486: ('x86', 'Intel 486'),
+	586: ('x86', 'Intel Pentium'),
+	821: ('ppc', 'Motorola 821'),
+	1824: ('arm', 'ARM 720'),
+	2080: ('arm', 'ARM 820'),
+	2336: ('arm', 'ARM 920'),
+	2577: ('arm', 'StrongARM'),
+	4000: ('mips', 'MIPS R4000'),
+	10003: ('sh3', 'Hitachi SH3'),
+	10004: ('sh3', 'Hitachi SH3E'),
+	10005: ('sh4', 'Hitachi SH4'),
+	70001: ('arm', 'ARM 7TDMI'),
+}
+
+# cabwiz destination folder ids
+CE_FOLDERS = {
+	1: r'\Program Files',
+	2: r'\Windows',
+	3: r'\Windows\Desktop',
+	4: r'\Windows\StartUp',
+	5: r'\My Documents',
+	6: r'\Program Files\Accessories',
+	7: r'\Program Files\Communications',
+	8: r'\Program Files\Games',
+	9: r'\Program Files\Pocket Outlook',
+	10: r'\Program Files\Office',
+	11: r'\Windows\Start Menu\Programs',
+	12: r'\Windows\Start Menu\Programs\Accessories',
+	13: r'\Windows\Start Menu\Programs\Communications',
+	14: r'\Windows\Start Menu\Programs\Games',
+	15: r'\Windows\Fonts',
+	16: r'\Windows\Recent',
+	17: r'\Windows\Start Menu',
+}
+
+# registry locations a CE package writes to, and what writing there means
+REGISTRY_HINTS = (
+	(r'\microsoft\today\items', 'Today screen plugin'),
+	(r'\init\launch', 'launched by the CE kernel at boot'),
+	(r'\services\\', 'CE device service'),
+	(r'\drivers\builtin', 'built-in device driver'),
+	(r'\controlpanel\\', 'control panel applet'),
+	(r'\microsoft\shell\rai', 'shell application registration (softkey/Programs entry)'),
+	(r'\software\microsoft\sip', 'SIP input method (soft keyboard)'),
+	(r'\microsoft\windows ce\filesystem', 'filesystem filter'),
+	(r'hkcr\clsid', 'COM class registration'),
+	(r'\explorer\shell folders', 'shell folder redirection'),
+	(r'\comm\\', 'networking or telephony stack'),
+)
+
+MSCE_SIGNATURES = (b'MSCE', b'CE4+')
+REGISTRY_ROOTS = {1: 'HKCR', 2: 'HKCU', 3: 'HKLM', 4: 'HKEY_USERS'}
+# only these two occur in practice; anything else is reported by number
+REGISTRY_TYPES = {0: 'REG_SZ', 1: 'REG_DWORD'}
+MSCE_FILE_SELFREG = 0x10000000
+MSCE_HEADER_SIZE = 0x64
+
+
 def _ce_version(major: int, minor: int) -> tuple[int, int]:
 	"""Normalise the two CE spellings of a subsystem minor version."""
 	if major >= 3 and minor in (10, 20, 30):
@@ -610,6 +702,374 @@ def probe(path: Path) -> Facts:
 
 
 # --------------------------------------------------------------------------
+# layer 1b: archives
+# --------------------------------------------------------------------------
+
+CLONE_NEWNS, CLONE_NEWUSER = 0x00020000, 0x10000000
+MS_REC, MS_PRIVATE = 0x4000, 0x40000
+
+
+class Scratch:
+	"""Somewhere to unpack archives that needs no tearing down.
+
+	Unshares a user and a mount namespace and lays a private tmpfs over the
+	temporary directory. Everything written there is unreachable from the rest
+	of the system and is destroyed by the kernel when this process exits, so
+	there is nothing to unwind on the way out -- no unmount, no rmtree, no
+	handler that has to survive a crash or a signal.
+
+	Falls back to an ordinary temporary directory when unprivileged user
+	namespaces are unavailable; that path does need explicit cleanup.
+	"""
+
+	def __init__(self) -> None:
+		self._root: Path | None = None
+		self._fallback: tempfile.TemporaryDirectory | None = None
+		self.isolated = False
+
+	@staticmethod
+	def _mount(src: str | None, target: str, fstype: str | None,
+	           flags: int = 0, data: str | None = None) -> None:
+		libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+		enc = lambda s: s.encode() if s else None
+		if libc.mount(enc(src), enc(target), enc(fstype), ctypes.c_ulong(flags), enc(data)) != 0:
+			err = ctypes.get_errno()
+			raise OSError(err, f'mount {fstype} on {target}: {os.strerror(err)}')
+
+	def _unshare(self) -> Path:
+		uid, gid = os.getuid(), os.getgid()
+		os.unshare(CLONE_NEWUSER | CLONE_NEWNS)
+		# map our own identity rather than root: the unsharer holds full
+		# capabilities in the new namespace either way, and keeping the uid
+		# means extracted files get the ownership they would have had anyway
+		Path('/proc/self/setgroups').write_text('deny')
+		Path('/proc/self/uid_map').write_text(f'{uid} {uid} 1')
+		Path('/proc/self/gid_map').write_text(f'{gid} {gid} 1')
+		base = tempfile.gettempdir()
+		self._mount(None, '/', None, MS_REC | MS_PRIVATE)
+		self._mount('pe-classify', base, 'tmpfs', 0, 'mode=0700')
+		self.isolated = True
+		return Path(tempfile.mkdtemp(prefix='pe-classify-'))
+
+	@property
+	def root(self) -> Path:
+		if self._root is None:
+			try:
+				self._root = self._unshare()
+			except Exception as exc:
+				log.warning('namespace isolation unavailable, using a plain temporary '
+				            'directory', error=str(exc))
+				self._fallback = tempfile.TemporaryDirectory(prefix='pe-classify-')
+				self._root = Path(self._fallback.name)
+		return self._root
+
+
+@dataclass
+class CabFile:
+	source: str = ''        # name inside the CAB, e.g. SKYPES~2.999
+	name: str = ''          # name once installed
+	dest: str = ''          # destination directory
+	flags: int = 0
+
+	@property
+	def selfreg(self) -> bool:
+		return bool(self.flags & MSCE_FILE_SELFREG)
+
+	@property
+	def installed(self) -> str:
+		return f'{self.dest}\\{self.name}' if self.dest else self.name
+
+
+@dataclass
+class CabInstall:
+	origin: str = ''                # 'MSCE' / 'CE4+' / '_setup.xml'
+	appname: str = ''
+	provider: str = ''
+	os_min: str = ''
+	os_max: str = ''
+	build_min: int = 0
+	build_max: int = 0
+	processor: int = 0
+	unsupported: str = ''
+	files: list[CabFile] = field(default_factory=list)
+	dirs: list[str] = field(default_factory=list)
+	# (key path, value name, type, value)
+	registry: list[tuple[str, str, str, str]] = field(default_factory=list)
+	# (shortcut path, target)
+	shortcuts: list[tuple[str, str]] = field(default_factory=list)
+	# top-level provisioning characteristics, for CABs that install no files
+	provisioning: list[str] = field(default_factory=list)
+	# (certificate store, thumbprint)
+	certificates: list[tuple[str, str]] = field(default_factory=list)
+	warnings: list[str] = field(default_factory=list)
+
+	@property
+	def empty(self) -> bool:
+		return not (self.files or self.registry or self.shortcuts or self.certificates)
+
+	@property
+	def title(self) -> str:
+		return ' '.join(x for x in (self.provider, self.appname) if x)
+
+	def source_map(self) -> dict[str, CabFile]:
+		return {f.source.upper(): f for f in self.files if f.source}
+
+
+def _ce_path(text: str) -> str:
+	"""Expand %CEnn% destination folder ids."""
+	def sub(m):
+		folder = CE_FOLDERS.get(int(m.group(1)))
+		return folder if folder else m.group(0)
+	return re.sub(r'%CE(\d+)%', sub, text)
+
+
+def parse_msce(data: bytes) -> CabInstall:
+	"""Decode the cabwiz installation header (the .000 member of a CE CAB).
+
+	Section offsets are authoritative and counts are advisory: repacked CABs
+	are common in the wild and routinely under-report their entry counts,
+	while the offsets stay correct. An absent section has offset zero.
+	"""
+	if data[:4] not in MSCE_SIGNATURES:
+		raise ValueError('not a Windows CE setup header')
+	length, processor = struct.unpack_from('<I', data, 0x08)[0], struct.unpack_from('<I', data, 0x14)[0]
+	vmin_hi, vmin_lo, vmax_hi, vmax_lo, build_min, build_max = struct.unpack_from('<6i', data, 0x18)
+	offsets = struct.unpack_from('<6I', data, 0x3C)
+	oapp, lapp, oprov, lprov, ouns, luns = struct.unpack_from('<6H', data, 0x54)
+
+	inst = CabInstall(origin=data[:4].decode('ascii'),
+	                  os_min=f'{vmin_hi}.{vmin_lo}', os_max=f'{vmax_hi}.{vmax_lo}',
+	                  build_min=build_min, build_max=build_max, processor=processor)
+	if length != len(data):
+		inst.warnings.append(f'header declares {length} bytes, file is {len(data)}')
+
+	text = lambda off, ln: data[off:off + ln].split(b'\0')[0].decode('latin-1') if ln else ''
+	inst.appname, inst.provider = text(oapp, lapp), text(oprov, lprov)
+	inst.unsupported = text(ouns, luns)
+
+	# an absent section's bound is the next section that is present
+	ends = [next((x for x in offsets[i + 1:] if x), len(data)) for i in range(6)]
+	ostr, odir, ofile, ohive, okey, olink = offsets
+
+	def ids(off: int, ln: int) -> list[int]:
+		return [i for i in struct.unpack_from(f'<{ln // 2}H', data, off) if i]
+
+	strings: dict[int, str] = {}
+	o = ostr
+	while ostr and o < ends[0]:
+		sid, ln = struct.unpack_from('<HH', data, o)
+		o += 4
+		strings[sid] = data[o:o + ln].split(b'\0')[0].decode('latin-1')
+		o += ln
+	join = lambda seq: '\\'.join(strings.get(i, f'%{i}%') for i in seq)
+
+	dirs: dict[int, str] = {}
+	o = odir
+	while odir and o < ends[1]:
+		did, ln = struct.unpack_from('<HH', data, o)
+		o += 4
+		dirs[did] = _ce_path(join(ids(o, ln)))
+		o += ln
+	inst.dirs = sorted(set(dirs.values()))
+
+	o = ofile
+	while ofile and o < ends[2]:
+		fid, did, _, flags, ln = struct.unpack_from('<HHHIH', data, o)
+		o += 12
+		name = data[o:o + ln].split(b'\0')[0].decode('latin-1')
+		o += ln
+		inst.files.append(CabFile(source=f'.{fid:03d}', name=name,
+		                          dest=dirs.get(did, ''), flags=flags))
+
+	hives: dict[int, str] = {}
+	o = ohive
+	while ohive and o < ends[3]:
+		hid, root, _, ln = struct.unpack_from('<HHHH', data, o)
+		o += 8
+		hives[hid] = REGISTRY_ROOTS.get(root, f'#{root}') + '\\' + join(ids(o, ln))
+		o += ln
+
+	o = okey
+	while okey and o < ends[4]:
+		_, hid, _, _, dtype, ln = struct.unpack_from('<6H', data, o)
+		o += 12
+		name, _, raw = data[o:o + ln].partition(b'\0')
+		o += ln
+		if dtype == 1 and len(raw) >= 4:
+			value = str(struct.unpack_from('<I', raw)[0])
+		else:
+			value = raw.split(b'\0')[0].decode('latin-1')
+		inst.registry.append((hives.get(hid, f'#{hid}'),
+		                      name.decode('latin-1') or '(default)',
+		                      REGISTRY_TYPES.get(dtype, f'type {dtype}'), value))
+
+	# the trailing section has no following offset to bound it, so honour the
+	# declared count there rather than reading into any padding
+	nlink = struct.unpack_from('<H', data, 0x3A)[0]
+	o = olink
+	while olink and o < ends[5] and len(inst.shortcuts) < nlink:
+		_, _, base, target, _, ln = struct.unpack_from('<6H', data, o)
+		o += 12
+		name = join(ids(o, ln))
+		o += ln
+		folder = CE_FOLDERS.get(base, f'%CE{base}%')
+		where = next((f.installed for f in inst.files if f.source == f'.{target:03d}'), f'#{target}')
+		inst.shortcuts.append((f'{folder}\\{name}', where))
+	return inst
+
+
+def parse_setup_xml(data: bytes) -> CabInstall:
+	"""Decode the WAP provisioning document used by Windows Mobile 5+ CABs."""
+	root = ElementTree.fromstring(data)
+	inst = CabInstall(origin='_setup.xml')
+	params: dict[str, str] = {}
+	for char in root.iter('characteristic'):
+		if char.get('type') == 'Install':
+			for parm in char.findall('parm'):
+				params[parm.get('name', '')] = parm.get('value', '')
+	inst.appname = params.get('AppName', '')
+	inst.os_min, inst.os_max = params.get('OSVersionMin', ''), params.get('OSVersionMax', '')
+	inst.build_min = int(params.get('BuildNumberMin') or 0)
+	inst.build_max = int(params.get('BuildNumberMax') or 0)
+	if params.get('InstallDir'):
+		inst.dirs.append(_ce_path(params['InstallDir']))
+
+	def walk(node, path: str) -> None:
+		for child in node.findall('characteristic'):
+			kind = child.get('type', '')
+			if kind in ('MakeDir', 'Extract', 'Shortcut'):
+				continue
+			here = f'{path}\\{kind}' if path and not kind.startswith('%') else kind
+			extract = child.find('characteristic[@type="Extract"]')
+			shortcut = child.find('characteristic[@type="Shortcut"]')
+			if extract is not None:
+				source = extract.find('parm[@name="Source"]')
+				flags = MSCE_FILE_SELFREG if extract.find(
+					'characteristic[@type="SelfRegister"]') is not None \
+					or extract.find('parm[@name="SelfRegister"]') is not None else 0
+				inst.files.append(CabFile(source=source.get('value', '') if source is not None else '',
+				                          name=kind, dest=_ce_path(path), flags=flags))
+			elif shortcut is not None:
+				target = shortcut.find('parm[@name="Source"]')
+				inst.shortcuts.append((_ce_path(f'{path}\\{kind}'),
+				                       _ce_path(target.get('value', '')) if target is not None else ''))
+			else:
+				if child.find('characteristic[@type="MakeDir"]') is not None:
+					inst.dirs.append(_ce_path(here))
+				walk(child, here)
+
+	inst.provisioning = sorted({c.get('type', '') for c in root.findall('characteristic')})
+	for store in root.iter('characteristic'):
+		if store.get('type') != 'CertificateStore':
+			continue
+		for named in store.findall('characteristic'):
+			for cert in named.findall('characteristic'):
+				inst.certificates.append((named.get('type', ''), cert.get('type', '')))
+
+	for char in root.iter('characteristic'):
+		if char.get('type') == 'FileOperation':
+			walk(char, '')
+		elif char.get('type') == 'Registry':
+			for key in char.findall('characteristic'):
+				for parm in key.findall('parm'):
+					inst.registry.append((
+						_ce_path(key.get('type', '')), parm.get('name', '') or '(default)',
+						'REG_DWORD' if parm.get('datatype') == 'integer' else 'REG_SZ',
+						parm.get('value', '')))
+	inst.dirs = sorted(set(inst.dirs))
+	return inst
+
+
+@dataclass
+class ArchiveFacts:
+	path: Path
+	kind: str = ''
+	size: int = 0
+	error: str = ''
+	root: Path | None = None
+	members: list[Path] = field(default_factory=list)
+	install: CabInstall | None = None
+	setup_dll: str = ''
+	# members consumed as install metadata rather than payload
+	metadata: list[Path] = field(default_factory=list)
+
+	@property
+	def ok(self) -> bool:
+		return not self.error
+
+
+def archive_kind(path: Path) -> str:
+	try:
+		with path.open('rb') as fh:
+			head = fh.read(8)
+	except OSError:
+		return ''
+	return next((kind for magic, kind in ARCHIVE_MAGIC if head.startswith(magic)), '')
+
+
+def extract_archive(path: Path, kind: str, dest: Path) -> str:
+	"""Unpack into dest. Returns an error string, empty on success."""
+	dest.mkdir(parents=True, exist_ok=True)
+	errors = []
+	for template in EXTRACTORS.get(kind, ()):
+		argv = [a.format(src=str(path), dest=str(dest)) for a in template]
+		if not shutil.which(argv[0]):
+			continue
+		try:
+			proc = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
+			                      timeout=EXTRACT_TIMEOUT)
+		except (OSError, subprocess.SubprocessError) as exc:
+			errors.append(f'{argv[0]}: {exc}')
+			continue
+		# a partial extraction is still worth classifying
+		if proc.returncode == 0 or any(dest.iterdir()):
+			return ''
+		errors.append(f'{argv[0]}: rc={proc.returncode} '
+		              f'{proc.stderr.decode("utf-8", "replace").strip()[:120]}')
+	return '; '.join(errors) or f'no extractor available for {kind}'
+
+
+def probe_archive(path: Path, kind: str, scratch: Scratch, serial: int) -> ArchiveFacts:
+	facts = ArchiveFacts(path=path, kind=kind)
+	try:
+		facts.size = path.stat().st_size
+	except OSError as exc:
+		facts.error = str(exc)
+		return facts
+
+	dest = scratch.root / f'{serial:04d}-{path.name}'
+	facts.error = extract_archive(path, kind, dest)
+	if facts.error:
+		return facts
+	facts.root = dest
+	facts.members = sorted(p for p in dest.rglob('*') if p.is_file())
+
+	if kind != 'cab':
+		return facts
+
+	# the binary header and the provisioning document describe the same
+	# install; take whichever parses first, but treat both as metadata rather
+	# than as payload to be classified
+	for member in facts.members:
+		if member.suffix.lower() == '.999':
+			facts.setup_dll = member.name
+		try:
+			if member.name.lower() == '_setup.xml':
+				facts.metadata.append(member)
+				if facts.install is None:
+					facts.install = parse_setup_xml(member.read_bytes())
+			elif member.suffix.lower() == '.000':
+				data = member.read_bytes()
+				if data[:4] in MSCE_SIGNATURES:
+					facts.metadata.append(member)
+					if facts.install is None or facts.install.origin == '_setup.xml':
+						facts.install = parse_msce(data)
+		except Exception as exc:
+			log.warning('cab metadata', path=str(member), error=str(exc))
+	return facts
+
+
+# --------------------------------------------------------------------------
 # layer 2: classifier
 # --------------------------------------------------------------------------
 
@@ -828,8 +1288,91 @@ def classify(facts: Facts) -> Verdict:
 # layer 3: output
 # --------------------------------------------------------------------------
 
-def fields(facts: Facts, v: Verdict) -> dict[str, str]:
+@dataclass
+class Item:
+	"""One classified thing: a PE image, or an archive that held some."""
+	display: str
+	facts: Facts | None = None
+	verdict: Verdict | None = None
+	archive: ArchiveFacts | None = None
+	depth: int = 0
+
+
+def classify_archive(arc: ArchiveFacts) -> Verdict:
+	v = Verdict(target='archive', os_tag='', runtime='', confidence='high')
+	v.platform = f'{arc.kind.upper()} archive'
+	inst = arc.install
+	if arc.error:
+		v.platform, v.confidence = arc.error, 'low'
+		return v
+	if inst is None:
+		v.notes.append(f'{len(arc.members)} member(s)')
+		return v
+
+	v.platform = f'Windows CE installation CAB ({inst.origin})'
+	v.arch, arch_label = PROCESSOR_TYPES.get(inst.processor, ('', f'processor {inst.processor}'))
+	v.arch_label = arch_label
+	span = f', CE {inst.os_min}-{inst.os_max}' if inst.os_min else ''
+	v.evidence.append(f'{inst.origin}: {inst.title or "(unnamed package)"}{span}')
+	if inst.certificates:
+		stores = sorted({s for s, _ in inst.certificates})
+		v.platform = 'Windows Mobile certificate provisioning CAB'
+		v.roles.append(f'installs {len(inst.certificates)} certificate(s) into {", ".join(stores)}')
+		if any('Privileged' in s or 'SPC' in s for s in stores):
+			v.roles.append('grants privileged/software-publisher trust -- device unlock package')
+	elif inst.empty and inst.provisioning:
+		v.roles.append(f'provisioning only: {", ".join(inst.provisioning)}')
+	if inst.processor:
+		v.evidence.append(f'ProcessorType {inst.processor} ({arch_label})')
+	if inst.unsupported:
+		v.evidence.append(f'refuses to install on: {inst.unsupported}')
+		if 'HPC' in inst.unsupported.upper() or 'JUPITER' in inst.unsupported.upper():
+			v.roles.append('Pocket PC / Windows Mobile package (excludes Handheld PC)')
+	keys = '\n'.join(k.lower() for k, _, _, _ in inst.registry)
+	for needle, meaning in REGISTRY_HINTS:
+		if needle in keys:
+			v.roles.append(meaning)
+	if any(f.selfreg for f in inst.files):
+		v.roles.append('self-registering COM components')
+	if arc.setup_dll:
+		v.roles.append(f'custom setup DLL ({arc.setup_dll})')
+	v.ce_version = inst.os_min
+	v.os_tag = f'ce{inst.os_min}' if inst.os_min else ''
+	v.notes.extend(inst.warnings)
+	return v
+
+
+ARCHIVE_ONLY_FIELDS = ('appname', 'provider', 'osmin', 'osmax', 'processor',
+                       'unsupported', 'members')
+
+
+def _archive_fields(item: Item) -> dict[str, str]:
+	arc, v = item.archive, item.verdict
+	inst = arc.install
+	out = dict.fromkeys(PE_ONLY_FIELDS, '')
+	out.update({
+		'target': v.target, 'os': v.os_tag, 'platform': v.platform,
+		'arch': v.arch, 'kind': arc.kind, 'runtime': '',
+		'ceversion': v.ce_version,
+		'appname': inst.appname if inst else '',
+		'provider': inst.provider if inst else '',
+		'product': inst.title if inst else '',
+		'osmin': inst.os_min if inst else '',
+		'osmax': inst.os_max if inst else '',
+		'processor': str(inst.processor) if inst and inst.processor else '',
+		'unsupported': inst.unsupported if inst else '',
+		'members': str(len(arc.members)),
+	})
+	tag = '-'.join(x for x in (out['os'], out['arch']) if x)
+	out['tag'] = tag
+	return out
+
+
+def fields(item: Item) -> dict[str, str]:
 	"""Flat namespace for --format. Empty string means 'not determined'."""
+	if item.archive is not None:
+		return _archive_fields(item)
+	facts, v = item.facts, item.verdict
 	info = facts.version_info
 	primary_lang = max(facts.resource_langs,
 	                   key=lambda k: sum(facts.resource_langs[k].values())) \
@@ -862,6 +1405,7 @@ def fields(facts: Facts, v: Verdict) -> dict[str, str]:
 		'date': when.strftime('%Y-%m-%d') if when else '',
 		'year': when.strftime('%Y') if when else '',
 	}
+	out.update(dict.fromkeys(ARCHIVE_ONLY_FIELDS, ''))
 	tag = out['os']
 	if tag and out['arch']:
 		tag = f'{tag}-{out["arch"]}'
@@ -869,6 +1413,14 @@ def fields(facts: Facts, v: Verdict) -> dict[str, str]:
 		tag = f'{tag}-{v.runtime}'
 	out['tag'] = tag
 	return out
+
+
+PE_ONLY_FIELDS = (
+	'target', 'os', 'platform', 'runtime', 'arch', 'bits', 'subsys', 'kind',
+	'ceversion', 'winversion', 'netversion', 'langid', 'lang', 'company',
+	'product', 'description', 'fileversion', 'productversion', 'origname',
+	'assembly', 'date', 'year', 'tag',
+)
 
 
 class _StrictFormatter(string.Formatter):
@@ -904,13 +1456,37 @@ def _md_escape(text: str) -> str:
 	return text.replace('|', '\\|').replace('\n', ' ')
 
 
-def render_table(rows: list[tuple[Path, Facts, Verdict]], base: Path | None) -> str:
+def _archive_row(item: Item) -> list[str]:
+	arc, v = item.archive, item.verdict
+	f = fields(item)
+	inst = arc.install
+	notes = []
+	if inst:
+		notes.append(inst.title or '(unnamed package)')
+		if inst.unsupported:
+			notes.append(f'not for {inst.unsupported}')
+	notes.extend(v.roles[:1])
+	if not arc.ok:
+		notes = [arc.error]
+	span = f'{inst.os_min}-{inst.os_max}' if inst and inst.os_min else ''
+	return [
+		_md_escape(item.display),
+		'archive', f['arch'] or '--', arc.kind, '--',
+		span or '--', '--', f'{len(arc.members)} members',
+		_md_escape('; '.join(notes) or '--'),
+	]
+
+
+def render_table(items: list[Item], base: Path | None) -> str:
 	header = ['File', 'Target', 'Arch', 'Runtime', 'Sub', 'OS ver', 'Lang', 'Version', 'Notes']
 	lines = ['| ' + ' | '.join(header) + ' |',
 	         '|' + '|'.join(['---'] * len(header)) + '|']
-	for path, facts, v in rows:
-		f = fields(facts, v)
-		name = path.relative_to(base) if base and path.is_relative_to(base) else path
+	for item in items:
+		if item.archive is not None:
+			lines.append('| ' + ' | '.join(_archive_row(item)) + ' |')
+			continue
+		facts, v = item.facts, item.verdict
+		f = fields(item)
 		notes = []
 		if v.roles:
 			notes.append(v.roles[0])
@@ -922,7 +1498,7 @@ def render_table(rows: list[tuple[Path, Facts, Verdict]], base: Path | None) -> 
 		if v.confidence != 'high' and facts.ok:
 			notes.append(f'({v.confidence} confidence)')
 		cells = [
-			_md_escape(str(name)),
+			_md_escape(item.display),
 			f['target'] or '--',
 			f['arch'] or '--',
 			f['runtime'] or '--',
@@ -942,9 +1518,75 @@ def _kv(console: Console, key: str, value: str, style: str = '') -> None:
 		                                             if style else escape(value)))
 
 
-def render_detail(console: Console, facts: Facts, v: Verdict, show_strings: int) -> None:
-	f = fields(facts, v)
-	console.print(f'[bold]{escape(str(facts.path))}[/bold]')
+def render_archive_detail(console: Console, item: Item) -> None:
+	arc, v = item.archive, item.verdict
+	console.print(f'[bold]{escape(item.display)}[/bold]')
+	if not arc.ok:
+		console.print(f'    [red]{escape(arc.error)}[/red]\n')
+		return
+	console.print(f'  [green]{escape(v.platform)}[/green]  '
+	              f'[dim]{len(arc.members)} member(s), {arc.size} bytes[/dim]')
+
+	inst = arc.install
+	if inst is None:
+		console.print('    [dim]no Windows CE installation metadata[/dim]\n')
+		return
+
+	console.print('\n  [bold]Evidence[/bold]')
+	for line in v.evidence:
+		console.print(f'    [dim]·[/dim] {escape(line)}')
+
+	console.print('\n  [bold]Package[/bold]')
+	_kv(console, 'name', inst.title)
+	_kv(console, 'provider', inst.provider)
+	_kv(console, 'metadata', inst.origin)
+	if inst.os_min or inst.os_max:
+		_kv(console, 'OS versions', f'CE {inst.os_min} .. {inst.os_max}')
+	if inst.build_min or inst.build_max:
+		_kv(console, 'build range', f'{inst.build_min} .. {inst.build_max}')
+	for store, thumb in inst.certificates:
+		_kv(console, 'certificate', f'{store}: {thumb}')
+	if inst.processor:
+		_kv(console, 'processor', f'{inst.processor} ({v.arch_label})')
+	_kv(console, 'not supported', inst.unsupported)
+	_kv(console, 'setup DLL', arc.setup_dll)
+	for role in v.roles:
+		_kv(console, 'role', role)
+
+	if inst.dirs:
+		console.print('\n  [bold]Install directories[/bold]')
+		for d in inst.dirs:
+			console.print(f'      {escape(d)}')
+
+	if inst.files:
+		console.print('\n  [bold]Payload[/bold]  [dim](archive member -> installed path)[/dim]')
+		for cf in inst.files:
+			mark = ' [dim]self-register[/dim]' if cf.selfreg else ''
+			console.print(f'      [dim]{escape(cf.source):>6}[/dim]  {escape(cf.installed)}{mark}')
+
+	if inst.shortcuts:
+		console.print('\n  [bold]Shortcuts[/bold]')
+		for link, target in inst.shortcuts:
+			console.print(f'      {escape(link)} [dim]->[/dim] {escape(target)}')
+
+	if inst.registry:
+		console.print('\n  [bold]Registry[/bold]')
+		for key, name, rtype, value in inst.registry:
+			where = escape(f'{key}\\{name}')
+			console.print(f'      {where}  [dim]{rtype}[/dim] = {escape(value[:80])}')
+
+	for note in v.notes:
+		console.print(f'    [yellow]![/yellow] {escape(note)}')
+	console.print()
+
+
+def render_detail(console: Console, item: Item, show_strings: int) -> None:
+	if item.archive is not None:
+		render_archive_detail(console, item)
+		return
+	facts, v = item.facts, item.verdict
+	f = fields(item)
+	console.print(f'[bold]{escape(item.display)}[/bold]')
 	if not facts.ok:
 		console.print(f'    [red]{escape(facts.error)}[/red]\n')
 		return
@@ -1047,8 +1689,59 @@ app = typer.Typer(add_completion=False, no_args_is_help=True,
 FIELD_HELP = (
 	'target os platform runtime arch bits subsys kind ceversion winversion '
 	'netversion lang langid company product description fileversion '
-	'productversion origname assembly date year tag'
+	'productversion origname assembly date year tag; for archives also '
+	'appname provider osmin osmax processor unsupported members'
 )
+
+EXTRACT_TIMEOUT = 600
+
+
+def analyse(path: Path, display: str, scratch: Scratch, opts: 'Options',
+            depth: int = 0) -> Iterator[Item]:
+	"""Classify one file, descending into it when it is an archive."""
+	kind = archive_kind(path) if depth < opts.max_depth else ''
+	if not kind:
+		facts = probe(path)
+		if facts.ok or not opts.skip_non_pe:
+			yield Item(display=display, facts=facts, verdict=classify(facts), depth=depth)
+		return
+
+	# a CAB is worth unpacking even when not descending -- its install header
+	# is the metadata we came for; other containers are just lids
+	if opts.recurse or kind == 'cab':
+		arc = probe_archive(path, kind, scratch, next(opts.serial))
+	else:
+		arc = ArchiveFacts(path=path, kind=kind, size=path.stat().st_size)
+
+	item = Item(display=display, archive=arc, verdict=classify_archive(arc), depth=depth)
+	if arc.ok or not opts.skip_non_pe:
+		yield item
+	if not arc.ok or not opts.recurse:
+		if arc.root:
+			shutil.rmtree(arc.root, ignore_errors=True)
+		return
+
+	# prefer the installed name over the mangled archive member name
+	sources = arc.install.source_map() if arc.install else {}
+	try:
+		for member in arc.members:
+			if member in arc.metadata:
+				continue
+			rel = member.relative_to(arc.root)
+			entry = sources.get(member.suffix.upper()) or sources.get(str(rel).upper())
+			label = entry.installed if entry else str(rel)
+			yield from analyse(member, f'{display}!/{label}', scratch, opts, depth + 1)
+	finally:
+		# bound peak scratch usage; the namespace would reclaim it at exit anyway
+		shutil.rmtree(arc.root, ignore_errors=True)
+
+
+@dataclass
+class Options:
+	recurse: bool = True
+	max_depth: int = 3
+	skip_non_pe: bool = False
+	serial: Iterator[int] = field(default_factory=lambda: iter(range(1 << 30)))
 
 
 def _collect(paths: list[Path]) -> Iterator[Path]:
@@ -1084,10 +1777,21 @@ def main(
 	relative: Annotated[bool, typer.Option('--relative/--absolute',
 		help='Print paths relative to the current directory in table mode.')] = True,
 	skip_non_pe: Annotated[bool, typer.Option('--skip-non-pe',
-		help='Omit files that are not PE images instead of reporting them.')] = False,
+		help='Omit files that are neither PE images nor readable archives.')] = False,
+	recurse: Annotated[bool, typer.Option('--recurse/--no-recurse', '-r/-R',
+		help='Unpack CAB/ZIP/RAR/7z archives and classify what is inside '
+		     '(default: on, except with --format, whose subject is the named file).')] = None,
+	max_depth: Annotated[int, typer.Option('--max-depth',
+		help='How deep to follow archives nested inside archives.')] = 3,
 	verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Log parser diagnostics.')] = False,
 ) -> None:
-	"""Classify Windows PE binaries by target platform and runtime."""
+	"""Classify Windows PE binaries by target platform and runtime.
+
+	Archives are unpacked into a private tmpfs inside an unshared mount
+	namespace, so nothing reaches the filesystem and nothing needs cleaning up.
+	Windows CE installation CABs additionally report their install metadata:
+	target OS range, processor, payload mapping, registry keys and shortcuts.
+	"""
 	structlog.configure(
 		processors=[structlog.processors.add_log_level,
 		            structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())],
@@ -1099,28 +1803,32 @@ def main(
 		for name in ('dnfile', 'pefile'):
 			logging.getLogger(name).setLevel(logging.CRITICAL)
 
-	results = []
+	if recurse is None:
+		recurse = not fmt
+	opts = Options(recurse=recurse, max_depth=max_depth, skip_non_pe=skip_non_pe)
+	scratch = Scratch()
+	base = Path.cwd() if relative else None
+
+	results: list[Item] = []
 	for path in _collect(paths):
-		facts = probe(path)
-		if skip_non_pe and not facts.ok:
-			continue
-		results.append((path, facts, classify(facts)))
+		shown = path.relative_to(base) if base and path.is_relative_to(base) else path
+		results.extend(analyse(path, str(shown), scratch, opts))
 
 	if not results:
 		raise typer.Exit(1)
 
 	if fmt:
-		for _, facts, v in results:
-			print(render_format(fmt, fields(facts, v)))
+		for item in results:
+			print(render_format(fmt, fields(item)))
 		return
 
 	if table if table is not None else len(results) > 1:
-		print(render_table(results, Path.cwd() if relative else None))
+		print(render_table(results, base))
 		return
 
 	console = Console(highlight=False, soft_wrap=True)
-	for _, facts, v in results:
-		render_detail(console, facts, v, strings)
+	for item in results:
+		render_detail(console, item, strings)
 
 
 if __name__ == '__main__':
