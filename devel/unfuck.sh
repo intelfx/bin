@@ -382,7 +382,7 @@ v6.18)
 		work/zswap-writeback-6.18 \
 		work/acpi-osc-6.18 \
 		work/logitech-hidpp-6.18.15 \
-		work/fs-6.18-noop \
+		work/fs-6.18 \
 		work/cddl-6.18 \
 		work/zfs-6.18 \
 		work/fonts-6.18 \
@@ -481,7 +481,7 @@ v7.1)
 		work/zswap-writeback-6.18 \
 		work/acpi-osc-7.0 \
 		work/logitech-hidpp-6.19 \
-		work/fs-6.18-noop \
+		work/fs-6.18 \
 		work/cddl-7.1 \
 		work/zfs-7.1 \
 		work/fonts-7.1 \
