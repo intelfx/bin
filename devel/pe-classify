@@ -509,16 +509,6 @@ class Facts:
 		return set(self.imports) | set(self.delay_imports)
 
 
-def _count_magic(data, needle: bytes) -> int:
-	"""Occurrence count over a buffer; pefile hands us an mmap, which has
-	find() but no count()."""
-	total, pos = 0, data.find(needle)
-	while pos >= 0:
-		total += 1
-		pos = data.find(needle, pos + 1)
-	return total
-
-
 def _res_type_name(entry) -> str:
 	if entry.name is not None:
 		return str(entry.name)
@@ -583,24 +573,31 @@ def _public_key_token(key: bytes) -> str:
 	return hashlib.sha1(key).digest()[-8:][::-1].hex().upper()
 
 
-def _probe_net(path: Path, facts: Facts) -> None:
+def _probe_net(raw: bytes, facts: Facts) -> None:
 	import dnfile
 
+	net = NetFacts()
 	try:
-		dn = dnfile.dnPE(str(path), fast_load=True)
+		dn = dnfile.dnPE(data=raw, fast_load=True)
 		dn.parse_data_directories()
 	except Exception as exc:
-		log.warning('dnfile failed', path=str(path), error=str(exc))
+		log.warning('dnfile failed', path=str(facts.path), error=str(exc))
 		return
 	if not dn.net:
 		return
 
-	net = NetFacts()
 	net.metadata_version = bytes(dn.net.metadata.struct.Version).rstrip(b'\0').decode('ascii', 'replace')
 	flags = dn.net.Flags
 	net.flags = [n for n in dir(flags) if n.startswith('CLR_') and getattr(flags, n)]
+	_read_assembly_refs(dn.net.mdtables, net)
 
-	tables = dn.net.mdtables
+	match = TFM_RE.search(raw)
+	if match:
+		net.tfm = match.group().decode('ascii', 'replace')
+	facts.net = net
+
+
+def _read_assembly_refs(tables, net: NetFacts) -> None:
 	if tables.Assembly and tables.Assembly.rows:
 		row = tables.Assembly.rows[0]
 		net.assembly = str(row.Name.value)
@@ -617,11 +614,6 @@ def _probe_net(path: Path, facts: Facts) -> None:
 			bool(row.Flags.afRetargetable),
 		))
 
-	match = TFM_RE.search(dn.__data__)
-	if match:
-		net.tfm = match.group().decode('ascii', 'replace')
-	facts.net = net
-
 
 def probe(path: Path) -> Facts:
 	"""Extract raw facts from one file. Never raises for bad input."""
@@ -632,72 +624,81 @@ def probe(path: Path) -> Facts:
 		facts.error = str(exc)
 		return facts
 
+	# Hand pefile the bytes rather than a filename. Letting it open the file
+	# makes it mmap and therefore own a descriptor, which in turn means
+	# close() -- and close() runs an unconditional gc.collect(). That costs
+	# time proportional to the live heap, which grows with every file
+	# classified, so a sweep degrades into quadratic behaviour: ~110ms per
+	# close once a few million objects are live. Owning the buffer ourselves
+	# keeps teardown to a refcount drop.
 	try:
-		pe = pefile.PE(str(path), fast_load=True)
-	except pefile.PEFormatError as exc:
-		facts.error = f'not a PE file ({exc})'
-		return facts
+		raw = path.read_bytes()
 	except OSError as exc:
 		facts.error = str(exc)
 		return facts
 
-	with pe:
-		pe.parse_data_directories(directories=[
-			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXPORT'],
-			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT'],
-			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_RESOURCE'],
-			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DEBUG'],
-			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT'],
-		])
-		opt, hdr = pe.OPTIONAL_HEADER, pe.FILE_HEADER
+	try:
+		pe = pefile.PE(data=raw, fast_load=True)
+	except pefile.PEFormatError as exc:
+		facts.error = f'not a PE file ({exc})'
+		return facts
 
-		facts.machine = hdr.Machine
-		facts.is_dll = bool(hdr.Characteristics & pefile.IMAGE_CHARACTERISTICS['IMAGE_FILE_DLL'])
-		facts.is_system = bool(hdr.Characteristics & pefile.IMAGE_CHARACTERISTICS['IMAGE_FILE_SYSTEM'])
-		facts.timestamp = hdr.TimeDateStamp
-		facts.subsystem = opt.Subsystem
-		facts.subsys_ver = (opt.MajorSubsystemVersion, opt.MinorSubsystemVersion)
-		facts.os_ver = (opt.MajorOperatingSystemVersion, opt.MinorOperatingSystemVersion)
-		facts.image_ver = (opt.MajorImageVersion, opt.MinorImageVersion)
-		facts.linker = (opt.MajorLinkerVersion, opt.MinorLinkerVersion)
-		facts.pe32_plus = opt.Magic == pefile.OPTIONAL_HEADER_MAGIC_PE_PLUS
-		facts.entrypoint = opt.AddressOfEntryPoint
-		facts.sections = [s.Name.rstrip(b'\0').decode('latin-1') for s in pe.sections]
-		facts.signed_bytes = opt.DATA_DIRECTORY[
-			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_SECURITY']].Size
-		facts.has_clr = bool(opt.DATA_DIRECTORY[
-			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']].VirtualAddress)
+	pe.parse_data_directories(directories=[
+		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXPORT'],
+		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT'],
+		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_RESOURCE'],
+		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DEBUG'],
+		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT'],
+	])
+	opt, hdr = pe.OPTIONAL_HEADER, pe.FILE_HEADER
 
-		for entry in getattr(pe, 'DIRECTORY_ENTRY_IMPORT', []):
-			facts.imports[entry.dll.decode('latin-1').lower()] = len(entry.imports)
-		for entry in getattr(pe, 'DIRECTORY_ENTRY_DELAY_IMPORT', []):
-			facts.delay_imports[entry.dll.decode('latin-1').lower()] = len(entry.imports)
+	facts.machine = hdr.Machine
+	facts.is_dll = bool(hdr.Characteristics & pefile.IMAGE_CHARACTERISTICS['IMAGE_FILE_DLL'])
+	facts.is_system = bool(hdr.Characteristics & pefile.IMAGE_CHARACTERISTICS['IMAGE_FILE_SYSTEM'])
+	facts.timestamp = hdr.TimeDateStamp
+	facts.subsystem = opt.Subsystem
+	facts.subsys_ver = (opt.MajorSubsystemVersion, opt.MinorSubsystemVersion)
+	facts.os_ver = (opt.MajorOperatingSystemVersion, opt.MinorOperatingSystemVersion)
+	facts.image_ver = (opt.MajorImageVersion, opt.MinorImageVersion)
+	facts.linker = (opt.MajorLinkerVersion, opt.MinorLinkerVersion)
+	facts.pe32_plus = opt.Magic == pefile.OPTIONAL_HEADER_MAGIC_PE_PLUS
+	facts.entrypoint = opt.AddressOfEntryPoint
+	facts.sections = [s.Name.rstrip(b'\0').decode('latin-1') for s in pe.sections]
+	facts.signed_bytes = opt.DATA_DIRECTORY[
+		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_SECURITY']].Size
+	facts.has_clr = bool(opt.DATA_DIRECTORY[
+		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']].VirtualAddress)
 
-		exp = getattr(pe, 'DIRECTORY_ENTRY_EXPORT', None)
-		if exp is not None:
-			if exp.name:
-				facts.export_name = exp.name.decode('latin-1')
-			facts.exports = [s.name.decode('latin-1') for s in exp.symbols if s.name]
+	for entry in getattr(pe, 'DIRECTORY_ENTRY_IMPORT', []):
+		facts.imports[entry.dll.decode('latin-1').lower()] = len(entry.imports)
+	for entry in getattr(pe, 'DIRECTORY_ENTRY_DELAY_IMPORT', []):
+		facts.delay_imports[entry.dll.decode('latin-1').lower()] = len(entry.imports)
 
-		for dbg in getattr(pe, 'DIRECTORY_ENTRY_DEBUG', []):
-			raw = getattr(dbg.entry, 'PdbFileName', None)
-			if raw:
-				facts.pdb_path = raw.rstrip(b'\0').decode('latin-1', 'replace')
-				break
+	exp = getattr(pe, 'DIRECTORY_ENTRY_EXPORT', None)
+	if exp is not None:
+		if exp.name:
+			facts.export_name = exp.name.decode('latin-1')
+		facts.exports = [s.name.decode('latin-1') for s in exp.symbols if s.name]
 
-		try:
-			start = pe.get_overlay_data_start_offset()
-		except Exception:
-			start = None
-		# the Authenticode blob lives past the last section too; it is not
-		# interesting as "appended data"
-		facts.overlay = max(0, facts.size - (start or facts.size) - facts.signed_bytes)
-		facts.embedded_cabs = _count_magic(pe.__data__, b'MSCF')
+	for dbg in getattr(pe, 'DIRECTORY_ENTRY_DEBUG', []):
+		pdb = getattr(dbg.entry, 'PdbFileName', None)
+		if pdb:
+			facts.pdb_path = pdb.rstrip(b'\0').decode('latin-1', 'replace')
+			break
 
-		_probe_resources(pe, facts)
+	try:
+		start = pe.get_overlay_data_start_offset()
+	except Exception:
+		start = None
+	# the Authenticode blob lives past the last section too; it is not
+	# interesting as "appended data"
+	facts.overlay = max(0, facts.size - (start or facts.size) - facts.signed_bytes)
+	facts.embedded_cabs = raw.count(b'MSCF')
+
+	_probe_resources(pe, facts)
 
 	if facts.has_clr:
-		_probe_net(path, facts)
+		_probe_net(raw, facts)
 	return facts
 
 
