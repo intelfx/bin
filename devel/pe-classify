@@ -579,7 +579,10 @@ def _probe_net(raw: bytes, facts: Facts) -> None:
 
 	net = NetFacts()
 	try:
-		dn = dnfile.dnPE(data=raw, fast_load=True)
+		# lazy table loading: only Assembly and AssemblyRef are ever touched,
+		# and eagerly materialising every metadata row costs ~150ms per
+		# assembly
+		dn = dnfile.dnPE(data=raw, fast_load=True, clr_lazy_load=True)
 		dn.parse_data_directories()
 	except Exception as exc:
 		log.warning('dnfile failed', path=str(facts.path), error=str(exc))
