@@ -17,6 +17,7 @@ RPOOL_DEVICES=(
 RPOOL_CREATE_OPTS=(
 	"${ZPOOL_CREATE_OPTS[@]}"
 	-O compression=zstd-1
+	-O checksum=fletcher4
 )
 
 

@@ -11,31 +11,22 @@ shopt -s lastpipe
 # definitions
 #
 
-ZPOOL_DEVICES=(
+POOL_NAME=htank
+POOL_DEVICES=(
 	        raidz  /dev/disk/by-id/dm-name-htank-{1,2,3,4}
 	log            /dev/disk/by-id/dm-name-htank-log-1
 	cache          /dev/disk/by-id/dm-name-htank-cache-1
 	special mirror /dev/disk/by-id/dm-name-htank-special-{1,2}
 )
 
-ZPOOL_CREATE_OPTS=(
-	-o cachefile=/etc/zfs/zpool.cache
-
-	-o ashift=12
-	-o autotrim=on
-	-o feature@fast_dedup=enabled
-	-o feature@block_cloning=enabled
-	-o feature@empty_bpobj=enabled
-	-O dnodesize=auto -O xattr=sa -O acltype=posixacl
+POOL_CREATE_OPTS=(
+	"${ZPOOL_CREATE_OPTS[@]}"
 	-O compression=zstd-11  # 207 MiB/s (220 MiB/s)
 	-O checksum=sha256
 	# -O dedup=sha256
 
 	-O recordsize=1M
 	-O special_small_blocks=256K
-
-	-O atime=off
-	-O relatime=off
 )
 
 
@@ -45,12 +36,16 @@ ZPOOL_CREATE_OPTS=(
 
 set -x
 
+# zpool destroy "${POOL_NAME}" ||:
+# blkdiscard -v -f "${POOL_DEVICES[@]}"
 zpool create \
-	"${ZPOOL_CREATE_OPTS[@]}" \
-	htank -m /mnt/zfs/htank -O canmount=off \
+	"${POOL_CREATE_OPTS[@]}" \
+	"${POOL_NAME}" -m /mnt/zfs/"${POOL_NAME}" -O canmount=off \
+	"${POOL_DEVICES[@]}" \
+	# EOL
 
-zfs_allow_create htank operator
+zfs_allow_create "${POOL_NAME}" operator
 
 par1 \
 	zfs create -p ::: \
-	htank/DATA/{Archive,Backups,Files,Internal{,/{Bitcoin,Nextcloud}},Media,Public,Scratch,Torrents}
+	"${POOL_NAME}"/DATA/{Archive,Backups,Files,Internal{,/{Bitcoin,Nextcloud}},Media,Public,Scratch,Torrents}

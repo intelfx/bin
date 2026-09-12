@@ -10,23 +10,14 @@ shopt -s lastpipe
 # definitions
 #
 
-TANK_DEVICES=(
+POOL_NAME=tank
+POOL_DEVICES=(
 	/dev/disk/by-id/nvme-Samsung_SSD_990_PRO_2TB_S7PJNJ0L107220F_1
 )
-TANK_CREATE_OPTS=(
-	-o cachefile=/etc/zfs/zpool.cache
-
-	-o ashift=12
-	-o autotrim=on
-	-o feature@fast_dedup=enabled
-	-o feature@block_cloning=enabled
-	-o feature@empty_bpobj=enabled
-	-O dnodesize=auto -O xattr=sa -O acltype=posixacl
+POOL_CREATE_OPTS=(
+	"${ZPOOL_CREATE_OPTS[@]}"
 	-O compression=zstd-1  # 5231 MiB/s (5143 MiB/s)
 	-O checksum=sha256
-
-	-O atime=off
-	-O relatime=off
 )
 
 
@@ -36,11 +27,12 @@ TANK_CREATE_OPTS=(
 
 set -x
 
-# zpool destroy tank ||:
-# blkdiscard -v -f "${TANK_DEVICES[@]}"
-# zpool create \
-#	"${TANK_CREATE_OPTS[@]}" \
-#	tank -m /mnt/zfs/tank -O canmount=off \
-#	"${TANK_DEVICES[@]}"
+zpool destroy "${POOL_NAME}" ||:
+blkdiscard -v -f "${POOL_DEVICES[@]}"
+zpool create \
+	"${POOL_CREATE_OPTS[@]}" \
+	"${POOL_NAME}" -m "/mnt/zfs/${POOL_NAME}" -O canmount=off \
+	"${POOL_DEVICES[@]}" \
+	# EOL
 
-zfs_allow_create tank intelfx
+zfs_allow_create "${POOL_NAME}" intelfx

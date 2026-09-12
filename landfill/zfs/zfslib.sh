@@ -6,6 +6,17 @@ shopt -s lastpipe
 # shellcheck source=../../lib/lib.sh
 . lib.sh
 
+ZPOOL_CREATE_OPTS_ESSENTIAL=(
+	-o cachefile=/etc/zfs/zpool.cache
+
+	-o ashift=12
+	-o autotrim=on
+	-O xattr=sa -O acltype=posixacl # -O dnodesize=(auto|legacy)
+
+	-O atime=off
+	-O relatime=off
+)
+
 ZPOOL_CREATE_OPTS=(
 	-o cachefile=/etc/zfs/zpool.cache
 
