@@ -1,0 +1,1127 @@
+#!/usr/bin/env python3
+
+"""
+Classify Windows PE binaries by target platform and runtime.
+
+Separates Windows CE / Windows Mobile images from desktop Win32/Win64 ones,
+and .NET Compact Framework assemblies from desktop .NET ones, then reports
+whatever provenance the headers, imports, exports and resources still carry.
+
+The three layers below are kept apart on purpose:
+  - probe()      -- extraction only, no judgement
+  - classify()   -- decision tree over the extracted facts
+  - render_*()   -- presentation
+"""
+
+import hashlib
+import logging
+import re
+import string
+import struct
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Annotated, Iterator
+
+import pefile
+import structlog
+import typer
+from rich.console import Console
+from rich.markup import escape
+
+log = structlog.get_logger()
+
+
+# --------------------------------------------------------------------------
+# lookup tables
+# --------------------------------------------------------------------------
+
+# machine -> (arch tag, description)
+MACHINES = {
+	0x014C: ('x86', 'Intel 386 and later'),
+	0x0162: ('mips-r3000', 'MIPS R3000'),
+	0x0166: ('mips', 'MIPS R4000, little-endian'),
+	0x0168: ('mips-r10000', 'MIPS R10000'),
+	0x0169: ('mips-v2', 'MIPS little-endian WCE v2'),
+	0x0184: ('alpha', 'DEC Alpha AXP'),
+	0x01A2: ('sh3', 'Hitachi SH3'),
+	0x01A3: ('sh3dsp', 'Hitachi SH3 DSP'),
+	0x01A6: ('sh4', 'Hitachi SH4'),
+	0x01A8: ('sh5', 'Hitachi SH5'),
+	0x01C0: ('arm', 'ARM little-endian (ARMv4)'),
+	0x01C2: ('armv4i', 'ARM Thumb / Thumb-interworking (ARMV4I)'),
+	0x01C4: ('armnt', 'ARM Thumb-2 (ARMv7, Windows RT / Phone 8)'),
+	0x01D3: ('am33', 'Matsushita AM33'),
+	0x01F0: ('ppc', 'PowerPC little-endian'),
+	0x01F1: ('ppcfp', 'PowerPC with floating point'),
+	0x0200: ('ia64', 'Intel Itanium'),
+	0x0266: ('mips16', 'MIPS16'),
+	0x0284: ('alpha64', 'DEC Alpha AXP 64-bit'),
+	0x0366: ('mipsfpu', 'MIPS with FPU'),
+	0x0466: ('mipsfpu16', 'MIPS16 with FPU'),
+	0x0520: ('tricore', 'Infineon TriCore'),
+	0x0EBC: ('ebc', 'EFI byte code'),
+	0x5032: ('riscv32', 'RISC-V 32-bit'),
+	0x5064: ('riscv64', 'RISC-V 64-bit'),
+	0x8664: ('x64', 'AMD64 / Intel 64'),
+	0xAA64: ('arm64', 'ARM64'),
+}
+
+# machines that only ever shipped in Windows CE devices
+CE_ONLY_MACHINES = {
+	0x0162, 0x0166, 0x0168, 0x0169, 0x01A2, 0x01A3, 0x01A6, 0x01A8,
+	0x01C0, 0x01C2, 0x0266, 0x0366, 0x0466, 0x01D3, 0x0520,
+}
+
+SUBSYSTEMS = {
+	0: 'UNKNOWN',
+	1: 'NATIVE',
+	2: 'WINDOWS_GUI',
+	3: 'WINDOWS_CUI',
+	5: 'OS2_CUI',
+	7: 'POSIX_CUI',
+	8: 'NATIVE_WINDOWS',
+	9: 'WINDOWS_CE_GUI',
+	10: 'EFI_APPLICATION',
+	11: 'EFI_BOOT_SERVICE_DRIVER',
+	12: 'EFI_RUNTIME_DRIVER',
+	13: 'EFI_ROM',
+	14: 'XBOX',
+	16: 'WINDOWS_BOOT_APPLICATION',
+}
+
+SUBSYSTEM_SHORT = {1: 'native', 2: 'gui', 3: 'cui', 9: 'ce'}
+
+# CE subsystem version -> (os tag, description). eVC-era toolchains spell the
+# minor as decimal digits (4.20 == CE 4.2); the VS2005/2008 device SDKs spell
+# it plainly (5.02 == CE 5.2). _ce_version() normalises before lookup.
+CE_VERSIONS = {
+	(1, 0): ('ce1', 'Windows CE 1.0 (Handheld PC)'),
+	(2, 0): ('ce2', 'Windows CE 2.0 (Handheld PC)'),
+	(2, 1): ('ce2', 'Windows CE 2.1'),
+	(2, 11): ('ce211', 'Windows CE 2.11 (H/PC Pro, Palm-size PC)'),
+	(2, 12): ('ce212', 'Windows CE 2.12 (Pocket PC precursor)'),
+	(3, 0): ('ppc2002', 'Windows CE 3.0 (Pocket PC 2000/2002, Smartphone 2002)'),
+	(4, 0): ('ce40', 'Windows CE .NET 4.0'),
+	(4, 1): ('ce41', 'Windows CE .NET 4.1'),
+	(4, 2): ('wm2003', 'Windows CE 4.2 (Windows Mobile 2003 / 2003 SE)'),
+	(5, 0): ('ce50', 'Windows CE 5.0'),
+	(5, 1): ('wm5', 'Windows CE 5.1 (Windows Mobile 5.0 SDK)'),
+	(5, 2): ('wm6', 'Windows CE 5.2 (Windows Mobile 6.0/6.1/6.5 SDK)'),
+	(6, 0): ('ce6', 'Windows CE 6.0'),
+	(7, 0): ('ce7', 'Windows Embedded Compact 7'),
+	(8, 0): ('ce8', 'Windows Embedded Compact 2013'),
+}
+
+WIN_VERSIONS = {
+	(3, 10): 'Windows NT 3.1',
+	(3, 50): 'Windows NT 3.5',
+	(3, 51): 'Windows NT 3.51',
+	(4, 0): 'Windows NT 4.0 / 95 (toolchain default)',
+	(5, 0): 'Windows 2000',
+	(5, 1): 'Windows XP',
+	(5, 2): 'Windows Server 2003 / XP x64',
+	(6, 0): 'Windows Vista',
+	(6, 1): 'Windows 7',
+	(6, 2): 'Windows 8',
+	(6, 3): 'Windows 8.1',
+	(10, 0): 'Windows 10/11',
+}
+
+# imported library -> (capability tag, description)
+LIBS = {
+	# Windows CE core
+	'coredll.dll': ('ce-core', 'CE core API (kernel + user + gdi merged)'),
+	'ceshell.dll': ('shell', 'CE shell'),
+	'commctrl.dll': ('ui', 'common controls'),
+	'commdlg.dll': ('ui', 'common dialogs'),
+	'ceddk.dll': ('driver', 'CE driver development kit'),
+	'toolhelp.dll': ('diagnostics', 'process/thread enumeration'),
+	'mmtimer.dll': ('multimedia', 'multimedia timer'),
+	'imgdecmp.dll': ('multimedia', 'image decoder'),
+	'wince.dll': ('ce-core', 'CE compatibility layer'),
+	# Windows Mobile / Pocket PC shell
+	'aygshell.dll': ('wm-shell', 'Windows Mobile shell (menu bar, SIP, notifications)'),
+	'tpcshell.dll': ('wm-shell', 'Smartphone shell'),
+	'ossvcs.dll': ('wm-shell', 'Windows Mobile OS services'),
+	'htmlview.dll': ('ui', 'HTML viewer control'),
+	# telephony
+	'cellcore.dll': ('telephony', 'cellular core / SMS / phone'),
+	'ril.dll': ('telephony', 'radio interface layer'),
+	'phone.dll': ('telephony', 'phone dialer API'),
+	'sms.dll': ('telephony', 'SMS API'),
+	'connmgr.dll': ('networking', 'Connection Manager'),
+	'simmgr.dll': ('telephony', 'SIM manager'),
+	# PIM / messaging
+	'cemapi.dll': ('pim', 'Pocket Outlook MAPI (messaging)'),
+	'pimstore.dll': ('pim', 'Pocket Outlook object model (contacts/calendar)'),
+	'pooutlook.dll': ('pim', 'Pocket Outlook object model'),
+	'note_prj.dll': ('pim', 'Notes / Pocket Outlook shared code'),
+	# graphics / games
+	'gx.dll': ('gaming', 'GAPI framebuffer access (games)'),
+	'd3dm.dll': ('3d', 'Direct3D Mobile'),
+	'd3dmobile.dll': ('3d', 'Direct3D Mobile'),
+	'ddraw.dll': ('2d', 'DirectDraw'),
+	'libgles_cm.dll': ('3d', 'OpenGL ES 1.x common-lite'),
+	'libglesv2.dll': ('3d', 'OpenGL ES 2.0'),
+	'libegl.dll': ('3d', 'EGL'),
+	'opengles_cm.dll': ('3d', 'OpenGL ES 1.x'),
+	# networking
+	'ws2.dll': ('networking', 'Winsock 2 (CE)'),
+	'winsock.dll': ('networking', 'Winsock 1.1 (CE)'),
+	'wininet.dll': ('http', 'WinINet (HTTP/FTP)'),
+	'iphlpapi.dll': ('networking', 'IP helper'),
+	'httpd.dll': ('networking', 'CE HTTP server'),
+	# bluetooth / gps / sensors
+	'bthutil.dll': ('bluetooth', 'Microsoft Bluetooth stack'),
+	'btdrt.dll': ('bluetooth', 'Microsoft Bluetooth runtime'),
+	'btsdkce30.dll': ('bluetooth', 'Widcomm/Broadcom Bluetooth SDK (CE 3.0)'),
+	'btsdkce50.dll': ('bluetooth', 'Widcomm/Broadcom Bluetooth SDK (CE 5.0)'),
+	'btcoreif.dll': ('bluetooth', 'Widcomm Bluetooth core interface'),
+	'wbtapice.dll': ('bluetooth', 'Widcomm Bluetooth API'),
+	'gpsapi.dll': ('gps', 'GPS Intermediate Driver'),
+	# storage / data
+	'sqlceme30.dll': ('database', 'SQL Server CE 3.0'),
+	'sqlceme35.dll': ('database', 'SQL Server CE 3.5'),
+	'sqlceoledb30.dll': ('database', 'SQL Server CE OLE DB'),
+	'adoce.dll': ('database', 'ADO for CE'),
+	'ceoidlib.dll': ('database', 'CE object store'),
+	# runtimes on CE
+	'mfcce200.dll': ('mfc', 'MFC for Windows CE 2.0'),
+	'mfcce300.dll': ('mfc', 'MFC for Windows CE 3.0'),
+	'mfcce400.dll': ('mfc', 'MFC for Windows CE 4.0'),
+	'msvcr80.dll': ('crt', 'Visual C++ 2005 CRT'),
+	'msvcr90.dll': ('crt', 'Visual C++ 2008 CRT'),
+	'netcfagl3_5.dll': ('netcf', '.NET CF 3.5 native shim'),
+	# desktop Win32 core
+	'kernel32.dll': ('win32-core', 'Win32 kernel'),
+	'user32.dll': ('win32-core', 'Win32 USER'),
+	'gdi32.dll': ('win32-core', 'Win32 GDI'),
+	'advapi32.dll': ('win32-core', 'Win32 registry/security'),
+	'ntdll.dll': ('win32-core', 'NT native API'),
+	'shell32.dll': ('shell', 'Windows shell'),
+	'ole32.dll': ('com', 'COM'),
+	'oleaut32.dll': ('com', 'OLE automation'),
+	'comctl32.dll': ('ui', 'common controls'),
+	'comdlg32.dll': ('ui', 'common dialogs'),
+	'mscoree.dll': ('managed', 'CLR shim (managed image)'),
+	'ws2_32.dll': ('networking', 'Winsock 2'),
+	'winhttp.dll': ('http', 'WinHTTP'),
+	'cabinet.dll': ('installer', 'CAB decompression'),
+	'lz32.dll': ('installer', 'LZ decompression (legacy installer)'),
+	'msi.dll': ('installer', 'Windows Installer'),
+	'rapi.dll': ('activesync', 'Remote API -- desktop-side device companion'),
+	'msvcrt.dll': ('crt', 'legacy MSVC CRT'),
+	'd3d9.dll': ('3d', 'Direct3D 9'),
+	'opengl32.dll': ('3d', 'OpenGL'),
+	'winmm.dll': ('multimedia', 'Windows multimedia'),
+	'wintrust.dll': ('security', 'Authenticode verification'),
+	'crypt32.dll': ('security', 'CryptoAPI'),
+}
+
+# libraries that on their own pin the target OS family
+CE_MARKER_LIBS = {
+	'coredll.dll', 'ceshell.dll', 'ceddk.dll', 'ws2.dll', 'gx.dll',
+	'cemapi.dll', 'imgdecmp.dll', 'd3dm.dll',
+}
+WM_MARKER_LIBS = {'aygshell.dll', 'tpcshell.dll', 'ossvcs.dll', 'pimstore.dll', 'pooutlook.dll'}
+WIN32_MARKER_LIBS = {'kernel32.dll', 'user32.dll', 'gdi32.dll', 'ntdll.dll', 'advapi32.dll'}
+
+# Delphi / C++ Builder runtime packages, keyed by prefix
+BORLAND_RE = re.compile(r'^(rtl|vcl|cc32|borlndmm)\d*\.(bpl|dll)$')
+
+# strong-name public key tokens
+NET_TOKENS = {
+	'B77A5C561934E089': 'Microsoft BCL (ECMA key) -- desktop .NET',
+	'B03F5F7F11D50A3A': 'Microsoft shared library key -- desktop .NET',
+	'31BF3856AD364E35': 'Microsoft WinFX key (WPF/WCF/WF) -- desktop .NET 3.x+',
+	'969DB8053D3322AC': '.NET Compact Framework',
+	'7CEC85D7BEA7798E': 'Silverlight / Windows Phone 7',
+	'E60DBEA84BB431B7': 'OpenNETCF Smart Device Framework',
+	'CC7B13FFCD2DDD51': '.NET Core / .NET Standard',
+	'ADB9793829DDAE60': 'Microsoft (Xamarin / modern)',
+	'0738EB9F132ED756': 'Mono',
+}
+CF_TOKEN = '969DB8053D3322AC'
+SILVERLIGHT_TOKEN = '7CEC85D7BEA7798E'
+CORE_TOKEN = 'CC7B13FFCD2DDD51'
+
+CLR_METADATA_VERSIONS = {
+	'v1.0.3705': '1.0',
+	'v1.1.4322': '1.1',
+	'v2.0.50727': '2.0',
+	'v4.0.30319': '4.x',
+}
+
+TFM_RE = re.compile(rb'\.NET(Framework|CompactFramework|CoreApp|Standard|Portable)?,Version=v[\d.]+')
+
+# section name -> packer
+PACKERS = {
+	'UPX0': 'UPX', 'UPX1': 'UPX', 'UPX2': 'UPX', '.UPX0': 'UPX',
+	'.aspack': 'ASPack', '.adata': 'ASPack',
+	'.petite': 'Petite', '.nsp0': 'NsPack', 'PEC2': 'PECompact',
+	'.themida': 'Themida', '.vmp0': 'VMProtect', '.mpress1': 'MPRESS',
+}
+
+# exported symbol -> what the module is
+EXPORT_ROLES = {
+	'InitializeCustomItem': 'Windows Mobile Today screen plugin',
+	'CustomItemOptionsDlgProc': 'Windows Mobile Today screen plugin (options page)',
+	'DllRegisterServer': 'self-registering COM server',
+	'DllGetClassObject': 'COM in-proc server',
+	'CreateInputMethod': 'SIP input method (soft keyboard)',
+	'CPlApplet': 'control panel applet',
+	'Install_Init': 'CAB setup DLL',
+	'Uninstall_Init': 'CAB setup DLL',
+}
+
+# Only LCIDs worth spelling out; anything else falls back to the primary
+# language plus the raw id.
+LCIDS = {
+	0x0000: 'neutral', 0x0400: 'process-default', 0x0800: 'system-default',
+	0x0401: 'ar-SA', 0x0402: 'bg-BG', 0x0403: 'ca-ES', 0x0404: 'zh-TW',
+	0x0405: 'cs-CZ', 0x0406: 'da-DK', 0x0407: 'de-DE', 0x0408: 'el-GR',
+	0x0409: 'en-US', 0x040A: 'es-ES', 0x040B: 'fi-FI', 0x040C: 'fr-FR',
+	0x040D: 'he-IL', 0x040E: 'hu-HU', 0x040F: 'is-IS', 0x0410: 'it-IT',
+	0x0411: 'ja-JP', 0x0412: 'ko-KR', 0x0413: 'nl-NL', 0x0414: 'nb-NO',
+	0x0415: 'pl-PL', 0x0416: 'pt-BR', 0x0418: 'ro-RO', 0x0419: 'ru-RU',
+	0x041A: 'hr-HR', 0x041B: 'sk-SK', 0x041C: 'sq-AL', 0x041D: 'sv-SE',
+	0x041E: 'th-TH', 0x041F: 'tr-TR', 0x0420: 'ur-PK', 0x0421: 'id-ID',
+	0x0422: 'uk-UA', 0x0423: 'be-BY', 0x0424: 'sl-SI', 0x0425: 'et-EE',
+	0x0426: 'lv-LV', 0x0427: 'lt-LT', 0x0429: 'fa-IR', 0x042A: 'vi-VN',
+	0x042B: 'hy-AM', 0x042D: 'eu-ES', 0x042F: 'mk-MK', 0x0436: 'af-ZA',
+	0x0437: 'ka-GE', 0x0438: 'fo-FO', 0x0439: 'hi-IN', 0x043E: 'ms-MY',
+	0x043F: 'kk-KZ', 0x0440: 'ky-KG', 0x0443: 'uz-UZ', 0x0444: 'tt-RU',
+	0x0446: 'pa-IN', 0x0447: 'gu-IN', 0x044E: 'mr-IN', 0x0804: 'zh-CN',
+	0x0807: 'de-CH', 0x0809: 'en-GB', 0x080A: 'es-MX', 0x080C: 'fr-BE',
+	0x0810: 'it-CH', 0x0813: 'nl-BE', 0x0816: 'pt-PT', 0x0818: 'ro-MD',
+	0x081A: 'sr-Latn', 0x0C09: 'en-AU', 0x0C0C: 'fr-CA', 0x0C1A: 'sr-Cyrl',
+	0x1009: 'en-CA', 0x1409: 'en-NZ', 0x1809: 'en-IE', 0x1C09: 'en-ZA',
+	0x2809: 'en-BZ', 0x0C04: 'zh-HK', 0x1404: 'zh-MO', 0x1004: 'zh-SG',
+}
+PRIMARY_LANGS = {
+	0x01: 'ar', 0x02: 'bg', 0x03: 'ca', 0x04: 'zh', 0x05: 'cs', 0x06: 'da',
+	0x07: 'de', 0x08: 'el', 0x09: 'en', 0x0A: 'es', 0x0B: 'fi', 0x0C: 'fr',
+	0x0D: 'he', 0x0E: 'hu', 0x0F: 'is', 0x10: 'it', 0x11: 'ja', 0x12: 'ko',
+	0x13: 'nl', 0x14: 'no', 0x15: 'pl', 0x16: 'pt', 0x18: 'ro', 0x19: 'ru',
+	0x1A: 'hr', 0x1B: 'sk', 0x1C: 'sq', 0x1D: 'sv', 0x1E: 'th', 0x1F: 'tr',
+	0x20: 'ur', 0x21: 'id', 0x22: 'uk', 0x23: 'be', 0x24: 'sl', 0x25: 'et',
+	0x26: 'lv', 0x27: 'lt', 0x29: 'fa', 0x2A: 'vi', 0x2B: 'hy', 0x36: 'af',
+	0x37: 'ka', 0x39: 'hi', 0x3E: 'ms', 0x3F: 'kk', 0x40: 'ky', 0x43: 'uz',
+}
+
+CODEPAGES = {
+	0: '7-bit ASCII', 932: 'Shift-JIS', 936: 'GBK', 949: 'EUC-KR',
+	950: 'Big5', 1200: 'UTF-16', 1250: 'CP1250 Latin-2', 1251: 'CP1251 Cyrillic',
+	1252: 'CP1252 Latin-1', 1253: 'CP1253 Greek', 1254: 'CP1254 Turkish',
+	1255: 'CP1255 Hebrew', 1256: 'CP1256 Arabic', 1257: 'CP1257 Baltic',
+	1258: 'CP1258 Vietnamese',
+}
+
+# MSVC linker major version -> product, for the toolchain hint
+LINKER_ERAS = {
+	2: 'eMbedded Visual C++ / MSVC 2.x-era linker',
+	6: 'Visual C++ 6.0 / eMbedded VC++ 3.0',
+	7: 'Visual Studio .NET 2002/2003 (eVC4)',
+	8: 'Visual Studio 2005',
+	9: 'Visual Studio 2008',
+	10: 'Visual Studio 2010',
+	11: 'Visual Studio 2012',
+	12: 'Visual Studio 2013',
+	14: 'Visual Studio 2015-2022',
+	48: 'managed (ILAsm/Roslyn, linker version fixed at 48.0)',
+}
+
+
+def _ce_version(major: int, minor: int) -> tuple[int, int]:
+	"""Normalise the two CE spellings of a subsystem minor version."""
+	if major >= 3 and minor in (10, 20, 30):
+		minor //= 10
+	return (major, minor)
+
+
+def lcid_name(lcid: int) -> str:
+	if lcid in LCIDS:
+		return LCIDS[lcid]
+	primary = PRIMARY_LANGS.get(lcid & 0x3FF)
+	return f'{primary}-?' if primary else f'0x{lcid:04X}'
+
+
+# --------------------------------------------------------------------------
+# layer 1: parser
+# --------------------------------------------------------------------------
+
+@dataclass
+class NetFacts:
+	metadata_version: str = ''
+	flags: list[str] = field(default_factory=list)
+	assembly: str = ''
+	assembly_version: str = ''
+	# (name, version, public key token, retargetable)
+	refs: list[tuple[str, str, str, bool]] = field(default_factory=list)
+	tfm: str = ''
+
+	def ref(self, name: str) -> tuple[str, str, str, bool] | None:
+		for r in self.refs:
+			if r[0].lower() == name.lower():
+				return r
+		return None
+
+	@property
+	def tokens(self) -> set[str]:
+		return {r[2] for r in self.refs if r[2]}
+
+
+@dataclass
+class Facts:
+	path: Path
+	size: int = 0
+	error: str = ''
+	machine: int = 0
+	is_dll: bool = False
+	is_system: bool = False
+	subsystem: int = 0
+	subsys_ver: tuple[int, int] = (0, 0)
+	os_ver: tuple[int, int] = (0, 0)
+	image_ver: tuple[int, int] = (0, 0)
+	linker: tuple[int, int] = (0, 0)
+	pe32_plus: bool = False
+	timestamp: int = 0
+	entrypoint: int = 0
+	sections: list[str] = field(default_factory=list)
+	imports: dict[str, int] = field(default_factory=dict)
+	delay_imports: dict[str, int] = field(default_factory=dict)
+	exports: list[str] = field(default_factory=list)
+	export_name: str = ''
+	has_clr: bool = False
+	signed_bytes: int = 0
+	pdb_path: str = ''
+	overlay: int = 0
+	embedded_cabs: int = 0
+	resource_types: list[str] = field(default_factory=list)
+	# langid -> {resource type: count}
+	resource_langs: dict[int, dict[str, int]] = field(default_factory=dict)
+	# langid -> [strings]
+	string_tables: dict[int, list[str]] = field(default_factory=dict)
+	version_info: dict[str, str] = field(default_factory=dict)
+	translations: list[tuple[int, int]] = field(default_factory=list)
+	net: NetFacts | None = None
+
+	@property
+	def ok(self) -> bool:
+		return not self.error
+
+	@property
+	def libs(self) -> set[str]:
+		return set(self.imports) | set(self.delay_imports)
+
+
+def _count_magic(data, needle: bytes) -> int:
+	"""Occurrence count over a buffer; pefile hands us an mmap, which has
+	find() but no count()."""
+	total, pos = 0, data.find(needle)
+	while pos >= 0:
+		total += 1
+		pos = data.find(needle, pos + 1)
+	return total
+
+
+def _res_type_name(entry) -> str:
+	if entry.name is not None:
+		return str(entry.name)
+	return pefile.RESOURCE_TYPE.get(entry.struct.Id, f'#{entry.struct.Id}')
+
+
+def _parse_string_table(data: bytes) -> list[str]:
+	"""RT_STRING blocks are 16 counted UTF-16 strings back to back."""
+	out, off = [], 0
+	for _ in range(16):
+		if off + 2 > len(data):
+			break
+		(count,) = struct.unpack_from('<H', data, off)
+		off += 2
+		text = data[off:off + count * 2].decode('utf-16le', 'replace')
+		off += count * 2
+		if text:
+			out.append(text)
+	return out
+
+
+def _probe_resources(pe: pefile.PE, facts: Facts) -> None:
+	root = getattr(pe, 'DIRECTORY_ENTRY_RESOURCE', None)
+	if root is None:
+		return
+	for type_entry in root.entries:
+		name = _res_type_name(type_entry)
+		facts.resource_types.append(name)
+		for id_entry in getattr(type_entry.directory, 'entries', []):
+			for lang_entry in getattr(id_entry.directory, 'entries', []):
+				lang = lang_entry.id or 0
+				bucket = facts.resource_langs.setdefault(lang, {})
+				bucket[name] = bucket.get(name, 0) + 1
+				if name != 'RT_STRING':
+					continue
+				try:
+					data = pe.get_data(lang_entry.data.struct.OffsetToData,
+					                   lang_entry.data.struct.Size)
+				except pefile.PEFormatError:
+					continue
+				facts.string_tables.setdefault(lang, []).extend(_parse_string_table(data))
+
+	for file_info in getattr(pe, 'FileInfo', []):
+		for entry in file_info:
+			for table in getattr(entry, 'StringTable', []):
+				for key, value in table.entries.items():
+					text = value.decode('utf-8', 'replace').strip()
+					if text:
+						facts.version_info.setdefault(key.decode('utf-8', 'replace'), text)
+			for var in getattr(entry, 'Var', []):
+				raw = var.entry.get(b'Translation')
+				if not raw:
+					continue
+				parts = str(raw).split()
+				if len(parts) == 2:
+					facts.translations.append((int(parts[0], 16), int(parts[1], 16)))
+
+
+def _public_key_token(key: bytes) -> str:
+	if not key:
+		return ''
+	return hashlib.sha1(key).digest()[-8:][::-1].hex().upper()
+
+
+def _probe_net(path: Path, facts: Facts) -> None:
+	import dnfile
+
+	try:
+		dn = dnfile.dnPE(str(path), fast_load=True)
+		dn.parse_data_directories()
+	except Exception as exc:
+		log.warning('dnfile failed', path=str(path), error=str(exc))
+		return
+	if not dn.net:
+		return
+
+	net = NetFacts()
+	net.metadata_version = bytes(dn.net.metadata.struct.Version).rstrip(b'\0').decode('ascii', 'replace')
+	flags = dn.net.Flags
+	net.flags = [n for n in dir(flags) if n.startswith('CLR_') and getattr(flags, n)]
+
+	tables = dn.net.mdtables
+	if tables.Assembly and tables.Assembly.rows:
+		row = tables.Assembly.rows[0]
+		net.assembly = str(row.Name.value)
+		net.assembly_version = f'{row.MajorVersion}.{row.MinorVersion}.{row.BuildNumber}.{row.RevisionNumber}'
+	for row in (tables.AssemblyRef.rows if tables.AssemblyRef else []):
+		blob = bytes(row.PublicKey.value or b'') if row.PublicKey else b''
+		# afPublicKey means the blob holds the full key, from which the token
+		# is the last 8 bytes of its SHA-1, reversed
+		token = _public_key_token(blob) if row.Flags.afPublicKey else blob.hex().upper()
+		net.refs.append((
+			str(row.Name.value),
+			f'{row.MajorVersion}.{row.MinorVersion}.{row.BuildNumber}.{row.RevisionNumber}',
+			token,
+			bool(row.Flags.afRetargetable),
+		))
+
+	match = TFM_RE.search(dn.__data__)
+	if match:
+		net.tfm = match.group().decode('ascii', 'replace')
+	facts.net = net
+
+
+def probe(path: Path) -> Facts:
+	"""Extract raw facts from one file. Never raises for bad input."""
+	facts = Facts(path=path)
+	try:
+		facts.size = path.stat().st_size
+	except OSError as exc:
+		facts.error = str(exc)
+		return facts
+
+	try:
+		pe = pefile.PE(str(path), fast_load=True)
+	except pefile.PEFormatError as exc:
+		facts.error = f'not a PE file ({exc})'
+		return facts
+	except OSError as exc:
+		facts.error = str(exc)
+		return facts
+
+	with pe:
+		pe.parse_data_directories(directories=[
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXPORT'],
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT'],
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_RESOURCE'],
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DEBUG'],
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT'],
+		])
+		opt, hdr = pe.OPTIONAL_HEADER, pe.FILE_HEADER
+
+		facts.machine = hdr.Machine
+		facts.is_dll = bool(hdr.Characteristics & pefile.IMAGE_CHARACTERISTICS['IMAGE_FILE_DLL'])
+		facts.is_system = bool(hdr.Characteristics & pefile.IMAGE_CHARACTERISTICS['IMAGE_FILE_SYSTEM'])
+		facts.timestamp = hdr.TimeDateStamp
+		facts.subsystem = opt.Subsystem
+		facts.subsys_ver = (opt.MajorSubsystemVersion, opt.MinorSubsystemVersion)
+		facts.os_ver = (opt.MajorOperatingSystemVersion, opt.MinorOperatingSystemVersion)
+		facts.image_ver = (opt.MajorImageVersion, opt.MinorImageVersion)
+		facts.linker = (opt.MajorLinkerVersion, opt.MinorLinkerVersion)
+		facts.pe32_plus = opt.Magic == pefile.OPTIONAL_HEADER_MAGIC_PE_PLUS
+		facts.entrypoint = opt.AddressOfEntryPoint
+		facts.sections = [s.Name.rstrip(b'\0').decode('latin-1') for s in pe.sections]
+		facts.signed_bytes = opt.DATA_DIRECTORY[
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_SECURITY']].Size
+		facts.has_clr = bool(opt.DATA_DIRECTORY[
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']].VirtualAddress)
+
+		for entry in getattr(pe, 'DIRECTORY_ENTRY_IMPORT', []):
+			facts.imports[entry.dll.decode('latin-1').lower()] = len(entry.imports)
+		for entry in getattr(pe, 'DIRECTORY_ENTRY_DELAY_IMPORT', []):
+			facts.delay_imports[entry.dll.decode('latin-1').lower()] = len(entry.imports)
+
+		exp = getattr(pe, 'DIRECTORY_ENTRY_EXPORT', None)
+		if exp is not None:
+			if exp.name:
+				facts.export_name = exp.name.decode('latin-1')
+			facts.exports = [s.name.decode('latin-1') for s in exp.symbols if s.name]
+
+		for dbg in getattr(pe, 'DIRECTORY_ENTRY_DEBUG', []):
+			raw = getattr(dbg.entry, 'PdbFileName', None)
+			if raw:
+				facts.pdb_path = raw.rstrip(b'\0').decode('latin-1', 'replace')
+				break
+
+		try:
+			start = pe.get_overlay_data_start_offset()
+		except Exception:
+			start = None
+		# the Authenticode blob lives past the last section too; it is not
+		# interesting as "appended data"
+		facts.overlay = max(0, facts.size - (start or facts.size) - facts.signed_bytes)
+		facts.embedded_cabs = _count_magic(pe.__data__, b'MSCF')
+
+		_probe_resources(pe, facts)
+
+	if facts.has_clr:
+		_probe_net(path, facts)
+	return facts
+
+
+# --------------------------------------------------------------------------
+# layer 2: classifier
+# --------------------------------------------------------------------------
+
+@dataclass
+class Verdict:
+	target: str = 'unknown'          # windows-mobile | windows-ce | windows-desktop
+	os_tag: str = ''                 # wm6, wm2003, win32, ...
+	platform: str = ''               # human-readable target
+	runtime: str = 'native'          # native | netcf | netfx | netcore | silverlight
+	runtime_label: str = ''
+	arch: str = ''
+	arch_label: str = ''
+	confidence: str = 'high'         # high | medium | low
+	evidence: list[str] = field(default_factory=list)
+	capabilities: list[str] = field(default_factory=list)
+	roles: list[str] = field(default_factory=list)
+	toolchain: list[str] = field(default_factory=list)
+	notes: list[str] = field(default_factory=list)
+	ce_version: str = ''
+	win_version: str = ''
+	net_version: str = ''
+
+
+def _classify_net(facts: Facts, v: Verdict) -> None:
+	net = facts.net
+	if net is None:
+		v.runtime = 'netfx'
+		v.runtime_label = 'managed (.NET, metadata unreadable)'
+		v.confidence = 'low'
+		v.evidence.append('CLR data directory present but metadata could not be parsed')
+		return
+
+	tokens = net.tokens
+	mscorlib = net.ref('mscorlib')
+	corelib_token = mscorlib[2] if mscorlib else ''
+
+	if CF_TOKEN in tokens:
+		v.runtime = 'netcf'
+		base = '1.0' if (mscorlib and mscorlib[1] == '1.0.5000.0') else '2.0'
+		if any(r[2] == CF_TOKEN and r[1].startswith('3.5') for r in net.refs):
+			base = '3.5'
+		if 'CompactFramework,Version=v3.5' in net.tfm:
+			base = '3.5'
+		v.net_version = f'cf{base}'
+		v.runtime_label = f'.NET Compact Framework {base}'
+		v.evidence.append(f'assembly references carry public key token {CF_TOKEN} (.NET CF)')
+		if net.ref('Microsoft.WindowsCE.Forms'):
+			v.evidence.append('references Microsoft.WindowsCE.Forms (device UI)')
+		if base == '2.0':
+			v.notes.append('CF 2.0 and CF 3.5 both ship mscorlib 2.0.0.0; '
+			               'absent a 3.5-versioned reference the two are indistinguishable')
+	elif SILVERLIGHT_TOKEN in tokens:
+		v.runtime = 'silverlight'
+		v.net_version = 'silverlight'
+		v.runtime_label = 'Silverlight / Windows Phone 7'
+		v.evidence.append(f'assembly references carry public key token {SILVERLIGHT_TOKEN}')
+	else:
+		v.runtime = 'netfx'
+		base = CLR_METADATA_VERSIONS.get(net.metadata_version, net.metadata_version or '?')
+		if CORE_TOKEN in tokens or net.ref('netstandard') or net.ref('System.Runtime'):
+			v.runtime = 'netcore'
+			base = 'core'
+		elif any(r[0] == 'System.Core' and r[1].startswith('3.5') for r in net.refs):
+			base = '3.5'
+		elif any(r[0] in ('PresentationCore', 'PresentationFramework', 'WindowsBase')
+		         and r[1].startswith('3.0') for r in net.refs):
+			base = '3.0'
+		if net.tfm.startswith('.NETFramework,Version=v'):
+			base = net.tfm.split('=v', 1)[1]
+		v.net_version = base
+		v.runtime_label = ('.NET Core / .NET 5+' if v.runtime == 'netcore'
+		                   else f'.NET Framework {base}')
+		if corelib_token:
+			v.evidence.append(f'mscorlib public key token {corelib_token} '
+			                  f'({NET_TOKENS.get(corelib_token, "unknown key")})')
+
+
+def _classify_platform(facts: Facts, v: Verdict) -> None:
+	libs = facts.libs
+	ce_libs = libs & CE_MARKER_LIBS
+	wm_libs = libs & WM_MARKER_LIBS
+	win32_libs = libs & WIN32_MARKER_LIBS
+	ce_subsystem = facts.subsystem == 9
+	ce_resource = 'CEUX' in facts.resource_types
+
+	if ce_subsystem:
+		v.evidence.append('PE subsystem 9 (IMAGE_SUBSYSTEM_WINDOWS_CE_GUI)')
+	if ce_libs:
+		v.evidence.append(f'imports CE-only libraries: {", ".join(sorted(ce_libs))}')
+	if wm_libs:
+		v.evidence.append(f'imports Windows Mobile shell libraries: {", ".join(sorted(wm_libs))}')
+	if ce_resource:
+		v.evidence.append('carries a CEUX resource (Windows CE shell metadata)')
+	if facts.machine in CE_ONLY_MACHINES:
+		v.evidence.append(f'machine 0x{facts.machine:04X} only ever shipped on Windows CE devices')
+
+	ce_score = sum((ce_subsystem, bool(ce_libs), ce_resource, facts.machine in CE_ONLY_MACHINES))
+
+	if v.runtime in ('netcf', 'silverlight'):
+		v.target = 'windows-mobile'
+		v.platform = ('Windows Mobile / Windows CE device (managed)'
+		              if v.runtime == 'netcf' else 'Windows Phone 7 / Silverlight')
+		v.os_tag = v.net_version if v.runtime == 'netcf' else 'wp7'
+		if not ce_subsystem:
+			v.notes.append('managed device assemblies keep a desktop subsystem value; '
+			               'the target is inferred from the framework, not the PE header')
+		return
+
+	if ce_score:
+		major, minor = _ce_version(*facts.subsys_ver)
+		tag, label = CE_VERSIONS.get((major, minor), ('ce', f'Windows CE {major}.{minor}'))
+		v.ce_version = f'{major}.{minor}'
+		if wm_libs or ce_resource:
+			v.target = 'windows-mobile'
+			v.platform = label if tag.startswith(('ppc', 'wm')) else f'{label}, Windows Mobile shell'
+			v.os_tag = tag
+		else:
+			v.target = 'windows-ce'
+			v.platform = label
+			v.os_tag = tag
+		if ce_score == 1:
+			v.confidence = 'medium'
+		if win32_libs:
+			v.notes.append(f'also imports desktop-only {", ".join(sorted(win32_libs))} -- '
+			               'unusual, check for a patched or hand-built image')
+		return
+
+	v.target = 'windows-desktop'
+	v.os_tag = 'win64' if facts.pe32_plus else 'win32'
+	built_for = WIN_VERSIONS.get(facts.subsys_ver)
+	v.win_version = '{}.{:02d}'.format(*facts.subsys_ver)
+	v.platform = f'Windows desktop ({"64-bit" if facts.pe32_plus else "32-bit"})'
+	if built_for:
+		v.evidence.append(f'subsystem version {v.win_version} -- {built_for}')
+	if not win32_libs and not facts.has_clr:
+		v.confidence = 'medium'
+		v.notes.append('no recognisable Win32 core imports; may be packed or driver-like')
+
+
+def _classify_extras(facts: Facts, v: Verdict) -> None:
+	caps, notes = set(), []
+	for lib in sorted(facts.libs):
+		info = LIBS.get(lib)
+		if info:
+			caps.add(info[0])
+		elif BORLAND_RE.match(lib):
+			caps.add('borland')
+			notes.append(f'Borland Delphi / C++ Builder runtime package ({lib})')
+	caps.discard('win32-core')
+	caps.discard('ce-core')
+	v.capabilities = sorted(caps)
+
+	exported = set(facts.exports)
+	for symbol, role in EXPORT_ROLES.items():
+		if symbol in exported:
+			v.roles.append(role)
+	if facts.is_dll and any(e.endswith('_IOControl') for e in exported) \
+			and any(e.endswith('_Init') for e in exported):
+		v.roles.append('Windows CE stream driver')
+	if 'installer' in caps and facts.embedded_cabs:
+		v.roles.append('installer carrying embedded CAB payload')
+	if 'activesync' in caps:
+		v.roles.append('desktop-side device companion (RAPI/ActiveSync)')
+	if facts.is_dll and not facts.libs and not exported and facts.resource_langs:
+		v.roles.append('resource-only module (satellite / MUI localisation)')
+		notes.append('resource-only modules are built machine-neutral; the machine field '
+		             'does not describe the device they belong to')
+
+	packer = next((PACKERS[s] for s in facts.sections if s in PACKERS), '')
+	if packer:
+		v.toolchain.append(f'packed with {packer}')
+		v.confidence = 'medium' if v.confidence == 'high' else v.confidence
+		notes.append('image is packed; imports and resources reflect the stub, not the payload')
+
+	era = LINKER_ERAS.get(facts.linker[0])
+	v.toolchain.append('linker {}.{:02d}{}'.format(
+		*facts.linker, f' -- {era}' if era else ''))
+	if facts.pdb_path:
+		v.toolchain.append(f'PDB path: {facts.pdb_path}')
+	if facts.signed_bytes:
+		v.toolchain.append(f'Authenticode signature present ({facts.signed_bytes} bytes)')
+	if facts.embedded_cabs:
+		notes.append(f'{facts.embedded_cabs} embedded CAB header(s) (MSCF) found in the image')
+	if facts.overlay:
+		notes.append(f'{facts.overlay} bytes of overlay data past the last section')
+
+	v.roles = list(dict.fromkeys(v.roles))
+	v.notes.extend(notes)
+
+
+def classify(facts: Facts) -> Verdict:
+	"""Decision tree over extracted facts. Runtime first: managed device
+	assemblies carry a desktop subsystem value, so the PE header alone would
+	misfile every .NET CF binary as Win32."""
+	v = Verdict()
+	if not facts.ok:
+		v.target = 'unknown'
+		v.platform = facts.error
+		v.confidence = 'low'
+		return v
+
+	v.arch, v.arch_label = MACHINES.get(facts.machine, ('', f'unknown (0x{facts.machine:04X})'))
+	if facts.has_clr:
+		_classify_net(facts, v)
+		if facts.net and 'CLR_ILONLY' in facts.net.flags and facts.machine == 0x014C:
+			v.arch, v.arch_label = 'msil', 'MSIL (architecture-neutral IL)'
+	else:
+		v.runtime_label = 'native'
+
+	_classify_platform(facts, v)
+	_classify_extras(facts, v)
+	return v
+
+
+# --------------------------------------------------------------------------
+# layer 3: output
+# --------------------------------------------------------------------------
+
+def fields(facts: Facts, v: Verdict) -> dict[str, str]:
+	"""Flat namespace for --format. Empty string means 'not determined'."""
+	info = facts.version_info
+	primary_lang = max(facts.resource_langs,
+	                   key=lambda k: sum(facts.resource_langs[k].values())) \
+		if facts.resource_langs else None
+	when = None
+	if 0 < facts.timestamp < 0x7FFFFFFF:
+		when = datetime.fromtimestamp(facts.timestamp, timezone.utc)
+
+	out = {
+		'target': v.target if v.target != 'unknown' else '',
+		'os': v.os_tag,
+		'platform': v.platform,
+		'runtime': v.runtime if facts.ok else '',
+		'arch': v.arch,
+		'bits': ('64' if facts.pe32_plus else '32') if facts.ok else '',
+		'subsys': SUBSYSTEM_SHORT.get(facts.subsystem, ''),
+		'kind': ('dll' if facts.is_dll else 'exe') if facts.ok else '',
+		'ceversion': v.ce_version,
+		'winversion': v.win_version,
+		'netversion': v.net_version,
+		'langid': str(primary_lang) if primary_lang else '',
+		'lang': lcid_name(primary_lang) if primary_lang else '',
+		'company': info.get('CompanyName', ''),
+		'product': info.get('ProductName', ''),
+		'description': info.get('FileDescription', ''),
+		'fileversion': info.get('FileVersion', ''),
+		'productversion': info.get('ProductVersion', ''),
+		'origname': info.get('OriginalFilename', ''),
+		'assembly': facts.net.assembly if facts.net else '',
+		'date': when.strftime('%Y-%m-%d') if when else '',
+		'year': when.strftime('%Y') if when else '',
+	}
+	tag = out['os']
+	if tag and out['arch']:
+		tag = f'{tag}-{out["arch"]}'
+	if tag and v.runtime != 'native' and not out['os'].startswith(('cf', 'wp')):
+		tag = f'{tag}-{v.runtime}'
+	out['tag'] = tag
+	return out
+
+
+class _StrictFormatter(string.Formatter):
+	"""Formatter that reports, rather than renders, unresolved fields."""
+
+	def __init__(self, values: dict[str, str]):
+		self.values = values
+		self.missing: list[str] = []
+
+	def get_value(self, key, args, kwargs):
+		if isinstance(key, int):
+			self.missing.append(str(key))
+			return ''
+		value = self.values.get(key)
+		if value is None:
+			self.missing.append(f'{key} (unknown field)')
+			return ''
+		if not value:
+			self.missing.append(key)
+		return value
+
+
+def render_format(spec: str, values: dict[str, str]) -> str:
+	formatter = _StrictFormatter(values)
+	try:
+		text = formatter.vformat(spec, (), {})
+	except (ValueError, KeyError) as exc:
+		raise typer.BadParameter(f'bad format string: {exc}') from exc
+	return '' if formatter.missing else text
+
+
+def _md_escape(text: str) -> str:
+	return text.replace('|', '\\|').replace('\n', ' ')
+
+
+def render_table(rows: list[tuple[Path, Facts, Verdict]], base: Path | None) -> str:
+	header = ['File', 'Target', 'Arch', 'Runtime', 'Sub', 'OS ver', 'Lang', 'Version', 'Notes']
+	lines = ['| ' + ' | '.join(header) + ' |',
+	         '|' + '|'.join(['---'] * len(header)) + '|']
+	for path, facts, v in rows:
+		f = fields(facts, v)
+		name = path.relative_to(base) if base and path.is_relative_to(base) else path
+		notes = []
+		if v.roles:
+			notes.append(v.roles[0])
+		notes.extend(t for t in v.toolchain if t.startswith('packed'))
+		if facts.signed_bytes:
+			notes.append('signed')
+		if not facts.ok:
+			notes = [facts.error]
+		if v.confidence != 'high' and facts.ok:
+			notes.append(f'({v.confidence} confidence)')
+		cells = [
+			_md_escape(str(name)),
+			f['target'] or '--',
+			f['arch'] or '--',
+			f['runtime'] or '--',
+			f['subsys'] or '--',
+			f['ceversion'] or f['winversion'] or '--',
+			f['lang'] or '--',
+			_md_escape(f['fileversion'] or f['netversion'] or '--'),
+			_md_escape('; '.join(notes) or '--'),
+		]
+		lines.append('| ' + ' | '.join(cells) + ' |')
+	return '\n'.join(lines)
+
+
+def _kv(console: Console, key: str, value: str, style: str = '') -> None:
+	if value:
+		console.print(f'    [dim]{key:<14}[/dim] ' + (f'[{style}]{escape(value)}[/{style}]'
+		                                             if style else escape(value)))
+
+
+def render_detail(console: Console, facts: Facts, v: Verdict, show_strings: int) -> None:
+	f = fields(facts, v)
+	console.print(f'[bold]{escape(str(facts.path))}[/bold]')
+	if not facts.ok:
+		console.print(f'    [red]{escape(facts.error)}[/red]\n')
+		return
+
+	colour = {'high': 'green', 'medium': 'yellow', 'low': 'red'}[v.confidence]
+	summary = ' · '.join(x for x in (v.platform, v.runtime_label, v.arch_label,
+	                                 SUBSYSTEMS.get(facts.subsystem, '?')) if x)
+	console.print(f'  [{colour}]{escape(summary)}[/{colour}]  [dim]({v.confidence} confidence)[/dim]')
+
+	console.print('\n  [bold]Evidence[/bold]')
+	for line in v.evidence or ['(none)']:
+		console.print(f'    [dim]·[/dim] {escape(line)}')
+
+	console.print('\n  [bold]Image[/bold]')
+	_kv(console, 'machine', f'0x{facts.machine:04X}  {v.arch_label}')
+	_kv(console, 'subsystem', f'{facts.subsystem}  {SUBSYSTEMS.get(facts.subsystem, "?")}'
+	                          f'  (version {facts.subsys_ver[0]}.{facts.subsys_ver[1]:02d})')
+	_kv(console, 'min OS', '{}.{:02d}'.format(*facts.os_ver))
+	_kv(console, 'characteristics', 'DLL' if facts.is_dll else 'executable')
+	_kv(console, 'magic', 'PE32+' if facts.pe32_plus else 'PE32')
+	_kv(console, 'timestamp', f'{f["date"]} ({facts.timestamp:#x})' if f['date']
+	    else f'{facts.timestamp:#x} (zeroed or non-time)')
+	_kv(console, 'size', f'{facts.size} bytes')
+	_kv(console, 'sections', ' '.join(facts.sections))
+	for line in v.toolchain:
+		_kv(console, '', line)
+
+	if facts.net:
+		console.print('\n  [bold]Managed metadata[/bold]')
+		_kv(console, 'CLR header', facts.net.metadata_version)
+		_kv(console, 'assembly', f'{facts.net.assembly} {facts.net.assembly_version}'.strip())
+		_kv(console, 'flags', ', '.join(x.removeprefix('CLR_') for x in facts.net.flags))
+		_kv(console, 'target fw', facts.net.tfm)
+		for name, version, token, retarget in facts.net.refs:
+			origin = NET_TOKENS.get(token, '')
+			suffix = f'  [dim]{origin}[/dim]' if origin else ''
+			flag = ' [dim]retargetable[/dim]' if retarget else ''
+			console.print(f'      {escape(name)} {version}'
+			              f'{" " + token if token else ""}{flag}{suffix}')
+
+	if facts.libs:
+		console.print('\n  [bold]Imports[/bold]')
+		for lib in sorted(facts.imports):
+			info = LIBS.get(lib)
+			note = f'  [dim]{info[1]}[/dim]' if info else ''
+			console.print(f'      {escape(lib)} [dim]({facts.imports[lib]})[/dim]{note}')
+		for lib in sorted(facts.delay_imports):
+			console.print(f'      {escape(lib)} [dim](delay-loaded)[/dim]')
+
+	if facts.exports:
+		console.print('\n  [bold]Exports[/bold]')
+		shown = facts.exports[:12]
+		_kv(console, 'module', facts.export_name)
+		console.print('      ' + escape(', '.join(shown))
+		              + (f' [dim]... +{len(facts.exports) - len(shown)} more[/dim]'
+		                 if len(facts.exports) > len(shown) else ''))
+
+	if v.capabilities or v.roles:
+		console.print('\n  [bold]Inferred[/bold]')
+		_kv(console, 'capabilities', ', '.join(v.capabilities))
+		for role in v.roles:
+			_kv(console, 'role', role)
+
+	if facts.version_info:
+		console.print('\n  [bold]Version info[/bold]')
+		for key, value in facts.version_info.items():
+			_kv(console, key, value)
+		for lang, codepage in facts.translations:
+			_kv(console, 'translation',
+			    f'{lcid_name(lang)} (0x{lang:04X}) / {CODEPAGES.get(codepage, codepage)}')
+
+	if facts.resource_langs:
+		console.print('\n  [bold]Resources[/bold]')
+		_kv(console, 'types', ', '.join(sorted(set(facts.resource_types))))
+		for lang in sorted(facts.resource_langs):
+			kinds = facts.resource_langs[lang]
+			detail = ' '.join(f'{k.removeprefix("RT_")}({n})' for k, n in sorted(kinds.items()))
+			strings = facts.string_tables.get(lang)
+			count = f'  [dim]{len(strings)} strings[/dim]' if strings else ''
+			console.print(f'      [bold]{lcid_name(lang):<14}[/bold] '
+			              f'[dim]0x{lang:04X}[/dim]  {escape(detail)}{count}')
+			if strings and show_strings:
+				for text in strings[:show_strings]:
+					console.print(f'        [dim]|[/dim] {escape(text[:100])}')
+
+	if v.notes:
+		console.print('\n  [bold]Notes[/bold]')
+		for note in v.notes:
+			console.print(f'    [yellow]![/yellow] {escape(note)}')
+	console.print()
+
+
+# --------------------------------------------------------------------------
+# CLI
+# --------------------------------------------------------------------------
+
+app = typer.Typer(add_completion=False, no_args_is_help=True,
+                  context_settings={'help_option_names': ['-h', '--help']})
+
+FIELD_HELP = (
+	'target os platform runtime arch bits subsys kind ceversion winversion '
+	'netversion lang langid company product description fileversion '
+	'productversion origname assembly date year tag'
+)
+
+
+def _collect(paths: list[Path]) -> Iterator[Path]:
+	for path in paths:
+		if str(path) == '-':
+			for line in sys.stdin:
+				line = line.strip()
+				if line:
+					yield Path(line)
+		elif path.is_dir():
+			for child in sorted(path.rglob('*')):
+				try:
+					if child.is_file():
+						yield child
+				except OSError as exc:
+					log.warning('cannot stat', path=str(child), error=str(exc))
+		else:
+			yield path
+
+
+@app.command()
+def main(
+	paths: Annotated[list[Path], typer.Argument(
+		help='Files to classify; a directory is walked recursively, "-" reads paths from stdin.')],
+	fmt: Annotated[str, typer.Option(
+		'--format', '-f',
+		help=f'Emit a format string per file instead of a report. '
+		     f'Empty output if any referenced field is unknown. Fields: {FIELD_HELP}')] = '',
+	table: Annotated[bool, typer.Option('--table/--detail', '-t/-d',
+		help='Force markdown table or detailed report (default: table for >1 file).')] = None,
+	strings: Annotated[int, typer.Option('--strings', '-s',
+		help='Show up to N sample strings per resource language.')] = 0,
+	relative: Annotated[bool, typer.Option('--relative/--absolute',
+		help='Print paths relative to the current directory in table mode.')] = True,
+	skip_non_pe: Annotated[bool, typer.Option('--skip-non-pe',
+		help='Omit files that are not PE images instead of reporting them.')] = False,
+	verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Log parser diagnostics.')] = False,
+) -> None:
+	"""Classify Windows PE binaries by target platform and runtime."""
+	structlog.configure(
+		processors=[structlog.processors.add_log_level,
+		            structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())],
+		logger_factory=structlog.PrintLoggerFactory(sys.stderr),
+		wrapper_class=structlog.make_filtering_bound_logger(
+			logging.DEBUG if verbose else logging.ERROR),
+	)
+	if not verbose:
+		for name in ('dnfile', 'pefile'):
+			logging.getLogger(name).setLevel(logging.CRITICAL)
+
+	results = []
+	for path in _collect(paths):
+		facts = probe(path)
+		if skip_non_pe and not facts.ok:
+			continue
+		results.append((path, facts, classify(facts)))
+
+	if not results:
+		raise typer.Exit(1)
+
+	if fmt:
+		for _, facts, v in results:
+			print(render_format(fmt, fields(facts, v)))
+		return
+
+	if table if table is not None else len(results) > 1:
+		print(render_table(results, Path.cwd() if relative else None))
+		return
+
+	console = Console(highlight=False, soft_wrap=True)
+	for _, facts, v in results:
+		render_detail(console, facts, v, strings)
+
+
+if __name__ == '__main__':
+	app()
