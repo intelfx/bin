@@ -584,16 +584,17 @@ def _probe_net(raw: bytes, facts: Facts) -> None:
 		# assembly
 		dn = dnfile.dnPE(data=raw, fast_load=True, clr_lazy_load=True)
 		dn.parse_data_directories()
+		if not dn.net or not dn.net.metadata or not dn.net.mdtables:
+			return
+		net.metadata_version = bytes(
+			dn.net.metadata.struct.Version).rstrip(b'\0').decode('ascii', 'replace')
+		flags = dn.net.Flags
+		net.flags = [n for n in dir(flags) if n.startswith('CLR_') and getattr(flags, n)]
+		_read_assembly_refs(dn.net.mdtables, net)
 	except Exception as exc:
 		log.warning('dnfile failed', path=str(facts.path), error=str(exc))
-		return
-	if not dn.net:
-		return
-
-	net.metadata_version = bytes(dn.net.metadata.struct.Version).rstrip(b'\0').decode('ascii', 'replace')
-	flags = dn.net.Flags
-	net.flags = [n for n in dir(flags) if n.startswith('CLR_') and getattr(flags, n)]
-	_read_assembly_refs(dn.net.mdtables, net)
+		if not net.refs:
+			return
 
 	match = TFM_RE.search(raw)
 	if match:
