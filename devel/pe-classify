@@ -418,6 +418,7 @@ REGISTRY_HINTS = (
 	(r'\comm\\', 'networking or telephony stack'),
 )
 
+PE_MAGIC = b'MZ'
 MSCE_SIGNATURES = (b'MSCE', b'CE4+')
 REGISTRY_ROOTS = {1: 'HKCR', 2: 'HKCU', 3: 'HKLM', 4: 'HKEY_USERS'}
 # only these two occur in practice; anything else is reported by number
@@ -631,8 +632,16 @@ def probe(path: Path) -> Facts:
 	# classified, so a sweep degrades into quadratic behaviour: ~110ms per
 	# close once a few million objects are live. Owning the buffer ourselves
 	# keeps teardown to a refcount drop.
+	# Check the signature before pulling the file in: a tree like this is
+	# mostly ROM dumps, tarballs and media, and reading all of it into memory
+	# only for pefile to reject the first two bytes dominates a sweep.
 	try:
-		raw = path.read_bytes()
+		with path.open('rb') as fh:
+			if fh.read(2) != PE_MAGIC:
+				facts.error = 'not a PE file (no MZ signature)'
+				return facts
+			fh.seek(0)
+			raw = fh.read()
 	except OSError as exc:
 		facts.error = str(exc)
 		return facts
@@ -1000,6 +1009,7 @@ class ArchiveFacts:
 
 
 def archive_kind(path: Path) -> str:
+	"""Container kind from the leading magic, or '' if this is not an archive."""
 	try:
 		with path.open('rb') as fh:
 			head = fh.read(8)
