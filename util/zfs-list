@@ -48,11 +48,16 @@ COLUMNS_PRE_REDUCED=(
 	"name,used,refer"
 )
 COLUMNS_PRE_EXTRA=(
-	"compression,dedup,sync,canmount"
+	"compression,dedup,sync"
+)
+COLUMNS_POST=(
+	"canmount"
+)
+COLUMNS_POST_REDUCED=(
 )
 
 case "$VERBOSITY" in
-0) COLUMNS_PRE=( "${COLUMNS_PRE_REDUCED[@]}" ) ;;
+0) COLUMNS_PRE=( "${COLUMNS_PRE_REDUCED[@]}" ); COLUMNS_POST=( "${COLUMNS_POST_REDUCED[@]}" ) ;;
 1) ;;  # for now, plain is identical to verbose
 2) ;;
 3) COLUMNS_PRE+=( "${COLUMNS_PRE_EXTRA[@]}" ) ;;
@@ -61,6 +66,7 @@ esac
 COLUMNS=(
 	"${COLUMNS_PRE[@]}"
 	"${COLUMNS[@]}"
+	"${COLUMNS_POST[@]}"
 	"mountpoint"
 )
 
