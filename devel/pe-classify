@@ -37,6 +37,8 @@ from typing import (
 )
 from xml.etree import ElementTree
 
+import dnfile
+import dnfile.mdtable
 import pefile
 import structlog
 import typer
@@ -666,8 +668,6 @@ def _public_key_token(key: bytes) -> str:
 
 
 def _probe_net(raw: bytes, facts: Facts) -> None:
-	import dnfile
-
 	net = NetFacts()
 	try:
 		# lazy table loading: only Assembly and AssemblyRef are ever touched,
@@ -696,7 +696,7 @@ def _probe_net(raw: bytes, facts: Facts) -> None:
 	facts.net = net
 
 
-def _read_assembly_refs(tables, net: NetFacts) -> None:
+def _read_assembly_refs(tables: dnfile.stream.MetaDataTables, net: NetFacts) -> None:
 	if tables.Assembly and tables.Assembly.rows:
 		row = tables.Assembly.rows[0]
 		net.assembly = str(row.Name.value)
