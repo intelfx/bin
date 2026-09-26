@@ -1819,12 +1819,11 @@ def render_table(items: list[Item], base: Path | None) -> str:
 	return '\n'.join(lines)
 
 
-def _kv(console: Console, key: str, value: str, style: str = '') -> None:
+def _kv(console: Console, key: str, value: str, style: str = '', raw: bool = False) -> None:
 	if value:
-		console.print(
-			f'    [dim]{key:<16}[/dim] '
-			+ (f'[{style}]{escape(value)}[/{style}]' if style else escape(value))
-		)
+		escaped = escape(value) if not raw else value
+		printable = f'[{style}]{escaped}[/{style}]' if style else escaped
+		console.print(f'    [dim]{key:<16}[/dim] {printable}')
 
 
 def render_archive_detail(console: Console, item: ArchiveItem) -> None:
@@ -1953,9 +1952,12 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 
 		console.print('\n  [bold]Managed metadata[/bold]')
 		_kv(console, 'CLR header', image.net.metadata_version)
-		_kv(console, 'assembly', f'{image.net.assembly.name} {image.net.assembly.version}'.strip())
+		_kv(console, 'assembly', _render_ref(image.net.assembly), raw=True)
 		_kv(console, 'flags', ', '.join(x.removeprefix('CLR_') for x in image.net.flags))
 		_kv(console, 'target fw', image.net.tfm)
+
+		if image.net.refs:
+			console.print('\n  [bold]Managed imports[/bold]')
 		for r in image.net.refs:
 			console.print(
 				f'      {_render_ref(r)}'
