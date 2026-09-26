@@ -2047,16 +2047,18 @@ def analyse(
 	path: Path, display: str, scratch: Scratch, opts: 'Options', depth: int = 0
 ) -> Iterator[Item]:
 	"""Classify one file, descending into it when it is an archive."""
-	kind = archive_kind(path) if depth < opts.max_depth else ''
+	kind = archive_kind(path)
 	if not kind:
 		image = probe(path, opts.keep_strings)
 		if image.ok or opts.show_non_pe:
 			yield ImageItem(display=display, image=image, verdict=classify_image(image), depth=depth)
 		return
 
+	recurse = opts.recurse and depth < opts.max_depth
+
 	# a CAB is worth unpacking even when not descending -- its install header
 	# is the metadata we came for; other containers are just lids
-	if opts.recurse or kind == 'cab':
+	if recurse or kind == 'cab':
 		arc = probe_archive(path, kind, scratch, next(opts.serial))
 	else:
 		arc = ArchiveFacts(path=path, kind=kind, size=path.stat().st_size)
@@ -2064,7 +2066,7 @@ def analyse(
 	item = ArchiveItem(display=display, archive=arc, verdict=classify_archive(arc), depth=depth)
 	if arc.ok or opts.show_non_pe:
 		yield item
-	if not arc.ok or not opts.recurse:
+	if not arc.ok or not recurse:
 		if arc.root:
 			shutil.rmtree(arc.root, ignore_errors=True)
 		return
