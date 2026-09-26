@@ -1511,10 +1511,7 @@ def classify_archive(arc: ArchiveFacts) -> Verdict:
 		return v
 
 	v.platform = f'Windows CE installation CAB ({inst.origin})'
-	v.arch, arch_label = PROCESSOR_TYPES.get(
-		inst.processor, ('', f'processor {inst.processor}')
-	)
-	v.arch_label = arch_label
+	v.arch, v.arch_label = PROCESSOR_TYPES.get(inst.processor, ('', f'processor {inst.processor}'))
 	span = f', CE {inst.os_min}-{inst.os_max}' if inst.os_min else ''
 	v.evidence.append(f'{inst.origin}: {inst.title or "(unnamed package)"}{span}')
 	if inst.certificates:
@@ -1530,7 +1527,7 @@ def classify_archive(arc: ArchiveFacts) -> Verdict:
 	elif inst.empty and inst.provisioning:
 		v.roles.append(f'provisioning only: {", ".join(inst.provisioning)}')
 	if inst.processor:
-		v.evidence.append(f'ProcessorType {inst.processor} ({arch_label})')
+		v.evidence.append(f'ProcessorType {inst.processor} ({v.arch_label})')
 	if inst.unsupported:
 		v.evidence.append(f'refuses to install on: {inst.unsupported}')
 		if 'HPC' in inst.unsupported.upper() or 'JUPITER' in inst.unsupported.upper():
