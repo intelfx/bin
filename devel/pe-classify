@@ -48,7 +48,7 @@ def assert_cast[T](typ: type[T], value: Any) -> T:
 	assert isinstance(value, typ)
 	return value
 
-log = structlog.get_logger()
+log: structlog.BoundLogger = structlog.get_logger()
 
 
 # --------------------------------------------------------------------------
