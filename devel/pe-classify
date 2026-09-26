@@ -2047,7 +2047,7 @@ def analyse(
 	kind = archive_kind(path) if depth < opts.max_depth else ''
 	if not kind:
 		image = probe(path, opts.keep_strings)
-		if image.ok or not opts.skip_non_pe:
+		if image.ok or opts.show_non_pe:
 			yield ImageItem(display=display, image=image, verdict=classify_image(image), depth=depth)
 		return
 
@@ -2059,7 +2059,7 @@ def analyse(
 		arc = ArchiveFacts(path=path, kind=kind, size=path.stat().st_size)
 
 	item = ArchiveItem(display=display, archive=arc, verdict=classify_archive(arc), depth=depth)
-	if arc.ok or not opts.skip_non_pe:
+	if arc.ok or opts.show_non_pe:
 		yield item
 	if not arc.ok or not opts.recurse:
 		if arc.root:
@@ -2087,7 +2087,7 @@ def analyse(
 class Options:
 	recurse: bool = True
 	max_depth: int = 3
-	skip_non_pe: bool = False
+	show_non_pe: bool = False
 	keep_strings: bool = False
 	serial: Iterator[int] = field(default_factory=lambda: iter(range(1 << 30)))
 
@@ -2152,11 +2152,12 @@ def main(
 			help='Print paths relative to the current directory in table mode.',
 		),
 	] = True,
-	skip_non_pe: Annotated[
+	show_non_pe: Annotated[
 		bool,
 		typer.Option(
-			'--skip-non-pe',
-			help='Omit files that are neither PE images nor readable archives.',
+			'--non-pe/--skip-non-pe',
+			'-a/-o',
+			help='Include or omit files that are neither PE images nor readable archives.',
 		),
 	] = False,
 	recurse: Annotated[
@@ -2208,7 +2209,7 @@ def main(
 	opts = Options(
 		recurse=recurse,
 		max_depth=max_depth,
-		skip_non_pe=skip_non_pe,
+		show_non_pe=show_non_pe,
 		keep_strings=bool(strings),
 	)
 	scratch = Scratch()
