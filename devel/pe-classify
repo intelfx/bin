@@ -1822,7 +1822,7 @@ def render_table(items: list[Item], base: Path | None) -> str:
 def _kv(console: Console, key: str, value: str, style: str = '') -> None:
 	if value:
 		console.print(
-			f'    [dim]{key:<14}[/dim] '
+			f'    [dim]{key:<16}[/dim] '
 			+ (f'[{style}]{escape(value)}[/{style}]' if style else escape(value))
 		)
 
