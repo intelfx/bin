@@ -50,6 +50,9 @@ def assert_cast[T](typ: type[T], value: Any) -> T:
 
 log: structlog.BoundLogger = structlog.get_logger()
 
+# FIXME: narrow the exception types
+RuntimeExceptions: tuple[type[Exception], ...] = (Exception, )
+
 
 # --------------------------------------------------------------------------
 # lookup tables
@@ -682,7 +685,7 @@ def _probe_net(raw: bytes, facts: Facts) -> None:
 		flags = dn.net.Flags
 		net.flags = [n for n in dir(flags) if n.startswith('CLR_') and getattr(flags, n)]
 		_read_assembly_refs(dn.net.mdtables, net)
-	except Exception as exc:
+	except RuntimeExceptions as exc:
 		log.warning('dnfile failed', path=str(facts.path), error=str(exc))
 		if not net.refs:
 			return
@@ -800,7 +803,7 @@ def probe(path: Path, keep_strings: bool = False) -> Facts:
 
 	try:
 		start = pe.get_overlay_data_start_offset()
-	except Exception:
+	except RuntimeExceptions:
 		start = None
 	# the Authenticode blob lives past the last section too; it is not
 	# interesting as "appended data"
@@ -880,7 +883,7 @@ class Scratch:
 		if self._root is None:
 			try:
 				self._root = self._unshare()
-			except Exception as exc:
+			except RuntimeExceptions as exc:
 				log.warning(
 					'namespace isolation unavailable, using a plain temporary directory',
 					error=str(exc),
@@ -1242,7 +1245,7 @@ def probe_archive(path: Path, kind: str, scratch: Scratch, serial: int) -> Archi
 					facts.metadata.append(member)
 					if facts.install is None or facts.install.origin == '_setup.xml':
 						facts.install = parse_msce(data)
-		except Exception as exc:
+		except RuntimeExceptions as exc:
 			log.warning('cab metadata', path=str(member), error=str(exc))
 	return facts
 
