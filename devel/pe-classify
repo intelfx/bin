@@ -1730,7 +1730,8 @@ def _safe(text: str) -> str:
 
 
 def _md_escape(text: str) -> str:
-	return _safe(text).replace('|', '\\|').replace('\n', ' ')
+	"""Like :func:`_safe`, but also escape characters that interfere with Markdown tables."""
+	return _safe(text).replace('|', '\\|').replace('\n', ' ').replace('\\', '\\\\')
 
 
 def _archive_row(item: ArchiveItem) -> dict[str, str | None]:
