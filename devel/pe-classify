@@ -88,8 +88,21 @@ MACHINES = {
 
 # machines that only ever shipped in Windows CE devices
 CE_ONLY_MACHINES = {
-	0x0162, 0x0166, 0x0168, 0x0169, 0x01A2, 0x01A3, 0x01A6, 0x01A8,
-	0x01C0, 0x01C2, 0x0266, 0x0366, 0x0466, 0x01D3, 0x0520,
+	0x0162,
+	0x0166,
+	0x0168,
+	0x0169,
+	0x01A2,
+	0x01A3,
+	0x01A6,
+	0x01A8,
+	0x01C0,
+	0x01C2,
+	0x0266,
+	0x0366,
+	0x0466,
+	0x01D3,
+	0x0520,
 }
 
 SUBSYSTEMS = {
@@ -109,7 +122,12 @@ SUBSYSTEMS = {
 	16: 'WINDOWS_BOOT_APPLICATION',
 }
 
-SUBSYSTEM_SHORT = {1: 'native', 2: 'gui', 3: 'cui', 9: 'ce'}
+SUBSYSTEM_SHORT = {
+	1: 'native',
+	2: 'gui',
+	3: 'cui',
+	9: 'ce',
+}
 
 # CE subsystem version -> (os tag, description). eVC-era toolchains spell the
 # minor as decimal digits (4.20 == CE 4.2); the VS2005/2008 device SDKs spell
@@ -240,11 +258,29 @@ LIBS = {
 
 # libraries that on their own pin the target OS family
 CE_MARKER_LIBS = {
-	'coredll.dll', 'ceshell.dll', 'ceddk.dll', 'ws2.dll', 'gx.dll',
-	'cemapi.dll', 'imgdecmp.dll', 'd3dm.dll',
+	'coredll.dll',
+	'ceshell.dll',
+	'ceddk.dll',
+	'ws2.dll',
+	'gx.dll',
+	'cemapi.dll',
+	'imgdecmp.dll',
+	'd3dm.dll',
 }
-WM_MARKER_LIBS = {'aygshell.dll', 'tpcshell.dll', 'ossvcs.dll', 'pimstore.dll', 'pooutlook.dll'}
-WIN32_MARKER_LIBS = {'kernel32.dll', 'user32.dll', 'gdi32.dll', 'ntdll.dll', 'advapi32.dll'}
+WM_MARKER_LIBS = {
+	'aygshell.dll',
+	'tpcshell.dll',
+	'ossvcs.dll',
+	'pimstore.dll',
+	'pooutlook.dll',
+}
+WIN32_MARKER_LIBS = {
+	'kernel32.dll',
+	'user32.dll',
+	'gdi32.dll',
+	'ntdll.dll',
+	'advapi32.dll',
+}
 
 # Delphi / C++ Builder runtime packages, keyed by prefix
 BORLAND_RE = re.compile(r'^(rtl|vcl|cc32|borlndmm)\d*\.(bpl|dll)$')
@@ -276,10 +312,18 @@ TFM_RE = re.compile(rb'\.NET(Framework|CompactFramework|CoreApp|Standard|Portabl
 
 # section name -> packer
 PACKERS = {
-	'UPX0': 'UPX', 'UPX1': 'UPX', 'UPX2': 'UPX', '.UPX0': 'UPX',
-	'.aspack': 'ASPack', '.adata': 'ASPack',
-	'.petite': 'Petite', '.nsp0': 'NsPack', 'PEC2': 'PECompact',
-	'.themida': 'Themida', '.vmp0': 'VMProtect', '.mpress1': 'MPRESS',
+	'UPX0': 'UPX',
+	'UPX1': 'UPX',
+	'UPX2': 'UPX',
+	'.UPX0': 'UPX',
+	'.aspack': 'ASPack',
+	'.adata': 'ASPack',
+	'.petite': 'Petite',
+	'.nsp0': 'NsPack',
+	'PEC2': 'PECompact',
+	'.themida': 'Themida',
+	'.vmp0': 'VMProtect',
+	'.mpress1': 'MPRESS',
 }
 
 # exported symbol -> what the module is
@@ -330,10 +374,20 @@ PRIMARY_LANGS = {
 }
 
 CODEPAGES = {
-	0: '7-bit ASCII', 932: 'Shift-JIS', 936: 'GBK', 949: 'EUC-KR',
-	950: 'Big5', 1200: 'UTF-16', 1250: 'CP1250 Latin-2', 1251: 'CP1251 Cyrillic',
-	1252: 'CP1252 Latin-1', 1253: 'CP1253 Greek', 1254: 'CP1254 Turkish',
-	1255: 'CP1255 Hebrew', 1256: 'CP1256 Arabic', 1257: 'CP1257 Baltic',
+	0: '7-bit ASCII',
+	932: 'Shift-JIS',
+	936: 'GBK',
+	949: 'EUC-KR',
+	950: 'Big5',
+	1200: 'UTF-16',
+	1250: 'CP1250 Latin-2',
+	1251: 'CP1251 Cyrillic',
+	1252: 'CP1252 Latin-1',
+	1253: 'CP1253 Greek',
+	1254: 'CP1254 Turkish',
+	1255: 'CP1255 Hebrew',
+	1256: 'CP1256 Arabic',
+	1257: 'CP1257 Baltic',
 	1258: 'CP1258 Vietnamese',
 }
 
@@ -353,26 +407,34 @@ LINKER_ERAS = {
 
 
 # archive container magic -> kind
-ARCHIVE_MAGIC = (
+ARCHIVE_MAGIC = [
 	(b'MSCF', 'cab'),
 	(b'PK\x03\x04', 'zip'),
 	(b'PK\x05\x06', 'zip'),
 	(b'PK\x07\x08', 'zip'),
 	(b'Rar!\x1a\x07', 'rar'),
 	(b'7z\xbc\xaf\x27\x1c', '7z'),
-)
+]
 
 # extractors to try in order, per kind. 7-Zip is uniformly the fastest and
 # handles every container here; the format-specific tools are fallbacks for
 # archives it rejects.
 EXTRACTORS = {
-	'cab': (['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
-	        ['cabextract', '-q', '-d', '{dest}', '--', '{src}']),
-	'zip': (['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
-	        ['unzip', '-qq', '-o', '-P', '', '--', '{src}', '-d', '{dest}']),
-	'rar': (['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
-	        ['unrar', 'x', '-inul', '-o+', '-p-', '--', '{src}', '{dest}/']),
-	'7z': (['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],),
+	'cab': [
+		['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
+		['cabextract', '-q', '-d', '{dest}', '--', '{src}'],
+	],
+	'zip': [
+		['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
+		['unzip', '-qq', '-o', '-P', '', '--', '{src}', '-d', '{dest}'],
+	],
+	'rar': [
+		['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
+		['unrar', 'x', '-inul', '-o+', '-p-', '--', '{src}', '{dest}/'],
+	],
+	'7z': [
+		['7z', 'x', '-bso0', '-bsp0', '-y', '-p', '-o{dest}', '--', '{src}'],
+	],
 }
 
 # [CEDevice] ProcessorType from the source INF, as PROCESSOR_* constants
@@ -415,7 +477,7 @@ CE_FOLDERS = {
 }
 
 # registry locations a CE package writes to, and what writing there means
-REGISTRY_HINTS = (
+REGISTRY_HINTS = [
 	(r'\microsoft\today\items', 'Today screen plugin'),
 	(r'\init\launch', 'launched by the CE kernel at boot'),
 	(r'\services\\', 'CE device service'),
@@ -427,7 +489,7 @@ REGISTRY_HINTS = (
 	(r'hkcr\clsid', 'COM class registration'),
 	(r'\explorer\shell folders', 'shell folder redirection'),
 	(r'\comm\\', 'networking or telephony stack'),
-)
+]
 
 PE_MAGIC = b'MZ'
 MSCE_SIGNATURES = (b'MSCE', b'CE4+')
@@ -537,7 +599,7 @@ def _parse_string_table(data: bytes) -> list[str]:
 			break
 		(count,) = struct.unpack_from('<H', data, off)
 		off += 2
-		text = data[off:off + count * 2].decode('utf-16le', 'replace')
+		text = data[off : off + count * 2].decode('utf-16le', 'replace')
 		off += count * 2
 		if text:
 			out.append(text)
@@ -559,8 +621,10 @@ def _probe_resources(pe: pefile.PE, facts: Facts, keep_strings: bool) -> None:
 				if name != 'RT_STRING':
 					continue
 				try:
-					data = pe.get_data(lang_entry.data.struct.OffsetToData,
-					                   lang_entry.data.struct.Size)
+					data = pe.get_data(
+						lang_entry.data.struct.OffsetToData,
+						lang_entry.data.struct.Size,
+					)
 				except pefile.PEFormatError:
 					continue
 				strings = _parse_string_table(data)
@@ -581,7 +645,10 @@ def _probe_resources(pe: pefile.PE, facts: Facts, keep_strings: bool) -> None:
 					continue
 				parts = str(raw).split()
 				if len(parts) == 2:
-					facts.translations.append((int(parts[0], 16), int(parts[1], 16)))
+					facts.translations.append((
+						int(parts[0], 16),
+						int(parts[1], 16),
+					))
 
 
 def _public_key_token(key: bytes) -> str:
@@ -602,8 +669,11 @@ def _probe_net(raw: bytes, facts: Facts) -> None:
 		dn.parse_data_directories()
 		if not dn.net or not dn.net.metadata or not dn.net.mdtables:
 			return
-		net.metadata_version = bytes(
-			dn.net.metadata.struct.Version).rstrip(b'\0').decode('ascii', 'replace')
+		net.metadata_version = (
+			bytes(dn.net.metadata.struct.Version)
+			.rstrip(b'\0')
+			.decode('ascii', 'replace')
+		)
 		flags = dn.net.Flags
 		net.flags = [n for n in dir(flags) if n.startswith('CLR_') and getattr(flags, n)]
 		_read_assembly_refs(dn.net.mdtables, net)
@@ -623,7 +693,7 @@ def _read_assembly_refs(tables, net: NetFacts) -> None:
 		row = tables.Assembly.rows[0]
 		net.assembly = str(row.Name.value)
 		net.assembly_version = f'{row.MajorVersion}.{row.MinorVersion}.{row.BuildNumber}.{row.RevisionNumber}'
-	for row in (tables.AssemblyRef.rows if tables.AssemblyRef else []):
+	for row in tables.AssemblyRef.rows if tables.AssemblyRef else []:
 		blob = bytes(row.PublicKey.value or b'') if row.PublicKey else b''
 		# afPublicKey means the blob holds the full key, from which the token
 		# is the last 8 bytes of its SHA-1, reversed
@@ -672,13 +742,15 @@ def probe(path: Path, keep_strings: bool = False) -> Facts:
 		facts.error = f'not a PE file ({exc})'
 		return facts
 
-	pe.parse_data_directories(directories=[
-		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXPORT'],
-		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT'],
-		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_RESOURCE'],
-		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DEBUG'],
-		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT'],
-	])
+	pe.parse_data_directories(
+		directories=[
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_EXPORT'],
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_IMPORT'],
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_RESOURCE'],
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DEBUG'],
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT'],
+		]
+	)
 	opt, hdr = pe.OPTIONAL_HEADER, pe.FILE_HEADER
 
 	facts.machine = hdr.Machine
@@ -694,9 +766,13 @@ def probe(path: Path, keep_strings: bool = False) -> Facts:
 	facts.entrypoint = opt.AddressOfEntryPoint
 	facts.sections = [s.Name.rstrip(b'\0').decode('latin-1') for s in pe.sections]
 	facts.signed_bytes = opt.DATA_DIRECTORY[
-		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_SECURITY']].Size
-	facts.has_clr = bool(opt.DATA_DIRECTORY[
-		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']].VirtualAddress)
+		pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_SECURITY']
+	].Size
+	facts.has_clr = bool(
+		opt.DATA_DIRECTORY[
+			pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']
+		].VirtualAddress
+	)
 
 	for entry in getattr(pe, 'DIRECTORY_ENTRY_IMPORT', []):
 		facts.imports[entry.dll.decode('latin-1').lower()] = len(entry.imports)
@@ -758,11 +834,22 @@ class Scratch:
 		self.isolated = False
 
 	@staticmethod
-	def _mount(src: str | None, target: str, fstype: str | None,
-	           flags: int = 0, data: str | None = None) -> None:
+	def _mount(
+		src: str | None,
+		target: str,
+		fstype: str | None,
+		flags: int = 0,
+		data: str | None = None,
+	) -> None:
 		libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
 		enc = lambda s: s.encode() if s else None
-		if libc.mount(enc(src), enc(target), enc(fstype), ctypes.c_ulong(flags), enc(data)) != 0:
+		if libc.mount(
+			enc(src),
+			enc(target),
+			enc(fstype),
+			ctypes.c_ulong(flags),
+			enc(data),
+		) != 0:
 			err = ctypes.get_errno()
 			raise OSError(err, f'mount {fstype} on {target}: {os.strerror(err)}')
 
@@ -787,8 +874,10 @@ class Scratch:
 			try:
 				self._root = self._unshare()
 			except Exception as exc:
-				log.warning('namespace isolation unavailable, using a plain temporary '
-				            'directory', error=str(exc))
+				log.warning(
+					'namespace isolation unavailable, using a plain temporary directory',
+					error=str(exc),
+				)
 				self._fallback = tempfile.TemporaryDirectory(prefix='pe-classify-')
 				self._root = Path(self._fallback.name)
 		return self._root
@@ -796,9 +885,9 @@ class Scratch:
 
 @dataclass
 class CabFile:
-	source: str = ''        # name inside the CAB, e.g. SKYPES~2.999
-	name: str = ''          # name once installed
-	dest: str = ''          # destination directory
+	source: str = ''  # name inside the CAB, e.g. SKYPES~2.999
+	name: str = ''    # name once installed
+	dest: str = ''    # destination directory
 	flags: int = 0
 
 	@property
@@ -812,7 +901,7 @@ class CabFile:
 
 @dataclass
 class CabInstall:
-	origin: str = ''                # 'MSCE' / 'CE4+' / '_setup.xml'
+	origin: str = ''  # 'MSCE' / 'CE4+' / '_setup.xml'
 	appname: str = ''
 	provider: str = ''
 	os_min: str = ''
@@ -847,9 +936,11 @@ class CabInstall:
 
 def _ce_path(text: str) -> str:
 	"""Expand %CEnn% destination folder ids."""
+
 	def sub(m):
 		folder = CE_FOLDERS.get(int(m.group(1)))
 		return folder if folder else m.group(0)
+
 	return re.sub(r'%CE(\d+)%', sub, text)
 
 
@@ -862,23 +953,37 @@ def parse_msce(data: bytes) -> CabInstall:
 	"""
 	if data[:4] not in MSCE_SIGNATURES:
 		raise ValueError('not a Windows CE setup header')
-	length, processor = struct.unpack_from('<I', data, 0x08)[0], struct.unpack_from('<I', data, 0x14)[0]
-	vmin_hi, vmin_lo, vmax_hi, vmax_lo, build_min, build_max = struct.unpack_from('<6i', data, 0x18)
-	offsets = struct.unpack_from('<6I', data, 0x3C)
-	oapp, lapp, oprov, lprov, ouns, luns = struct.unpack_from('<6H', data, 0x54)
+	length, processor = (
+		struct.unpack_from('<I', data, 0x08)[0],
+		struct.unpack_from('<I', data, 0x14)[0],
+	)
+	vmin_hi, vmin_lo, vmax_hi, vmax_lo, build_min, build_max = (
+		struct.unpack_from('<6i', data, 0x18)
+	)
+	offsets = (
+		struct.unpack_from('<6I', data, 0x3C)
+	)
+	oapp, lapp, oprov, lprov, ouns, luns = (
+		struct.unpack_from('<6H', data, 0x54)
+	)
 
-	inst = CabInstall(origin=data[:4].decode('ascii'),
-	                  os_min=f'{vmin_hi}.{vmin_lo}', os_max=f'{vmax_hi}.{vmax_lo}',
-	                  build_min=build_min, build_max=build_max, processor=processor)
+	inst = CabInstall(
+		origin=data[:4].decode('ascii'),
+		os_min=f'{vmin_hi}.{vmin_lo}',
+		os_max=f'{vmax_hi}.{vmax_lo}',
+		build_min=build_min,
+		build_max=build_max,
+		processor=processor,
+	)
 	if length != len(data):
 		inst.warnings.append(f'header declares {length} bytes, file is {len(data)}')
 
-	text = lambda off, ln: data[off:off + ln].split(b'\0')[0].decode('latin-1') if ln else ''
+	text = lambda off, ln: data[off : off + ln].split(b'\0')[0].decode('latin-1') if ln else ''
 	inst.appname, inst.provider = text(oapp, lapp), text(oprov, lprov)
 	inst.unsupported = text(ouns, luns)
 
 	# an absent section's bound is the next section that is present
-	ends = [next((x for x in offsets[i + 1:] if x), len(data)) for i in range(6)]
+	ends = [next((x for x in offsets[i + 1 :] if x), len(data)) for i in range(6)]
 	ostr, odir, ofile, ohive, okey, olink = offsets
 
 	def ids(off: int, ln: int) -> list[int]:
@@ -889,7 +994,7 @@ def parse_msce(data: bytes) -> CabInstall:
 	while ostr and o < ends[0]:
 		sid, ln = struct.unpack_from('<HH', data, o)
 		o += 4
-		strings[sid] = data[o:o + ln].split(b'\0')[0].decode('latin-1')
+		strings[sid] = data[o : o + ln].split(b'\0')[0].decode('latin-1')
 		o += ln
 	join = lambda seq: '\\'.join(strings.get(i, f'%{i}%') for i in seq)
 
@@ -906,10 +1011,14 @@ def parse_msce(data: bytes) -> CabInstall:
 	while ofile and o < ends[2]:
 		fid, did, _, flags, ln = struct.unpack_from('<HHHIH', data, o)
 		o += 12
-		name = data[o:o + ln].split(b'\0')[0].decode('latin-1')
+		name = data[o : o + ln].split(b'\0')[0].decode('latin-1')
 		o += ln
-		inst.files.append(CabFile(source=f'.{fid:03d}', name=name,
-		                          dest=dirs.get(did, ''), flags=flags))
+		inst.files.append(CabFile(
+			source=f'.{fid:03d}',
+			name=name,
+			dest=dirs.get(did, ''),
+			flags=flags,
+		))
 
 	hives: dict[int, str] = {}
 	o = ohive
@@ -923,15 +1032,18 @@ def parse_msce(data: bytes) -> CabInstall:
 	while okey and o < ends[4]:
 		_, hid, _, _, dtype, ln = struct.unpack_from('<6H', data, o)
 		o += 12
-		name, _, raw = data[o:o + ln].partition(b'\0')
+		name, _, raw = data[o : o + ln].partition(b'\0')
 		o += ln
 		if dtype == 1 and len(raw) >= 4:
 			value = str(struct.unpack_from('<I', raw)[0])
 		else:
 			value = raw.split(b'\0')[0].decode('latin-1')
-		inst.registry.append((hives.get(hid, f'#{hid}'),
-		                      name.decode('latin-1') or '(default)',
-		                      REGISTRY_TYPES.get(dtype, f'type {dtype}'), value))
+		inst.registry.append((
+			hives.get(hid, f'#{hid}'),
+			name.decode('latin-1') or '(default)',
+			REGISTRY_TYPES.get(dtype, f'type {dtype}'),
+			value,
+		))
 
 	# the trailing section has no following offset to bound it, so honour the
 	# declared count there rather than reading into any padding
@@ -943,7 +1055,10 @@ def parse_msce(data: bytes) -> CabInstall:
 		name = join(ids(o, ln))
 		o += ln
 		folder = CE_FOLDERS.get(base, f'%CE{base}%')
-		where = next((f.installed for f in inst.files if f.source == f'.{target:03d}'), f'#{target}')
+		where = next(
+			(f.installed for f in inst.files if f.source == f'.{target:03d}'),
+			f'#{target}',
+		)
 		inst.shortcuts.append((f'{folder}\\{name}', where))
 	return inst
 
@@ -974,15 +1089,28 @@ def parse_setup_xml(data: bytes) -> CabInstall:
 			shortcut = child.find('characteristic[@type="Shortcut"]')
 			if extract is not None:
 				source = extract.find('parm[@name="Source"]')
-				flags = MSCE_FILE_SELFREG if extract.find(
-					'characteristic[@type="SelfRegister"]') is not None \
-					or extract.find('parm[@name="SelfRegister"]') is not None else 0
-				inst.files.append(CabFile(source=source.get('value', '') if source is not None else '',
-				                          name=kind, dest=_ce_path(path), flags=flags))
+				flags = (
+					MSCE_FILE_SELFREG
+					if extract.find('characteristic[@type="SelfRegister"]') is not None
+					or extract.find('parm[@name="SelfRegister"]') is not None
+					else 0
+				)
+				inst.files.append(CabFile(
+					source=(
+						source.get('value', '')
+						if source is not None
+						else ''
+					),
+					name=kind,
+					dest=_ce_path(path),
+					flags=flags,
+				))
 			elif shortcut is not None:
 				target = shortcut.find('parm[@name="Source"]')
-				inst.shortcuts.append((_ce_path(f'{path}\\{kind}'),
-				                       _ce_path(target.get('value', '')) if target is not None else ''))
+				inst.shortcuts.append((
+					_ce_path(f'{path}\\{kind}'),
+					_ce_path(target.get('value', '')) if target is not None else '',
+				))
 			else:
 				if child.find('characteristic[@type="MakeDir"]') is not None:
 					inst.dirs.append(_ce_path(here))
@@ -994,7 +1122,10 @@ def parse_setup_xml(data: bytes) -> CabInstall:
 			continue
 		for named in store.findall('characteristic'):
 			for cert in named.findall('characteristic'):
-				inst.certificates.append((named.get('type', ''), cert.get('type', '')))
+				inst.certificates.append((
+					named.get('type', ''),
+					cert.get('type', ''),
+				))
 
 	for char in root.iter('characteristic'):
 		if char.get('type') == 'FileOperation':
@@ -1003,9 +1134,11 @@ def parse_setup_xml(data: bytes) -> CabInstall:
 			for key in char.findall('characteristic'):
 				for parm in key.findall('parm'):
 					inst.registry.append((
-						_ce_path(key.get('type', '')), parm.get('name', '') or '(default)',
+						_ce_path(key.get('type', '')),
+						parm.get('name', '') or '(default)',
 						'REG_DWORD' if parm.get('datatype') == 'integer' else 'REG_SZ',
-						parm.get('value', '')))
+						parm.get('value', ''),
+					))
 	inst.dirs = sorted(set(inst.dirs))
 	return inst
 
@@ -1047,16 +1180,22 @@ def extract_archive(path: Path, kind: str, dest: Path) -> str:
 		if not shutil.which(argv[0]):
 			continue
 		try:
-			proc = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
-			                      timeout=EXTRACT_TIMEOUT)
+			proc = subprocess.run(
+				argv,
+				capture_output=True,
+				stdin=subprocess.DEVNULL,
+				timeout=EXTRACT_TIMEOUT,
+			)
 		except (OSError, subprocess.SubprocessError) as exc:
 			errors.append(f'{argv[0]}: {exc}')
 			continue
 		# a partial extraction is still worth classifying
 		if proc.returncode == 0 or any(dest.iterdir()):
 			return ''
-		errors.append(f'{argv[0]}: rc={proc.returncode} '
-		              f'{proc.stderr.decode("utf-8", "replace").strip()[:120]}')
+		errors.append(
+			f'{argv[0]}: rc={proc.returncode} '
+			f'{proc.stderr.decode("utf-8", "replace").strip()[:120]}'
+		)
 	return '; '.join(errors) or f'no extractor available for {kind}'
 
 
@@ -1106,14 +1245,14 @@ def probe_archive(path: Path, kind: str, scratch: Scratch, serial: int) -> Archi
 
 @dataclass
 class Verdict:
-	target: str = 'unknown'          # windows-mobile | windows-ce | windows-desktop
-	os_tag: str = ''                 # wm6, wm2003, win32, ...
-	platform: str = ''               # human-readable target
-	runtime: str = 'native'          # native | netcf | netfx | netcore | silverlight
+	target: str = 'unknown'   # windows-mobile | windows-ce | windows-desktop
+	os_tag: str = ''          # wm6, wm2003, win32, ...
+	platform: str = ''        # human-readable target
+	runtime: str = 'native'   # native | netcf | netfx | netcore | silverlight
 	runtime_label: str = ''
 	arch: str = ''
 	arch_label: str = ''
-	confidence: str = 'high'         # high | medium | low
+	confidence: str = 'high'  # high | medium | low
 	evidence: list[str] = field(default_factory=list)
 	capabilities: list[str] = field(default_factory=list)
 	roles: list[str] = field(default_factory=list)
@@ -1146,12 +1285,16 @@ def _classify_net(facts: Facts, v: Verdict) -> None:
 			base = '3.5'
 		v.net_version = f'cf{base}'
 		v.runtime_label = f'.NET Compact Framework {base}'
-		v.evidence.append(f'assembly references carry public key token {CF_TOKEN} (.NET CF)')
+		v.evidence.append(
+			f'assembly references carry public key token {CF_TOKEN} (.NET CF)'
+		)
 		if net.ref('Microsoft.WindowsCE.Forms'):
 			v.evidence.append('references Microsoft.WindowsCE.Forms (device UI)')
 		if base == '2.0':
-			v.notes.append('CF 2.0 and CF 3.5 both ship mscorlib 2.0.0.0; '
-			               'absent a 3.5-versioned reference the two are indistinguishable')
+			v.notes.append(
+				'CF 2.0 and CF 3.5 both ship mscorlib 2.0.0.0; '
+				'absent a 3.5-versioned reference the two are indistinguishable'
+			)
 	elif SILVERLIGHT_TOKEN in tokens:
 		v.runtime = 'silverlight'
 		v.net_version = 'silverlight'
@@ -1165,17 +1308,25 @@ def _classify_net(facts: Facts, v: Verdict) -> None:
 			base = 'core'
 		elif any(r[0] == 'System.Core' and r[1].startswith('3.5') for r in net.refs):
 			base = '3.5'
-		elif any(r[0] in ('PresentationCore', 'PresentationFramework', 'WindowsBase')
-		         and r[1].startswith('3.0') for r in net.refs):
+		elif any(
+			r[0] in ('PresentationCore', 'PresentationFramework', 'WindowsBase')
+			and r[1].startswith('3.0')
+			for r in net.refs
+		):
 			base = '3.0'
 		if net.tfm.startswith('.NETFramework,Version=v'):
 			base = net.tfm.split('=v', 1)[1]
 		v.net_version = base
-		v.runtime_label = ('.NET Core / .NET 5+' if v.runtime == 'netcore'
-		                   else f'.NET Framework {base}')
+		v.runtime_label = (
+			'.NET Core / .NET 5+'
+			if v.runtime == 'netcore'
+			else f'.NET Framework {base}'
+		)
 		if corelib_token:
-			v.evidence.append(f'mscorlib public key token {corelib_token} '
-			                  f'({NET_TOKENS.get(corelib_token, "unknown key")})')
+			v.evidence.append(
+				f'mscorlib public key token {corelib_token} '
+				f'({NET_TOKENS.get(corelib_token, "unknown key")})'
+			)
 
 
 def _classify_platform(facts: Facts, v: Verdict) -> None:
@@ -1191,22 +1342,33 @@ def _classify_platform(facts: Facts, v: Verdict) -> None:
 	if ce_libs:
 		v.evidence.append(f'imports CE-only libraries: {", ".join(sorted(ce_libs))}')
 	if wm_libs:
-		v.evidence.append(f'imports Windows Mobile shell libraries: {", ".join(sorted(wm_libs))}')
+		v.evidence.append(
+			f'imports Windows Mobile shell libraries: {", ".join(sorted(wm_libs))}'
+		)
 	if ce_resource:
 		v.evidence.append('carries a CEUX resource (Windows CE shell metadata)')
 	if facts.machine in CE_ONLY_MACHINES:
-		v.evidence.append(f'machine 0x{facts.machine:04X} only ever shipped on Windows CE devices')
+		v.evidence.append(
+			f'machine 0x{facts.machine:04X} only ever shipped on Windows CE devices'
+		)
 
-	ce_score = sum((ce_subsystem, bool(ce_libs), ce_resource, facts.machine in CE_ONLY_MACHINES))
+	ce_score = sum(
+		(ce_subsystem, bool(ce_libs), ce_resource, facts.machine in CE_ONLY_MACHINES)
+	)
 
 	if v.runtime in ('netcf', 'silverlight'):
 		v.target = 'windows-mobile'
-		v.platform = ('Windows Mobile / Windows CE device (managed)'
-		              if v.runtime == 'netcf' else 'Windows Phone 7 / Silverlight')
+		v.platform = (
+			'Windows Mobile / Windows CE device (managed)'
+			if v.runtime == 'netcf'
+			else 'Windows Phone 7 / Silverlight'
+		)
 		v.os_tag = v.net_version if v.runtime == 'netcf' else 'wp7'
 		if not ce_subsystem:
-			v.notes.append('managed device assemblies keep a desktop subsystem value; '
-			               'the target is inferred from the framework, not the PE header')
+			v.notes.append(
+				'managed device assemblies keep a desktop subsystem value; '
+				'the target is inferred from the framework, not the PE header'
+			)
 		return
 
 	if ce_score:
@@ -1215,7 +1377,11 @@ def _classify_platform(facts: Facts, v: Verdict) -> None:
 		v.ce_version = f'{major}.{minor}'
 		if wm_libs or ce_resource:
 			v.target = 'windows-mobile'
-			v.platform = label if tag.startswith(('ppc', 'wm')) else f'{label}, Windows Mobile shell'
+			v.platform = (
+				label
+				if tag.startswith(('ppc', 'wm'))
+				else f'{label}, Windows Mobile shell'
+			)
 			v.os_tag = tag
 		else:
 			v.target = 'windows-ce'
@@ -1224,8 +1390,10 @@ def _classify_platform(facts: Facts, v: Verdict) -> None:
 		if ce_score == 1:
 			v.confidence = 'medium'
 		if win32_libs:
-			v.notes.append(f'also imports desktop-only {", ".join(sorted(win32_libs))} -- '
-			               'unusual, check for a patched or hand-built image')
+			v.notes.append(
+				f'also imports desktop-only {", ".join(sorted(win32_libs))} -- '
+				'unusual, check for a patched or hand-built image'
+			)
 		return
 
 	v.target = 'windows-desktop'
@@ -1257,8 +1425,11 @@ def _classify_extras(facts: Facts, v: Verdict) -> None:
 	for symbol, role in EXPORT_ROLES.items():
 		if symbol in exported:
 			v.roles.append(role)
-	if facts.is_dll and any(e.endswith('_IOControl') for e in exported) \
-			and any(e.endswith('_Init') for e in exported):
+	if (
+		facts.is_dll
+		and any(e.endswith('_IOControl') for e in exported)
+		and any(e.endswith('_Init') for e in exported)
+	):
 		v.roles.append('Windows CE stream driver')
 	if 'installer' in caps and facts.embedded_cabs:
 		v.roles.append('installer carrying embedded CAB payload')
@@ -1266,24 +1437,29 @@ def _classify_extras(facts: Facts, v: Verdict) -> None:
 		v.roles.append('desktop-side device companion (RAPI/ActiveSync)')
 	if facts.is_dll and not facts.libs and not exported and facts.resource_langs:
 		v.roles.append('resource-only module (satellite / MUI localisation)')
-		notes.append('resource-only modules are built machine-neutral; the machine field '
-		             'does not describe the device they belong to')
+		notes.append(
+			'resource-only modules are built machine-neutral; the machine field '
+			'does not describe the device they belong to'
+		)
 
 	packer = next((PACKERS[s] for s in facts.sections if s in PACKERS), '')
 	if packer:
 		v.toolchain.append(f'packed with {packer}')
 		v.confidence = 'medium' if v.confidence == 'high' else v.confidence
-		notes.append('image is packed; imports and resources reflect the stub, not the payload')
+		notes.append(
+			'image is packed; imports and resources reflect the stub, not the payload'
+		)
 
 	era = LINKER_ERAS.get(facts.linker[0])
-	v.toolchain.append('linker {}.{:02d}{}'.format(
-		*facts.linker, f' -- {era}' if era else ''))
+	v.toolchain.append('linker {}.{:02d}{}'.format(*facts.linker, f' -- {era}' if era else ''))
 	if facts.pdb_path:
 		v.toolchain.append(f'PDB path: {facts.pdb_path}')
 	if facts.signed_bytes:
 		v.toolchain.append(f'Authenticode signature present ({facts.signed_bytes} bytes)')
 	if facts.embedded_cabs:
-		notes.append(f'{facts.embedded_cabs} embedded CAB header(s) (MSCF) found in the image')
+		notes.append(
+			f'{facts.embedded_cabs} embedded CAB header(s) (MSCF) found in the image'
+		)
 	if facts.overlay:
 		notes.append(f'{facts.overlay} bytes of overlay data past the last section')
 
@@ -1327,16 +1503,22 @@ def classify_archive(arc: ArchiveFacts) -> Verdict:
 		return v
 
 	v.platform = f'Windows CE installation CAB ({inst.origin})'
-	v.arch, arch_label = PROCESSOR_TYPES.get(inst.processor, ('', f'processor {inst.processor}'))
+	v.arch, arch_label = PROCESSOR_TYPES.get(
+		inst.processor, ('', f'processor {inst.processor}')
+	)
 	v.arch_label = arch_label
 	span = f', CE {inst.os_min}-{inst.os_max}' if inst.os_min else ''
 	v.evidence.append(f'{inst.origin}: {inst.title or "(unnamed package)"}{span}')
 	if inst.certificates:
 		stores = sorted({s for s, _ in inst.certificates})
 		v.platform = 'Windows Mobile certificate provisioning CAB'
-		v.roles.append(f'installs {len(inst.certificates)} certificate(s) into {", ".join(stores)}')
+		v.roles.append(
+			f'installs {len(inst.certificates)} certificate(s) into {", ".join(stores)}'
+		)
 		if any('Privileged' in s or 'SPC' in s for s in stores):
-			v.roles.append('grants privileged/software-publisher trust -- device unlock package')
+			v.roles.append(
+				'grants privileged/software-publisher trust -- device unlock package'
+			)
 	elif inst.empty and inst.provisioning:
 		v.roles.append(f'provisioning only: {", ".join(inst.provisioning)}')
 	if inst.processor:
@@ -1381,16 +1563,27 @@ class ArchiveItem(Item):
 	archive: ArchiveFacts
 
 
-ARCHIVE_ONLY_FIELDS = ('appname', 'provider', 'osmin', 'osmax', 'processor',
-                       'unsupported', 'members')
+ARCHIVE_ONLY_FIELDS = [
+	'appname',
+	'provider',
+	'osmin',
+	'osmax',
+	'processor',
+	'unsupported',
+	'members',
+ ]
 
 
 def _archive_fields(item: ArchiveItem) -> dict[str, str]:
 	arc, v = item.archive, item.verdict
 	inst = arc.install
 	out = {
-		'target': v.target, 'os': v.os_tag, 'platform': v.platform,
-		'arch': v.arch, 'kind': arc.kind, 'runtime': '',
+		'target': v.target,
+		'os': v.os_tag,
+		'platform': v.platform,
+		'arch': v.arch,
+		'kind': arc.kind,
+		'runtime': '',
 		'ceversion': v.ce_version,
 		'appname': inst.appname if inst else '',
 		'provider': inst.provider if inst else '',
@@ -1406,20 +1599,44 @@ def _archive_fields(item: ArchiveItem) -> dict[str, str]:
 	return out
 
 
-PE_ONLY_FIELDS = (
-	'target', 'os', 'platform', 'runtime', 'arch', 'bits', 'subsys', 'kind',
-	'ceversion', 'winversion', 'netversion', 'langid', 'lang', 'company',
-	'product', 'description', 'fileversion', 'productversion', 'origname',
-	'assembly', 'date', 'year', 'tag',
-)
+PE_ONLY_FIELDS = [
+	'target',
+	'os',
+	'platform',
+	'runtime',
+	'arch',
+	'bits',
+	'subsys',
+	'kind',
+	'ceversion',
+	'winversion',
+	'netversion',
+	'langid',
+	'lang',
+	'company',
+	'product',
+	'description',
+	'fileversion',
+	'productversion',
+	'origname',
+	'assembly',
+	'date',
+	'year',
+	'tag',
+]
 
 
 def _image_fields(item: ImageItem) -> dict[str, str]:
 	facts, v = item.facts, item.verdict
 	info = facts.version_info
-	primary_lang = max(facts.resource_langs,
-	                   key=lambda k: sum(facts.resource_langs[k].values())) \
-		if facts.resource_langs else None
+	primary_lang = (
+		max(
+			facts.resource_langs,
+			key=lambda k: sum(facts.resource_langs[k].values()),
+		)
+		if facts.resource_langs
+		else None
+	)
 	when = None
 	if 0 < facts.timestamp < 0x7FFFFFFF:
 		when = datetime.fromtimestamp(facts.timestamp, timezone.utc)
@@ -1590,8 +1807,10 @@ def render_table(items: list[Item], base: Path | None) -> str:
 
 def _kv(console: Console, key: str, value: str, style: str = '') -> None:
 	if value:
-		console.print(f'    [dim]{key:<14}[/dim] ' + (f'[{style}]{escape(value)}[/{style}]'
-		                                             if style else escape(value)))
+		console.print(
+			f'    [dim]{key:<14}[/dim] '
+			+ (f'[{style}]{escape(value)}[/{style}]' if style else escape(value))
+		)
 
 
 def render_archive_detail(console: Console, item: ArchiveItem) -> None:
@@ -1600,8 +1819,10 @@ def render_archive_detail(console: Console, item: ArchiveItem) -> None:
 	if not arc.ok:
 		console.print(f'    [red]{escape(arc.error)}[/red]\n')
 		return
-	console.print(f'  [green]{escape(v.platform)}[/green]  '
-	              f'[dim]{len(arc.members)} member(s), {arc.size} bytes[/dim]')
+	console.print(
+		f'  [green]{escape(v.platform)}[/green]  '
+		f'[dim]{len(arc.members)} member(s), {arc.size} bytes[/dim]'
+	)
 
 	inst = arc.install
 	if inst is None:
@@ -1635,10 +1856,14 @@ def render_archive_detail(console: Console, item: ArchiveItem) -> None:
 			console.print(f'      {escape(d)}')
 
 	if inst.files:
-		console.print('\n  [bold]Payload[/bold]  [dim](archive member -> installed path)[/dim]')
+		console.print(
+			'\n  [bold]Payload[/bold]  [dim](archive member -> installed path)[/dim]'
+		)
 		for cf in inst.files:
 			mark = ' [dim]self-register[/dim]' if cf.selfreg else ''
-			console.print(f'      [dim]{escape(cf.source):>6}[/dim]  {escape(cf.installed)}{mark}')
+			console.print(
+				f'      [dim]{escape(cf.source):>6}[/dim]  {escape(cf.installed)}{mark}'
+			)
 
 	if inst.shortcuts:
 		console.print('\n  [bold]Shortcuts[/bold]')
@@ -1665,9 +1890,19 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 		return
 
 	colour = {'high': 'green', 'medium': 'yellow', 'low': 'red'}[v.confidence]
-	summary = ' · '.join(x for x in (v.platform, v.runtime_label, v.arch_label,
-	                                 SUBSYSTEMS.get(facts.subsystem, '?')) if x)
-	console.print(f'  [{colour}]{escape(summary)}[/{colour}]  [dim]({v.confidence} confidence)[/dim]')
+	summary = ' · '.join(
+		x
+		for x in (
+			v.platform,
+			v.runtime_label,
+			v.arch_label,
+			SUBSYSTEMS.get(facts.subsystem, '?'),
+		)
+		if x
+	)
+	console.print(
+		f'  [{colour}]{escape(summary)}[/{colour}]  [dim]({v.confidence} confidence)[/dim]'
+	)
 
 	console.print('\n  [bold]Evidence[/bold]')
 	for line in v.evidence or ['(none)']:
@@ -1675,13 +1910,18 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 
 	console.print('\n  [bold]Image[/bold]')
 	_kv(console, 'machine', f'0x{facts.machine:04X}  {v.arch_label}')
-	_kv(console, 'subsystem', f'{facts.subsystem}  {SUBSYSTEMS.get(facts.subsystem, "?")}'
-	                          f'  (version {facts.subsys_ver[0]}.{facts.subsys_ver[1]:02d})')
+	_kv(console, 'subsystem', (
+		f'{facts.subsystem}  {SUBSYSTEMS.get(facts.subsystem, "?")}'
+		f'  (version {facts.subsys_ver[0]}.{facts.subsys_ver[1]:02d})'
+	))
 	_kv(console, 'min OS', '{}.{:02d}'.format(*facts.os_ver))
 	_kv(console, 'characteristics', 'DLL' if facts.is_dll else 'executable')
 	_kv(console, 'magic', 'PE32+' if facts.pe32_plus else 'PE32')
-	_kv(console, 'timestamp', f'{f["date"]} ({facts.timestamp:#x})' if f['date']
-	    else f'{facts.timestamp:#x} (zeroed or non-time)')
+	_kv(console, 'timestamp', (
+		f'{f["date"]} ({facts.timestamp:#x})'
+		if f['date']
+		else f'{facts.timestamp:#x} (zeroed or non-time)'
+	))
 	_kv(console, 'size', f'{facts.size} bytes')
 	_kv(console, 'sections', ' '.join(facts.sections))
 	for line in v.toolchain:
@@ -1697,15 +1937,19 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 			origin = NET_TOKENS.get(token, '')
 			suffix = f'  [dim]{origin}[/dim]' if origin else ''
 			flag = ' [dim]retargetable[/dim]' if retarget else ''
-			console.print(f'      {escape(name)} {version}'
-			              f'{" " + token if token else ""}{flag}{suffix}')
+			console.print(
+				f'      {escape(name)} {version}'
+				f'{" " + token if token else ""}{flag}{suffix}'
+			)
 
 	if facts.libs:
 		console.print('\n  [bold]Imports[/bold]')
 		for lib in sorted(facts.imports):
 			info = LIBS.get(lib)
 			note = f'  [dim]{info[1]}[/dim]' if info else ''
-			console.print(f'      {escape(lib)} [dim]({facts.imports[lib]})[/dim]{note}')
+			console.print(
+				f'      {escape(lib)} [dim]({facts.imports[lib]})[/dim]{note}'
+			)
 		for lib in sorted(facts.delay_imports):
 			console.print(f'      {escape(lib)} [dim](delay-loaded)[/dim]')
 
@@ -1713,9 +1957,15 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 		console.print('\n  [bold]Exports[/bold]')
 		shown = facts.exports[:12]
 		_kv(console, 'module', facts.export_name)
-		console.print('      ' + escape(', '.join(shown))
-		              + (f' [dim]... +{len(facts.exports) - len(shown)} more[/dim]'
-		                 if len(facts.exports) > len(shown) else ''))
+		console.print(
+			'      '
+			+ escape(', '.join(shown))
+			+ (
+				f' [dim]... +{len(facts.exports) - len(shown)} more[/dim]'
+				if len(facts.exports) > len(shown)
+				else ''
+			)
+		)
 
 	if v.capabilities or v.roles:
 		console.print('\n  [bold]Inferred[/bold]')
@@ -1728,20 +1978,27 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 		for key, value in facts.version_info.items():
 			_kv(console, key, value)
 		for lang, codepage in facts.translations:
-			_kv(console, 'translation',
-			    f'{lcid_name(lang)} (0x{lang:04X}) / {CODEPAGES.get(codepage, codepage)}')
+			_kv(
+				console,
+				'translation',
+				f'{lcid_name(lang)} (0x{lang:04X}) / {CODEPAGES.get(codepage, codepage)}',
+			)
 
 	if facts.resource_langs:
 		console.print('\n  [bold]Resources[/bold]')
 		_kv(console, 'types', ', '.join(sorted(set(facts.resource_types))))
 		for lang in sorted(facts.resource_langs):
 			kinds = facts.resource_langs[lang]
-			detail = ' '.join(f'{k.removeprefix("RT_")}({n})' for k, n in sorted(kinds.items()))
+			detail = ' '.join(
+				f'{k.removeprefix("RT_")}({n})' for k, n in sorted(kinds.items())
+			)
 			strings = facts.string_tables.get(lang)
 			total = facts.string_counts.get(lang, 0)
 			count = f'  [dim]{total} strings[/dim]' if total else ''
-			console.print(f'      [bold]{lcid_name(lang):<14}[/bold] '
-			              f'[dim]0x{lang:04X}[/dim]  {escape(detail)}{count}')
+			console.print(
+				f'      [bold]{lcid_name(lang):<14}[/bold] '
+				f'[dim]0x{lang:04X}[/dim]  {escape(detail)}{count}'
+			)
 			if strings and show_strings:
 				for text in strings[:show_strings]:
 					console.print(f'        [dim]|[/dim] {escape(text[:100])}')
@@ -1766,8 +2023,11 @@ def render_detail(console: Console, item: Item, show_strings: int) -> None:
 # CLI
 # --------------------------------------------------------------------------
 
-app = typer.Typer(add_completion=False, no_args_is_help=True,
-                  context_settings={'help_option_names': ['-h', '--help']})
+app = typer.Typer(
+	add_completion=False,
+	no_args_is_help=True,
+	context_settings={'help_option_names': ['-h', '--help']},
+)
 
 FIELD_HELP = (
 	'target os platform runtime arch bits subsys kind ceversion winversion '
@@ -1779,8 +2039,9 @@ FIELD_HELP = (
 EXTRACT_TIMEOUT = 600
 
 
-def analyse(path: Path, display: str, scratch: Scratch, opts: 'Options',
-            depth: int = 0) -> Iterator[Item]:
+def analyse(
+	path: Path, display: str, scratch: Scratch, opts: 'Options', depth: int = 0
+) -> Iterator[Item]:
 	"""Classify one file, descending into it when it is an archive."""
 	kind = archive_kind(path) if depth < opts.max_depth else ''
 	if not kind:
@@ -1848,26 +2109,75 @@ def _collect(paths: list[Path]) -> Iterator[Path]:
 
 @app.command()
 def main(
-	paths: Annotated[list[Path], typer.Argument(
-		help='Files to classify; a directory is walked recursively, "-" reads paths from stdin.')],
-	fmt: Annotated[str, typer.Option(
-		'--format', '-f',
-		help=f'Emit a format string per file instead of a report. '
-		     f'Empty output if any referenced field is unknown. Fields: {FIELD_HELP}')] = '',
-	table: Annotated[bool, typer.Option('--table/--detail', '-t/-d',
-		help='Force markdown table or detailed report (default: table for >1 file).')] = None,
-	strings: Annotated[int, typer.Option('--strings', '-s',
-		help='Show up to N sample strings per resource language.')] = 0,
-	relative: Annotated[bool, typer.Option('--relative/--absolute',
-		help='Print paths relative to the current directory in table mode.')] = True,
-	skip_non_pe: Annotated[bool, typer.Option('--skip-non-pe',
-		help='Omit files that are neither PE images nor readable archives.')] = False,
-	recurse: Annotated[bool, typer.Option('--recurse/--no-recurse', '-r/-R',
-		help='Unpack CAB/ZIP/RAR/7z archives and classify what is inside '
-		     '(default: on, except with --format, whose subject is the named file).')] = None,
-	max_depth: Annotated[int, typer.Option('--max-depth',
-		help='How deep to follow archives nested inside archives.')] = 3,
-	verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Log parser diagnostics.')] = False,
+	paths: Annotated[
+		list[Path],
+		typer.Argument(
+			help='Files to classify; a directory is walked recursively, "-" reads paths from stdin.'
+		),
+	],
+	fmt: Annotated[
+		str,
+		typer.Option(
+			'--format',
+			'-f',
+			help=(
+				f'Emit a format string per file instead of a report. '
+				f'Empty output if any referenced field is unknown. Fields: {FIELD_HELP}'
+			),
+		),
+	] = '',
+	table: Annotated[
+		Optional[bool],
+		typer.Option(
+			'--table/--detail',
+			'-t/-d',
+			help='Force markdown table or detailed report (default: table for >1 file).',
+		),
+	] = None,
+	strings: Annotated[
+		int,
+		typer.Option(
+			'--strings',
+			'-s',
+			help='Show up to N sample strings per resource language.',
+		),
+	] = 0,
+	relative: Annotated[
+		bool,
+		typer.Option(
+			'--relative/--absolute',
+			help='Print paths relative to the current directory in table mode.',
+		),
+	] = True,
+	skip_non_pe: Annotated[
+		bool,
+		typer.Option(
+			'--skip-non-pe',
+			help='Omit files that are neither PE images nor readable archives.',
+		),
+	] = False,
+	recurse: Annotated[
+		Optional[bool],
+		typer.Option(
+			'--recurse/--no-recurse',
+			'-r/-R',
+			help=(
+				'Unpack CAB/ZIP/RAR/7z archives and classify what is inside '
+				'(default: on, except with --format, whose subject is the named file).'
+			),
+		),
+	] = None,
+	max_depth: Annotated[
+		int,
+		typer.Option(
+			'--max-depth',
+			help='How deep to follow archives nested inside archives.',
+		),
+	] = 3,
+	verbose: Annotated[
+		bool,
+		typer.Option('--verbose', '-v', help='Log parser diagnostics.'),
+	] = False,
 ) -> None:
 	"""Classify Windows PE binaries by target platform and runtime.
 
@@ -1877,11 +2187,14 @@ def main(
 	target OS range, processor, payload mapping, registry keys and shortcuts.
 	"""
 	structlog.configure(
-		processors=[structlog.processors.add_log_level,
-		            structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty())],
+		processors=[
+			structlog.processors.add_log_level,
+			structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty()),
+		],
 		logger_factory=structlog.PrintLoggerFactory(sys.stderr),
 		wrapper_class=structlog.make_filtering_bound_logger(
-			logging.DEBUG if verbose else logging.ERROR),
+			logging.DEBUG if verbose else logging.ERROR
+		),
 	)
 	if not verbose:
 		for name in ('dnfile', 'pefile'):
@@ -1889,8 +2202,12 @@ def main(
 
 	if recurse is None:
 		recurse = not fmt
-	opts = Options(recurse=recurse, max_depth=max_depth, skip_non_pe=skip_non_pe,
-	               keep_strings=bool(strings))
+	opts = Options(
+		recurse=recurse,
+		max_depth=max_depth,
+		skip_non_pe=skip_non_pe,
+		keep_strings=bool(strings),
+	)
 	scratch = Scratch()
 	base = Path.cwd() if relative else None
 
