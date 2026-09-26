@@ -28,7 +28,7 @@ import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import (
 	Annotated,
 	Any,
@@ -1565,7 +1565,7 @@ def classify_archive(arc: ArchiveFacts) -> Verdict:
 @dataclass
 class Item:
 	"""One classified thing: a PE image, or an archive that held some."""
-	display: str
+	display: list[str]
 	verdict: Verdict
 	depth: int
 
@@ -1738,9 +1738,45 @@ def _safe(text: str) -> str:
 	return text.encode('utf-8', 'surrogateescape').decode('utf-8', 'replace')
 
 
-def _md_escape(text: str) -> str:
+def _md_safe(text: str) -> str:
 	"""Like :func:`_safe`, but also escape characters that interfere with Markdown tables."""
 	return _safe(text).replace('|', '\\|').replace('\n', ' ').replace('\\', '\\\\')
+
+
+def _rich_display_paths(display: list[str], sep: str = ' [dim]//[/dim] ', markup: tuple[str, str] = ('[bold]', '[/bold]')) -> str:
+	"""Transform a sequence of paths representing a file discovered in a (potentially nested)
+	archive into Rich markup string for display.
+
+	:param display:
+		List of paths to render, e.g.,
+		``['/path/to/software/collection.7z', 'path/to/archive.cab', '\\Windows\\foo.dll']``
+	:param sep:
+		Separator string to use between successive paths.
+	:param markup:
+		Tuple of opening and closing Rich markup tags to apply to each successive path.
+	:return: Rich markup string representing the display path.
+	"""
+
+	return (
+		sep.join(f'{markup[0]}{escape(_safe(p))}{markup[1]}' for p in display)
+	)
+
+
+def _md_display_paths(display: list[str], sep: str = ' // ', markup: tuple[str, str] = ('`', '`')) -> str:
+	"""Transform a sequence of paths representing a file discovered in a (potentially nested)
+	archive into a Markdown string for display.
+
+	:param display:
+		List of paths to render, e.g.,
+		``['/path/to/software/collection.7z', 'path/to/archive.cab', '\\Windows\\foo.dll']``
+	:param sep:
+		Separator string to use between successive paths.
+	:param markup:
+		Tuple of opening and closing Markdown metacharacters to apply to each successive path.
+	:return:
+		Markdown string representing the display path.
+	"""
+	return sep.join(f'{markup[0]}{_md_safe(i)}{markup[1]}' for i in display)
 
 
 def _archive_row(item: ArchiveItem) -> dict[str, str | None]:
@@ -1757,7 +1793,7 @@ def _archive_row(item: ArchiveItem) -> dict[str, str | None]:
 		notes = [arc.error]
 	span = f'{inst.os_min}-{inst.os_max}' if inst and inst.os_min else ''
 	return {
-		'File': _md_escape(item.display),
+		'File': _md_display_paths(item.display),
 		'Target': 'archive',
 		'Arch': f['arch'] or None,
 		'Runtime': arc.kind,
@@ -1765,7 +1801,7 @@ def _archive_row(item: ArchiveItem) -> dict[str, str | None]:
 		'OS ver': span or None,
 		'Lang': 'archive',
 		'Version': f'{len(arc.members)} members',
-		'Notes': _md_escape('; '.join(notes)) or None,
+		'Notes': _md_safe('; '.join(notes)) or None,
 	}
 
 
@@ -1783,15 +1819,15 @@ def _image_row(item: ImageItem) -> dict[str, str | None]:
 	if v.confidence != 'high' and image.ok:
 		notes.append(f'({v.confidence} confidence)')
 	return {
-		'File': _md_escape(item.display),
+		'File': _md_display_paths(item.display),
 		'Target': f['target'] or None,
 		'Arch': f['arch'] or None,
 		'Runtime': f['runtime'] or None,
 		'Sub': f['subsys'] or None,
 		'OS ver': f['ceversion'] or f['winversion'] or None,
 		'Lang': f['lang'] or None,
-		'Version': _md_escape(f['fileversion'] or f['netversion']) or None,
-		'Notes': _md_escape('; '.join(notes)) or None,
+		'Version': _md_safe(f['fileversion'] or f['netversion']) or None,
+		'Notes': _md_safe('; '.join(notes)) or None,
 	}
 
 
@@ -1828,7 +1864,7 @@ def _kv(console: Console, key: str, value: str, style: str = '', raw: bool = Fal
 
 def render_archive_detail(console: Console, item: ArchiveItem) -> None:
 	arc, v = item.archive, item.verdict
-	console.print(f'[bold]{escape(_safe(item.display))}[/bold]')
+	console.print(_rich_display_paths(item.display))
 	if not arc.ok:
 		console.print(f'    [red]{escape(arc.error)}[/red]\n')
 		return
@@ -1897,7 +1933,7 @@ def render_archive_detail(console: Console, item: ArchiveItem) -> None:
 def render_image_detail(console: Console, item: ImageItem, show_strings: int) -> None:
 	image, v = item.image, item.verdict
 	f = fields(item)
-	console.print(f'[bold]{escape(_safe(item.display))}[/bold]')
+	console.print(_rich_display_paths(item.display))
 	if not image.ok:
 		console.print(f'    [red]{escape(image.error)}[/red]\n')
 		return
@@ -2061,7 +2097,7 @@ EXTRACT_TIMEOUT = 600
 
 
 def analyse(
-	path: Path, display: str, scratch: Scratch, opts: 'Options', depth: int = 0
+	path: Path, display: list[str], scratch: Scratch, opts: 'Options', depth: int = 0
 ) -> Iterator[Item]:
 	"""Classify one file, descending into it when it is an archive."""
 	kind = archive_kind(path)
@@ -2098,8 +2134,12 @@ def analyse(
 				continue
 			rel = member.relative_to(arc.root)
 			entry = sources.get(member.suffix.upper()) or sources.get(str(rel).upper())
-			label = entry.installed if entry else str(rel)
-			yield from analyse(member, _safe(f'{display}!/{label}'), scratch, opts, depth + 1)
+			if entry:
+				abs = PureWindowsPath(entry.installed)
+				label = str(abs)
+			else:
+				label = str(rel)
+			yield from analyse(member, display + [label], scratch, opts, depth + 1)
 	finally:
 		# bound peak scratch usage; the namespace would reclaim it at exit anyway
 		shutil.rmtree(arc.root, ignore_errors=True)
@@ -2244,7 +2284,7 @@ def main(
 	results: list[Item] = []
 	for path in _collect(paths):
 		shown = path.relative_to(base) if base and path.is_relative_to(base) else path
-		results.extend(analyse(path, _safe(str(shown)), scratch, opts))
+		results.extend(analyse(path, [str(shown)], scratch, opts))
 
 	if not results:
 		raise typer.Exit(1)
