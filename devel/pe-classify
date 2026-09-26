@@ -588,10 +588,10 @@ class Facts:
 def _res_type_name(entry) -> str:
 	if entry.name is not None:
 		return str(entry.name)
-	return pefile.RESOURCE_TYPE.get(entry.struct.Id, f'#{entry.struct.Id}')
+	return assert_cast(str, pefile.RESOURCE_TYPE.get(entry.struct.Id, f'#{entry.struct.Id}'))
 
 
-def _parse_string_table(data: bytes) -> list[str]:
+def _parse_string_table(data: bytes | bytearray) -> list[str]:
 	"""RT_STRING blocks are 16 counted UTF-16 strings back to back."""
 	out, off = [], 0
 	for _ in range(16):
@@ -608,13 +608,17 @@ def _parse_string_table(data: bytes) -> list[str]:
 
 def _probe_resources(pe: pefile.PE, facts: Facts, keep_strings: bool) -> None:
 	root = getattr(pe, 'DIRECTORY_ENTRY_RESOURCE', None)
+	assert isinstance(root, pefile.ResourceDirData | None)
 	if root is None:
 		return
 	for type_entry in root.entries:
+		assert isinstance(type_entry, pefile.ResourceDirEntryData)
 		name = _res_type_name(type_entry)
 		facts.resource_types.append(name)
 		for id_entry in getattr(type_entry.directory, 'entries', []):
+			assert isinstance(id_entry, pefile.ResourceDirEntryData)
 			for lang_entry in getattr(id_entry.directory, 'entries', []):
+				assert isinstance(lang_entry, pefile.ResourceDirEntryData)
 				lang = lang_entry.id or 0
 				bucket = facts.resource_langs.setdefault(lang, {})
 				bucket[name] = bucket.get(name, 0) + 1
@@ -625,6 +629,7 @@ def _probe_resources(pe: pefile.PE, facts: Facts, keep_strings: bool) -> None:
 						lang_entry.data.struct.OffsetToData,
 						lang_entry.data.struct.Size,
 					)
+					assert isinstance(data, bytes | bytearray)
 				except pefile.PEFormatError:
 					continue
 				strings = _parse_string_table(data)
@@ -752,6 +757,8 @@ def probe(path: Path, keep_strings: bool = False) -> Facts:
 		]
 	)
 	opt, hdr = pe.OPTIONAL_HEADER, pe.FILE_HEADER
+	assert opt is not None
+	assert hdr is not None
 
 	facts.machine = hdr.Machine
 	facts.is_dll = bool(hdr.Characteristics & pefile.IMAGE_CHARACTERISTICS['IMAGE_FILE_DLL'])
@@ -1182,6 +1189,7 @@ def extract_archive(path: Path, kind: str, dest: Path) -> str:
 		try:
 			proc = subprocess.run(
 				argv,
+				check=True,
 				capture_output=True,
 				stdin=subprocess.DEVNULL,
 				timeout=EXTRACT_TIMEOUT,
@@ -2064,6 +2072,8 @@ def analyse(
 		if arc.root:
 			shutil.rmtree(arc.root, ignore_errors=True)
 		return
+
+	assert arc.root is not None
 
 	# prefer the installed name over the mangled archive member name
 	sources = arc.install.source_map() if arc.install else {}
