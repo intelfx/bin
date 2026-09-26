@@ -1512,7 +1512,7 @@ def _md_escape(text: str) -> str:
 	return _safe(text).replace('|', '\\|').replace('\n', ' ')
 
 
-def _archive_row(item: ArchiveItem) -> list[str]:
+def _archive_row(item: ArchiveItem) -> dict[str, str | None]:
 	arc, v = item.archive, item.verdict
 	f = fields(item)
 	inst = arc.install
@@ -1525,15 +1525,20 @@ def _archive_row(item: ArchiveItem) -> list[str]:
 	if not arc.ok:
 		notes = [arc.error]
 	span = f'{inst.os_min}-{inst.os_max}' if inst and inst.os_min else ''
-	return [
-		_md_escape(item.display),
-		'archive', f['arch'] or '--', arc.kind, '--',
-		span or '--', '--', f'{len(arc.members)} members',
-		_md_escape('; '.join(notes) or '--'),
-	]
+	return {
+		'File': _md_escape(item.display),
+		'Target': 'archive',
+		'Arch': f['arch'] or None,
+		'Runtime': arc.kind,
+		'Sub': 'archive',
+		'OS ver': span or None,
+		'Lang': 'archive',
+		'Version': f'{len(arc.members)} members',
+		'Notes': _md_escape('; '.join(notes)) or None,
+	}
 
 
-def _image_row(item: ImageItem) -> list[str]:
+def _image_row(item: ImageItem) -> dict[str, str | None]:
 	facts, v = item.facts, item.verdict
 	f = fields(item)
 	notes = []
@@ -1546,23 +1551,25 @@ def _image_row(item: ImageItem) -> list[str]:
 		notes = [facts.error]
 	if v.confidence != 'high' and facts.ok:
 		notes.append(f'({v.confidence} confidence)')
-	return [
-		_md_escape(item.display),
-		f['target'] or '--',
-		f['arch'] or '--',
-		f['runtime'] or '--',
-		f['subsys'] or '--',
-		f['ceversion'] or f['winversion'] or '--',
-		f['lang'] or '--',
-		_md_escape(f['fileversion'] or f['netversion'] or '--'),
-		_md_escape('; '.join(notes) or '--'),
-	]
+	return {
+		'File': _md_escape(item.display),
+		'Target': f['target'] or None,
+		'Arch': f['arch'] or None,
+		'Runtime': f['runtime'] or None,
+		'Sub': f['subsys'] or None,
+		'OS ver': f['ceversion'] or f['winversion'] or None,
+		'Lang': f['lang'] or None,
+		'Version': _md_escape(f['fileversion'] or f['netversion']) or None,
+		'Notes': _md_escape('; '.join(notes)) or None,
+	}
 
 
 def render_table(items: list[Item], base: Path | None) -> str:
 	header = ['File', 'Target', 'Arch', 'Runtime', 'Sub', 'OS ver', 'Lang', 'Version', 'Notes']
-	lines = ['| ' + ' | '.join(header) + ' |',
-	         '|' + '|'.join(['---'] * len(header)) + '|']
+	rows: list[list[str]] = [
+		header,
+		['---'] * len(header),
+	]
 	for item in items:
 		if isinstance(item, ImageItem):
 			cells = _image_row(item)
@@ -1570,7 +1577,14 @@ def render_table(items: list[Item], base: Path | None) -> str:
 			cells = _archive_row(item)
 		else:
 			assert False
-		lines.append('| ' + ' | '.join(cells) + ' |')
+		rows.append([
+			cells.get(key) or '--'
+			for key in header
+		])
+	lines = [
+		'| ' + ' | '.join(cells) + ' |'
+		for cells in rows
+	]
 	return '\n'.join(lines)
 
 
