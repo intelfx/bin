@@ -1315,20 +1315,6 @@ def classify(facts: Facts) -> Verdict:
 	return v
 
 
-# --------------------------------------------------------------------------
-# layer 3: output
-# --------------------------------------------------------------------------
-
-@dataclass
-class Item:
-	"""One classified thing: a PE image, or an archive that held some."""
-	display: str
-	facts: Facts | None = None
-	verdict: Verdict | None = None
-	archive: ArchiveFacts | None = None
-	depth: int = 0
-
-
 def classify_archive(arc: ArchiveFacts) -> Verdict:
 	v = Verdict(target='archive', os_tag='', runtime='', confidence='high')
 	v.platform = f'{arc.kind.upper()} archive'
@@ -1372,16 +1358,37 @@ def classify_archive(arc: ArchiveFacts) -> Verdict:
 	v.notes.extend(inst.warnings)
 	return v
 
+#
+# --------------------------------------------------------------------------
+# layer 3: output
+# --------------------------------------------------------------------------
+
+@dataclass
+class Item:
+	"""One classified thing: a PE image, or an archive that held some."""
+	display: str
+	verdict: Verdict
+	depth: int
+
+
+@dataclass
+class ImageItem(Item):
+	facts: Facts
+
+
+@dataclass
+class ArchiveItem(Item):
+	archive: ArchiveFacts
+
 
 ARCHIVE_ONLY_FIELDS = ('appname', 'provider', 'osmin', 'osmax', 'processor',
                        'unsupported', 'members')
 
 
-def _archive_fields(item: Item) -> dict[str, str]:
+def _archive_fields(item: ArchiveItem) -> dict[str, str]:
 	arc, v = item.archive, item.verdict
 	inst = arc.install
-	out = dict.fromkeys(PE_ONLY_FIELDS, '')
-	out.update({
+	out = {
 		'target': v.target, 'os': v.os_tag, 'platform': v.platform,
 		'arch': v.arch, 'kind': arc.kind, 'runtime': '',
 		'ceversion': v.ce_version,
@@ -1393,16 +1400,21 @@ def _archive_fields(item: Item) -> dict[str, str]:
 		'processor': str(inst.processor) if inst and inst.processor else '',
 		'unsupported': inst.unsupported if inst else '',
 		'members': str(len(arc.members)),
-	})
+	}
 	tag = '-'.join(x for x in (out['os'], out['arch']) if x)
 	out['tag'] = tag
 	return out
 
 
-def fields(item: Item) -> dict[str, str]:
-	"""Flat namespace for --format. Empty string means 'not determined'."""
-	if item.archive is not None:
-		return _archive_fields(item)
+PE_ONLY_FIELDS = (
+	'target', 'os', 'platform', 'runtime', 'arch', 'bits', 'subsys', 'kind',
+	'ceversion', 'winversion', 'netversion', 'langid', 'lang', 'company',
+	'product', 'description', 'fileversion', 'productversion', 'origname',
+	'assembly', 'date', 'year', 'tag',
+)
+
+
+def _image_fields(item: ImageItem) -> dict[str, str]:
 	facts, v = item.facts, item.verdict
 	info = facts.version_info
 	primary_lang = max(facts.resource_langs,
@@ -1436,7 +1448,6 @@ def fields(item: Item) -> dict[str, str]:
 		'date': when.strftime('%Y-%m-%d') if when else '',
 		'year': when.strftime('%Y') if when else '',
 	}
-	out.update(dict.fromkeys(ARCHIVE_ONLY_FIELDS, ''))
 	tag = out['os']
 	if tag and out['arch']:
 		tag = f'{tag}-{out["arch"]}'
@@ -1446,12 +1457,17 @@ def fields(item: Item) -> dict[str, str]:
 	return out
 
 
-PE_ONLY_FIELDS = (
-	'target', 'os', 'platform', 'runtime', 'arch', 'bits', 'subsys', 'kind',
-	'ceversion', 'winversion', 'netversion', 'langid', 'lang', 'company',
-	'product', 'description', 'fileversion', 'productversion', 'origname',
-	'assembly', 'date', 'year', 'tag',
-)
+def fields(item: Item) -> dict[str, str]:
+	"""Flat namespace for --format. Empty string means 'not determined'."""
+	if isinstance(item, ArchiveItem):
+		fields = _archive_fields(item)
+	elif isinstance(item, ImageItem):
+		fields = _image_fields(item)
+	else:
+		assert False
+	out: dict[str, str] = dict.fromkeys(ARCHIVE_ONLY_FIELDS + PE_ONLY_FIELDS, '')
+	out.update(fields)
+	return out
 
 
 class _StrictFormatter(string.Formatter):
@@ -1496,7 +1512,7 @@ def _md_escape(text: str) -> str:
 	return _safe(text).replace('|', '\\|').replace('\n', ' ')
 
 
-def _archive_row(item: Item) -> list[str]:
+def _archive_row(item: ArchiveItem) -> list[str]:
 	arc, v = item.archive, item.verdict
 	f = fields(item)
 	inst = arc.install
@@ -1517,37 +1533,43 @@ def _archive_row(item: Item) -> list[str]:
 	]
 
 
+def _image_row(item: ImageItem) -> list[str]:
+	facts, v = item.facts, item.verdict
+	f = fields(item)
+	notes = []
+	if v.roles:
+		notes.append(v.roles[0])
+	notes.extend(t for t in v.toolchain if t.startswith('packed'))
+	if facts.signed_bytes:
+		notes.append('signed')
+	if not facts.ok:
+		notes = [facts.error]
+	if v.confidence != 'high' and facts.ok:
+		notes.append(f'({v.confidence} confidence)')
+	return [
+		_md_escape(item.display),
+		f['target'] or '--',
+		f['arch'] or '--',
+		f['runtime'] or '--',
+		f['subsys'] or '--',
+		f['ceversion'] or f['winversion'] or '--',
+		f['lang'] or '--',
+		_md_escape(f['fileversion'] or f['netversion'] or '--'),
+		_md_escape('; '.join(notes) or '--'),
+	]
+
+
 def render_table(items: list[Item], base: Path | None) -> str:
 	header = ['File', 'Target', 'Arch', 'Runtime', 'Sub', 'OS ver', 'Lang', 'Version', 'Notes']
 	lines = ['| ' + ' | '.join(header) + ' |',
 	         '|' + '|'.join(['---'] * len(header)) + '|']
 	for item in items:
-		if item.archive is not None:
-			lines.append('| ' + ' | '.join(_archive_row(item)) + ' |')
-			continue
-		facts, v = item.facts, item.verdict
-		f = fields(item)
-		notes = []
-		if v.roles:
-			notes.append(v.roles[0])
-		notes.extend(t for t in v.toolchain if t.startswith('packed'))
-		if facts.signed_bytes:
-			notes.append('signed')
-		if not facts.ok:
-			notes = [facts.error]
-		if v.confidence != 'high' and facts.ok:
-			notes.append(f'({v.confidence} confidence)')
-		cells = [
-			_md_escape(item.display),
-			f['target'] or '--',
-			f['arch'] or '--',
-			f['runtime'] or '--',
-			f['subsys'] or '--',
-			f['ceversion'] or f['winversion'] or '--',
-			f['lang'] or '--',
-			_md_escape(f['fileversion'] or f['netversion'] or '--'),
-			_md_escape('; '.join(notes) or '--'),
-		]
+		if isinstance(item, ImageItem):
+			cells = _image_row(item)
+		elif isinstance(item, ArchiveItem):
+			cells = _archive_row(item)
+		else:
+			assert False
 		lines.append('| ' + ' | '.join(cells) + ' |')
 	return '\n'.join(lines)
 
@@ -1558,7 +1580,7 @@ def _kv(console: Console, key: str, value: str, style: str = '') -> None:
 		                                             if style else escape(value)))
 
 
-def render_archive_detail(console: Console, item: Item) -> None:
+def render_archive_detail(console: Console, item: ArchiveItem) -> None:
 	arc, v = item.archive, item.verdict
 	console.print(f'[bold]{escape(_safe(item.display))}[/bold]')
 	if not arc.ok:
@@ -1620,10 +1642,7 @@ def render_archive_detail(console: Console, item: Item) -> None:
 	console.print()
 
 
-def render_detail(console: Console, item: Item, show_strings: int) -> None:
-	if item.archive is not None:
-		render_archive_detail(console, item)
-		return
+def render_image_detail(console: Console, item: ImageItem, show_strings: int) -> None:
 	facts, v = item.facts, item.verdict
 	f = fields(item)
 	console.print(f'[bold]{escape(_safe(item.display))}[/bold]')
@@ -1720,6 +1739,15 @@ def render_detail(console: Console, item: Item, show_strings: int) -> None:
 	console.print()
 
 
+def render_detail(console: Console, item: Item, show_strings: int) -> None:
+	if isinstance(item, ImageItem):
+		render_image_detail(console, item, show_strings)
+	elif isinstance(item, ArchiveItem):
+		render_archive_detail(console, item)
+	else:
+		assert False
+
+
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
@@ -1744,7 +1772,7 @@ def analyse(path: Path, display: str, scratch: Scratch, opts: 'Options',
 	if not kind:
 		facts = probe(path, opts.keep_strings)
 		if facts.ok or not opts.skip_non_pe:
-			yield Item(display=display, facts=facts, verdict=classify(facts), depth=depth)
+			yield ImageItem(display=display, facts=facts, verdict=classify(facts), depth=depth)
 		return
 
 	# a CAB is worth unpacking even when not descending -- its install header
@@ -1754,7 +1782,7 @@ def analyse(path: Path, display: str, scratch: Scratch, opts: 'Options',
 	else:
 		arc = ArchiveFacts(path=path, kind=kind, size=path.stat().st_size)
 
-	item = Item(display=display, archive=arc, verdict=classify_archive(arc), depth=depth)
+	item = ArchiveItem(display=display, archive=arc, verdict=classify_archive(arc), depth=depth)
 	if arc.ok or not opts.skip_non_pe:
 		yield item
 	if not arc.ok or not opts.recurse:
