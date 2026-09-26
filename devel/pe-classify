@@ -2139,7 +2139,7 @@ def main(
 		Optional[bool],
 		typer.Option(
 			'--table/--detail',
-			'-t/-d',
+			'-t/-l',
 			help='Force markdown table or detailed report (default: table for >1 file).',
 		),
 	] = None,
@@ -2181,6 +2181,7 @@ def main(
 		int,
 		typer.Option(
 			'--max-depth',
+			'-d',
 			help='How deep to recurse into nested archives.',
 		),
 	] = 3,
