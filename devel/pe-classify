@@ -1571,17 +1571,6 @@ class ArchiveItem(Item):
 	archive: ArchiveFacts
 
 
-ARCHIVE_ONLY_FIELDS = [
-	'appname',
-	'provider',
-	'osmin',
-	'osmax',
-	'processor',
-	'unsupported',
-	'members',
- ]
-
-
 def _archive_fields(item: ArchiveItem) -> dict[str, str]:
 	arc, v = item.archive, item.verdict
 	inst = arc.install
@@ -1605,33 +1594,6 @@ def _archive_fields(item: ArchiveItem) -> dict[str, str]:
 	tag = '-'.join(x for x in (out['os'], out['arch']) if x)
 	out['tag'] = tag
 	return out
-
-
-PE_ONLY_FIELDS = [
-	'target',
-	'os',
-	'platform',
-	'runtime',
-	'arch',
-	'bits',
-	'subsys',
-	'kind',
-	'ceversion',
-	'winversion',
-	'netversion',
-	'langid',
-	'lang',
-	'company',
-	'product',
-	'description',
-	'fileversion',
-	'productversion',
-	'origname',
-	'assembly',
-	'date',
-	'year',
-	'tag',
-]
 
 
 def _image_fields(item: ImageItem) -> dict[str, str]:
@@ -1682,6 +1644,40 @@ def _image_fields(item: ImageItem) -> dict[str, str]:
 	return out
 
 
+ALL_FIELDS = [
+	'target',
+	'os',
+	'platform',
+	'runtime',
+	'arch',
+	'bits',
+	'subsys',
+	'kind',
+	'ceversion',
+	'winversion',
+	'netversion',
+	'langid',
+	'lang',
+	'appname',
+	'provider',
+	'company',
+	'product',
+	'description',
+	'fileversion',
+	'productversion',
+	'origname',
+	'assembly',
+	'date',
+	'year',
+	'osmin',
+	'osmax',
+	'processor',
+	'unsupported',
+	'members',
+	'tag',
+]
+
+
 def fields(item: Item) -> dict[str, str]:
 	"""Flat namespace for --format. Empty string means 'not determined'."""
 	if isinstance(item, ArchiveItem):
@@ -1690,7 +1686,7 @@ def fields(item: Item) -> dict[str, str]:
 		fields = _image_fields(item)
 	else:
 		assert False
-	out: dict[str, str] = dict.fromkeys(ARCHIVE_ONLY_FIELDS + PE_ONLY_FIELDS, '')
+	out: dict[str, str] = dict.fromkeys(ALL_FIELDS, '')
 	out.update(fields)
 	return out
 
