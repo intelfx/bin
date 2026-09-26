@@ -2115,7 +2115,7 @@ def main(
 	paths: Annotated[
 		list[Path],
 		typer.Argument(
-			help='Files to classify; a directory is walked recursively, "-" reads paths from stdin.'
+			help='Files or directories to classify. Pass "-" to read paths from stdin.'
 		),
 	],
 	fmt: Annotated[
@@ -2125,7 +2125,8 @@ def main(
 			'-f',
 			help=(
 				f'Emit a format string per file instead of a report. '
-				f'Empty output if any referenced field is unknown. Fields: {FIELD_HELP}'
+				f'Output is omitted entirely if any referenced field is unknown. '
+				f'Fields: {FIELD_HELP}'
 			),
 		),
 	] = '',
@@ -2166,8 +2167,8 @@ def main(
 			'--recurse/--no-recurse',
 			'-r/-R',
 			help=(
-				'Unpack CAB/ZIP/RAR/7z archives and classify what is inside '
-				'(default: on, except with --format, whose subject is the named file).'
+				'Unpack CABs and ZIP/RAR/7z archives, and classify recursively '
+				'(default: on, except with --format).'
 			),
 		),
 	] = None,
@@ -2175,7 +2176,7 @@ def main(
 		int,
 		typer.Option(
 			'--max-depth',
-			help='How deep to follow archives nested inside archives.',
+			help='How deep to recurse into nested archives.',
 		),
 	] = 3,
 	verbose: Annotated[
@@ -2183,12 +2184,14 @@ def main(
 		typer.Option('--verbose', '-v', help='Log parser diagnostics.'),
 	] = False,
 ) -> None:
-	"""Classify Windows PE binaries by target platform and runtime.
+	"""Classify Windows PE binaries by target platform and runtime,
+	recursively descending into general-purpose archives and CABs.
 
-	Archives are unpacked into a private tmpfs inside an unshared mount
-	namespace, so nothing reaches the filesystem and nothing needs cleaning up.
-	Windows CE installation CABs additionally report their install metadata:
-	target OS range, processor, payload mapping, registry keys and shortcuts.
+	Archives are unpacked into a private tmpfs if supported, or into the
+	system-wide tmpfs if unsharing is not supported.
+
+	Windows CE installation CABs are also mined for their install metadata
+	(target OS range, processor, payload mapping, registry keys, shortcuts).
 	"""
 	structlog.configure(
 		processors=[
