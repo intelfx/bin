@@ -1475,7 +1475,7 @@ def _classify_extras(facts: Facts, v: Verdict) -> None:
 	v.notes.extend(notes)
 
 
-def classify(facts: Facts) -> Verdict:
+def classify_image(facts: Facts) -> Verdict:
 	"""Decision tree over extracted facts. Runtime first: managed device
 	assemblies carry a desktop subsystem value, so the PE header alone would
 	misfile every .NET CF binary as Win32."""
@@ -1563,7 +1563,7 @@ class Item:
 
 @dataclass
 class ImageItem(Item):
-	facts: Facts
+	image: Facts
 
 
 @dataclass
@@ -1597,29 +1597,29 @@ def _archive_fields(item: ArchiveItem) -> dict[str, str]:
 
 
 def _image_fields(item: ImageItem) -> dict[str, str]:
-	facts, v = item.facts, item.verdict
-	info = facts.version_info
+	image, v = item.image, item.verdict
+	info = image.version_info
 	primary_lang = (
 		max(
-			facts.resource_langs,
-			key=lambda k: sum(facts.resource_langs[k].values()),
+			image.resource_langs,
+			key=lambda k: sum(image.resource_langs[k].values()),
 		)
-		if facts.resource_langs
+		if image.resource_langs
 		else None
 	)
 	when = None
-	if 0 < facts.timestamp < 0x7FFFFFFF:
-		when = datetime.fromtimestamp(facts.timestamp, timezone.utc)
+	if 0 < image.timestamp < 0x7FFFFFFF:
+		when = datetime.fromtimestamp(image.timestamp, timezone.utc)
 
 	out = {
 		'target': v.target if v.target != 'unknown' else '',
 		'os': v.os_tag,
 		'platform': v.platform,
-		'runtime': v.runtime if facts.ok else '',
+		'runtime': v.runtime if image.ok else '',
 		'arch': v.arch,
-		'bits': ('64' if facts.pe32_plus else '32') if facts.ok else '',
-		'subsys': SUBSYSTEM_SHORT.get(facts.subsystem, ''),
-		'kind': ('dll' if facts.is_dll else 'exe') if facts.ok else '',
+		'bits': ('64' if image.pe32_plus else '32') if image.ok else '',
+		'subsys': SUBSYSTEM_SHORT.get(image.subsystem, ''),
+		'kind': ('dll' if image.is_dll else 'exe') if image.ok else '',
 		'ceversion': v.ce_version,
 		'winversion': v.win_version,
 		'netversion': v.net_version,
@@ -1631,7 +1631,7 @@ def _image_fields(item: ImageItem) -> dict[str, str]:
 		'fileversion': info.get('FileVersion', ''),
 		'productversion': info.get('ProductVersion', ''),
 		'origname': info.get('OriginalFilename', ''),
-		'assembly': facts.net.assembly if facts.net else '',
+		'assembly': image.net.assembly if image.net else '',
 		'date': when.strftime('%Y-%m-%d') if when else '',
 		'year': when.strftime('%Y') if when else '',
 	}
@@ -1760,17 +1760,17 @@ def _archive_row(item: ArchiveItem) -> dict[str, str | None]:
 
 
 def _image_row(item: ImageItem) -> dict[str, str | None]:
-	facts, v = item.facts, item.verdict
+	image, v = item.image, item.verdict
 	f = fields(item)
 	notes = []
 	if v.roles:
 		notes.append(v.roles[0])
 	notes.extend(t for t in v.toolchain if t.startswith('packed'))
-	if facts.signed_bytes:
+	if image.signed_bytes:
 		notes.append('signed')
-	if not facts.ok:
-		notes = [facts.error]
-	if v.confidence != 'high' and facts.ok:
+	if not image.ok:
+		notes = [image.error]
+	if v.confidence != 'high' and image.ok:
 		notes.append(f'({v.confidence} confidence)')
 	return {
 		'File': _md_escape(item.display),
@@ -1886,11 +1886,11 @@ def render_archive_detail(console: Console, item: ArchiveItem) -> None:
 
 
 def render_image_detail(console: Console, item: ImageItem, show_strings: int) -> None:
-	facts, v = item.facts, item.verdict
+	image, v = item.image, item.verdict
 	f = fields(item)
 	console.print(f'[bold]{escape(_safe(item.display))}[/bold]')
-	if not facts.ok:
-		console.print(f'    [red]{escape(facts.error)}[/red]\n')
+	if not image.ok:
+		console.print(f'    [red]{escape(image.error)}[/red]\n')
 		return
 
 	colour = {'high': 'green', 'medium': 'yellow', 'low': 'red'}[v.confidence]
@@ -1900,7 +1900,7 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 			v.platform,
 			v.runtime_label,
 			v.arch_label,
-			SUBSYSTEMS.get(facts.subsystem, '?'),
+			SUBSYSTEMS.get(image.subsystem, '?'),
 		)
 		if x
 	)
@@ -1913,31 +1913,31 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 		console.print(f'    [dim]·[/dim] {escape(line)}')
 
 	console.print('\n  [bold]Image[/bold]')
-	_kv(console, 'machine', f'0x{facts.machine:04X}  {v.arch_label}')
+	_kv(console, 'machine', f'0x{image.machine:04X}  {v.arch_label}')
 	_kv(console, 'subsystem', (
-		f'{facts.subsystem}  {SUBSYSTEMS.get(facts.subsystem, "?")}'
-		f'  (version {facts.subsys_ver[0]}.{facts.subsys_ver[1]:02d})'
+		f'{image.subsystem}  {SUBSYSTEMS.get(image.subsystem, "?")}'
+		f'  (version {image.subsys_ver[0]}.{image.subsys_ver[1]:02d})'
 	))
-	_kv(console, 'min OS', '{}.{:02d}'.format(*facts.os_ver))
-	_kv(console, 'characteristics', 'DLL' if facts.is_dll else 'executable')
-	_kv(console, 'magic', 'PE32+' if facts.pe32_plus else 'PE32')
+	_kv(console, 'min OS', '{}.{:02d}'.format(*image.os_ver))
+	_kv(console, 'characteristics', 'DLL' if image.is_dll else 'executable')
+	_kv(console, 'magic', 'PE32+' if image.pe32_plus else 'PE32')
 	_kv(console, 'timestamp', (
-		f'{f["date"]} ({facts.timestamp:#x})'
+		f'{f["date"]} ({image.timestamp:#x})'
 		if f['date']
-		else f'{facts.timestamp:#x} (zeroed or non-time)'
+		else f'{image.timestamp:#x} (zeroed or non-time)'
 	))
-	_kv(console, 'size', f'{facts.size} bytes')
-	_kv(console, 'sections', ' '.join(facts.sections))
+	_kv(console, 'size', f'{image.size} bytes')
+	_kv(console, 'sections', ' '.join(image.sections))
 	for line in v.toolchain:
 		_kv(console, '', line)
 
-	if facts.net:
+	if image.net:
 		console.print('\n  [bold]Managed metadata[/bold]')
-		_kv(console, 'CLR header', facts.net.metadata_version)
-		_kv(console, 'assembly', f'{facts.net.assembly} {facts.net.assembly_version}'.strip())
-		_kv(console, 'flags', ', '.join(x.removeprefix('CLR_') for x in facts.net.flags))
-		_kv(console, 'target fw', facts.net.tfm)
-		for name, version, token, retarget in facts.net.refs:
+		_kv(console, 'CLR header', image.net.metadata_version)
+		_kv(console, 'assembly', f'{image.net.assembly} {image.net.assembly_version}'.strip())
+		_kv(console, 'flags', ', '.join(x.removeprefix('CLR_') for x in image.net.flags))
+		_kv(console, 'target fw', image.net.tfm)
+		for name, version, token, retarget in image.net.refs:
 			origin = NET_TOKENS.get(token, '')
 			suffix = f'  [dim]{origin}[/dim]' if origin else ''
 			flag = ' [dim]retargetable[/dim]' if retarget else ''
@@ -1946,27 +1946,27 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 				f'{" " + token if token else ""}{flag}{suffix}'
 			)
 
-	if facts.libs:
+	if image.libs:
 		console.print('\n  [bold]Imports[/bold]')
-		for lib in sorted(facts.imports):
+		for lib in sorted(image.imports):
 			info = LIBS.get(lib)
 			note = f'  [dim]{info[1]}[/dim]' if info else ''
 			console.print(
-				f'      {escape(lib)} [dim]({facts.imports[lib]})[/dim]{note}'
+				f'      {escape(lib)} [dim]({image.imports[lib]})[/dim]{note}'
 			)
-		for lib in sorted(facts.delay_imports):
+		for lib in sorted(image.delay_imports):
 			console.print(f'      {escape(lib)} [dim](delay-loaded)[/dim]')
 
-	if facts.exports:
+	if image.exports:
 		console.print('\n  [bold]Exports[/bold]')
-		shown = facts.exports[:12]
-		_kv(console, 'module', facts.export_name)
+		shown = image.exports[:12]
+		_kv(console, 'module', image.export_name)
 		console.print(
 			'      '
 			+ escape(', '.join(shown))
 			+ (
-				f' [dim]... +{len(facts.exports) - len(shown)} more[/dim]'
-				if len(facts.exports) > len(shown)
+				f' [dim]... +{len(image.exports) - len(shown)} more[/dim]'
+				if len(image.exports) > len(shown)
 				else ''
 			)
 		)
@@ -1977,27 +1977,27 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 		for role in v.roles:
 			_kv(console, 'role', role)
 
-	if facts.version_info:
+	if image.version_info:
 		console.print('\n  [bold]Version info[/bold]')
-		for key, value in facts.version_info.items():
+		for key, value in image.version_info.items():
 			_kv(console, key, value)
-		for lang, codepage in facts.translations:
+		for lang, codepage in image.translations:
 			_kv(
 				console,
 				'translation',
 				f'{lcid_name(lang)} (0x{lang:04X}) / {CODEPAGES.get(codepage, codepage)}',
 			)
 
-	if facts.resource_langs:
+	if image.resource_langs:
 		console.print('\n  [bold]Resources[/bold]')
-		_kv(console, 'types', ', '.join(sorted(set(facts.resource_types))))
-		for lang in sorted(facts.resource_langs):
-			kinds = facts.resource_langs[lang]
+		_kv(console, 'types', ', '.join(sorted(set(image.resource_types))))
+		for lang in sorted(image.resource_langs):
+			kinds = image.resource_langs[lang]
 			detail = ' '.join(
 				f'{k.removeprefix("RT_")}({n})' for k, n in sorted(kinds.items())
 			)
-			strings = facts.string_tables.get(lang)
-			total = facts.string_counts.get(lang, 0)
+			strings = image.string_tables.get(lang)
+			total = image.string_counts.get(lang, 0)
 			count = f'  [dim]{total} strings[/dim]' if total else ''
 			console.print(
 				f'      [bold]{lcid_name(lang):<14}[/bold] '
@@ -2049,9 +2049,9 @@ def analyse(
 	"""Classify one file, descending into it when it is an archive."""
 	kind = archive_kind(path) if depth < opts.max_depth else ''
 	if not kind:
-		facts = probe(path, opts.keep_strings)
-		if facts.ok or not opts.skip_non_pe:
-			yield ImageItem(display=display, facts=facts, verdict=classify(facts), depth=depth)
+		image = probe(path, opts.keep_strings)
+		if image.ok or not opts.skip_non_pe:
+			yield ImageItem(display=display, image=image, verdict=classify_image(image), depth=depth)
 		return
 
 	# a CAB is worth unpacking even when not descending -- its install header
