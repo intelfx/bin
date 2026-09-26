@@ -2141,7 +2141,7 @@ def main(
 		int,
 		typer.Option(
 			'--strings',
-			'-s',
+			'-S',
 			help='Show up to N sample strings per resource language.',
 		),
 	] = 0,
