@@ -29,7 +29,12 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import (
+	Annotated,
+	Any,
+	Optional,
+	cast,
+)
 from xml.etree import ElementTree
 
 import pefile
@@ -37,6 +42,11 @@ import structlog
 import typer
 from rich.console import Console
 from rich.markup import escape
+
+
+def assert_cast[T](typ: type[T], value: Any) -> T:
+	assert isinstance(value, typ)
+	return value
 
 log = structlog.get_logger()
 
