@@ -524,24 +524,29 @@ def lcid_name(lcid: int) -> str:
 # --------------------------------------------------------------------------
 
 @dataclass
+class NetRef:
+	name: str
+	version: str
+	token: str
+	retargetable: bool
+
+@dataclass
 class NetFacts:
 	metadata_version: str = ''
 	flags: list[str] = field(default_factory=list)
-	assembly: str = ''
-	assembly_version: str = ''
-	# (name, version, public key token, retargetable)
-	refs: list[tuple[str, str, str, bool]] = field(default_factory=list)
+	assembly: Optional[NetRef] = None
+	refs: list[NetRef] = field(default_factory=list)
 	tfm: str = ''
 
-	def ref(self, name: str) -> tuple[str, str, str, bool] | None:
+	def ref(self, name: str) -> NetRef | None:
 		for r in self.refs:
-			if r[0].lower() == name.lower():
+			if r.name.lower() == name.lower():
 				return r
 		return None
 
 	@property
 	def tokens(self) -> set[str]:
-		return {r[2] for r in self.refs if r[2]}
+		return {r.token for r in self.refs if r.token} | {self.assembly.token}
 
 
 @dataclass
@@ -697,21 +702,25 @@ def _probe_net(raw: bytes, facts: Facts) -> None:
 
 
 def _read_assembly_refs(tables: dnfile.stream.MetaDataTables, net: NetFacts) -> None:
-	if tables.Assembly and tables.Assembly.rows:
-		row = tables.Assembly.rows[0]
-		net.assembly = str(row.Name.value)
-		net.assembly_version = f'{row.MajorVersion}.{row.MinorVersion}.{row.BuildNumber}.{row.RevisionNumber}'
-	for row in tables.AssemblyRef.rows if tables.AssemblyRef else []:
+	def _parse_row(row: dnfile.mdtable.AssemblyRow | dnfile.mdtable.AssemblyRefRow) -> NetRef:
 		blob = bytes(row.PublicKey.value or b'') if row.PublicKey else b''
 		# afPublicKey means the blob holds the full key, from which the token
 		# is the last 8 bytes of its SHA-1, reversed
 		token = _public_key_token(blob) if row.Flags.afPublicKey else blob.hex().upper()
-		net.refs.append((
+		return NetRef(
 			str(row.Name.value),
 			f'{row.MajorVersion}.{row.MinorVersion}.{row.BuildNumber}.{row.RevisionNumber}',
 			token,
 			bool(row.Flags.afRetargetable),
-		))
+		)
+
+	# parse *this* assembly
+	if tables.Assembly and tables.Assembly.rows:
+		row = tables.Assembly.rows[0]
+		net.assembly = _parse_row(row)
+	# parse dependencies
+	for row in tables.AssemblyRef.rows if tables.AssemblyRef else []:
+		net.refs.append(_parse_row(row))
 
 
 def probe(path: Path, keep_strings: bool = False) -> Facts:
@@ -1285,12 +1294,12 @@ def _classify_net(facts: Facts, v: Verdict) -> None:
 
 	tokens = net.tokens
 	mscorlib = net.ref('mscorlib')
-	corelib_token = mscorlib[2] if mscorlib else ''
+	corelib_token = mscorlib.token if mscorlib else ''
 
 	if CF_TOKEN in tokens:
 		v.runtime = 'netcf'
-		base = '1.0' if (mscorlib and mscorlib[1] == '1.0.5000.0') else '2.0'
-		if any(r[2] == CF_TOKEN and r[1].startswith('3.5') for r in net.refs):
+		base = '1.0' if (mscorlib and mscorlib.version == '1.0.5000.0') else '2.0'
+		if any(r.token == CF_TOKEN and r.version.startswith('3.5') for r in net.refs):
 			base = '3.5'
 		if 'CompactFramework,Version=v3.5' in net.tfm:
 			base = '3.5'
@@ -1317,11 +1326,11 @@ def _classify_net(facts: Facts, v: Verdict) -> None:
 		if CORE_TOKEN in tokens or net.ref('netstandard') or net.ref('System.Runtime'):
 			v.runtime = 'netcore'
 			base = 'core'
-		elif any(r[0] == 'System.Core' and r[1].startswith('3.5') for r in net.refs):
+		elif any(r.name == 'System.Core' and r.version.startswith('3.5') for r in net.refs):
 			base = '3.5'
 		elif any(
-			r[0] in ('PresentationCore', 'PresentationFramework', 'WindowsBase')
-			and r[1].startswith('3.0')
+			r.name in ('PresentationCore', 'PresentationFramework', 'WindowsBase')
+			and r.version.startswith('3.0')
 			for r in net.refs
 		):
 			base = '3.0'
@@ -1932,19 +1941,24 @@ def render_image_detail(console: Console, item: ImageItem, show_strings: int) ->
 	for line in v.toolchain:
 		_kv(console, '', line)
 
-	if image.net:
+	if image.net and image.net.assembly:
+		def _render_ref(r: NetRef) -> str:
+			origin = NET_TOKENS.get(r.token, '')
+			suffix = f'  [dim]{origin}[/dim]' if origin else ''
+			flag = '  [dim]retargetable[/dim]' if r.retargetable else ''
+			return (
+				f'{escape(r.name)} {r.version}'
+				f'{" " + r.token if r.token else ""}{flag}{suffix}'
+			).strip()
+
 		console.print('\n  [bold]Managed metadata[/bold]')
 		_kv(console, 'CLR header', image.net.metadata_version)
-		_kv(console, 'assembly', f'{image.net.assembly} {image.net.assembly_version}'.strip())
+		_kv(console, 'assembly', f'{image.net.assembly.name} {image.net.assembly.version}'.strip())
 		_kv(console, 'flags', ', '.join(x.removeprefix('CLR_') for x in image.net.flags))
 		_kv(console, 'target fw', image.net.tfm)
-		for name, version, token, retarget in image.net.refs:
-			origin = NET_TOKENS.get(token, '')
-			suffix = f'  [dim]{origin}[/dim]' if origin else ''
-			flag = ' [dim]retargetable[/dim]' if retarget else ''
+		for r in image.net.refs:
 			console.print(
-				f'      {escape(name)} {version}'
-				f'{" " + token if token else ""}{flag}{suffix}'
+				f'      {_render_ref(r)}'
 			)
 
 	if image.libs:
