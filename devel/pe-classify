@@ -25,10 +25,11 @@ import struct
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Iterator
+from typing import Annotated
 from xml.etree import ElementTree
 
 import pefile
