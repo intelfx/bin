@@ -1565,6 +1565,7 @@ def classify_archive(arc: ArchiveFacts) -> Verdict:
 @dataclass
 class Item:
 	"""One classified thing: a PE image, or an archive that held some."""
+	metapath: PurePath
 	display: list[str]
 	verdict: Verdict
 	depth: int
@@ -1687,8 +1688,13 @@ ALL_FIELDS = [
 ]
 
 
-def fields(item: Item) -> dict[str, str]:
-	"""Flat namespace for --format. Empty string means 'not determined'."""
+def fields(item: Item, metapath: bool = False) -> dict[str, str]:
+	"""Flat namespace for --format. Empty string means 'not determined'.
+
+	:param metapath:
+		If True, include synthetic fields representing the file's metapath
+		(for use when generating a source dictionary for ``--format``).
+	"""
 	if isinstance(item, ArchiveItem):
 		fields = _archive_fields(item)
 	elif isinstance(item, ImageItem):
@@ -1697,6 +1703,18 @@ def fields(item: Item) -> dict[str, str]:
 		assert False
 	out: dict[str, str] = dict.fromkeys(ALL_FIELDS, '')
 	out.update(fields)
+	# add synthetic fields representing components of the file's metapath
+	# (equivalent to physical path unless the file is an archive member),
+	# for use with `--format`
+	if metapath:
+		out.update({
+			'path': str(item.metapath),
+			'dirname': str(item.metapath.parent),
+			'basename': str(item.metapath.name),
+			'pathstem': str(item.metapath.parent / item.metapath.stem),
+			'stem': item.metapath.stem,
+			'ext': item.metapath.suffix,
+		})
 	return out
 
 
@@ -2097,14 +2115,25 @@ EXTRACT_TIMEOUT = 600
 
 
 def analyse(
-	path: Path, display: list[str], scratch: Scratch, opts: 'Options', depth: int = 0
+	path: Path,
+	metapath: PurePath,
+	display: list[str],
+	scratch: Scratch,
+	opts: 'Options',
+	depth: int = 0,
 ) -> Iterator[Item]:
 	"""Classify one file, descending into it when it is an archive."""
 	kind = archive_kind(path)
 	if not kind:
 		image = probe(path, opts.keep_strings)
 		if image.ok or opts.show_non_pe:
-			yield ImageItem(display=display, image=image, verdict=classify_image(image), depth=depth)
+			yield ImageItem(
+				metapath=metapath,
+				display=display,
+				image=image,
+				verdict=classify_image(image),
+				depth=depth,
+			)
 		return
 
 	recurse = opts.recurse and depth < opts.max_depth
@@ -2116,7 +2145,13 @@ def analyse(
 	else:
 		arc = ArchiveFacts(path=path, kind=kind, size=path.stat().st_size)
 
-	item = ArchiveItem(display=display, archive=arc, verdict=classify_archive(arc), depth=depth)
+	item = ArchiveItem(
+		metapath=metapath,
+		display=display,
+		archive=arc,
+		verdict=classify_archive(arc),
+		depth=depth,
+	)
 	if arc.ok or opts.show_non_pe:
 		yield item
 	if not arc.ok or not recurse:
@@ -2139,7 +2174,9 @@ def analyse(
 				label = str(abs)
 			else:
 				label = str(rel)
-			yield from analyse(member, display + [label], scratch, opts, depth + 1)
+			yield from analyse(
+				member, metapath / rel, display + [label], scratch, opts, depth + 1
+			)
 	finally:
 		# bound peak scratch usage; the namespace would reclaim it at exit anyway
 		shutil.rmtree(arc.root, ignore_errors=True)
@@ -2284,14 +2321,14 @@ def main(
 	results: list[Item] = []
 	for path in _collect(paths):
 		shown = path.relative_to(base) if base and path.is_relative_to(base) else path
-		results.extend(analyse(path, [str(shown)], scratch, opts))
+		results.extend(analyse(path, path, [str(shown)], scratch, opts))
 
 	if not results:
 		raise typer.Exit(1)
 
 	if fmt:
 		for item in results:
-			print(render_format(fmt, fields(item)))
+			print(render_format(fmt, fields(item, metapath=True)))
 		return
 
 	if table if table is not None else len(results) > 1:
