@@ -530,6 +530,9 @@ class NetRef:
 	token: str
 	retargetable: bool
 
+	def __str__(self) -> str:
+		return f'{self.name} {self.version} ({self.token})'
+
 @dataclass
 class NetFacts:
 	metadata_version: str = ''
