@@ -1691,7 +1691,7 @@ ALL_FIELDS = [
 ]
 
 
-def fields(item: Item, metapath: bool = False) -> dict[str, str]:
+def fields(item: Item, metapath: bool = False) -> dict[str, str | None]:
 	"""Flat namespace for --format. Empty string means 'not determined'.
 
 	:param metapath:
@@ -1704,7 +1704,7 @@ def fields(item: Item, metapath: bool = False) -> dict[str, str]:
 		fields = _image_fields(item)
 	else:
 		assert False
-	out: dict[str, str] = dict.fromkeys(ALL_FIELDS, '')
+	out = dict.fromkeys(ALL_FIELDS, None)
 	out.update(fields)
 	# add synthetic fields representing components of the file's metapath
 	# (equivalent to physical path unless the file is an archive member),
@@ -1724,24 +1724,20 @@ def fields(item: Item, metapath: bool = False) -> dict[str, str]:
 class _StrictFormatter(string.Formatter):
 	"""Formatter that reports, rather than renders, unresolved fields."""
 
-	def __init__(self, values: dict[str, str]):
+	def __init__(self, values: dict[str, str | None]):
 		self.values = values
 		self.missing: list[str] = []
 
-	def get_value(self, key, args, kwargs):
-		if isinstance(key, int):
-			self.missing.append(str(key))
-			return ''
-		value = self.values.get(key)
+	def get_value(self, key, args, kwargs) -> str:
+		value = self.values[cast(Any, key)]
 		if value is None:
-			self.missing.append(f'{key} (unknown field)')
-			return ''
+			self.missing.append(f'{key} (inapplicable)')
 		if not value:
-			self.missing.append(key)
-		return value
+			self.missing.append(f'{key} (not determined)')
+		return value or ''
 
 
-def render_format(spec: str, values: dict[str, str]) -> str:
+def render_format(spec: str, values: dict[str, str | None]) -> str:
 	formatter = _StrictFormatter(values)
 	try:
 		text = formatter.vformat(spec, (), {})
@@ -1847,7 +1843,7 @@ def _image_row(item: ImageItem) -> dict[str, str | None]:
 		'Sub': f['subsys'] or None,
 		'OS ver': f['ceversion'] or f['winversion'] or None,
 		'Lang': f['lang'] or None,
-		'Version': _md_safe(f['fileversion'] or f['netversion']) or None,
+		'Version': _md_safe(f['fileversion'] or f['netversion'] or '') or None,
 		'Notes': _md_safe('; '.join(notes)) or None,
 	}
 
