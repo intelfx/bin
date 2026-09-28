@@ -14,7 +14,7 @@ _usage() {
 	cat <<EOF
 Usage: pg_backup_to [-D|--directory POSTGRES-ROOT] [-p|--port POSTGRES-PORT]
                     [ [-o|--output OUTPUT-FILE] | [-O|--output-dir OUTPUT-DIR] ]
-                    [-d|--databases DATABASES]
+                    [-d|--databases DATABASES] | [-W|--wait]
                     [[-c|--compress COMPRESSOR-CMDLINE] | [-N|--no-compress]]
                     [--] [POSTGRES-ROOT]
 EOF
@@ -28,6 +28,7 @@ declare -A ARGS=(
 	[-c|--compress:]="ARG_COMPRESS"
 	[-N|--no-compress]="ARG_NOCOMPRESS"
 	[-d|--databases:]="ARG_DATABASES split=, append"
+	[-W|--wait]="ARG_WAIT"
 	[--]="ARG_REMAINDER"
 )
 
@@ -55,14 +56,23 @@ fi
 ARG_PGROOT="$(sudo -u postgres realpath -qe "$ARG_PGROOT")"
 log "PostgreSQL directory: $ARG_PGROOT"
 
-if ! [[ ${ARG_OUTPUT_DIR+set} ]]; then
-	usage "-O/--output-dir not set"
+case "$(( ${ARG_OUTPUT_DIR+1} + ${ARG_WAIT+1} ))" in
+1) ;;
+0) usage "One of -O/--output-dir and -W/--wait must be set" ;;
+*) usage "-O/--output-dir and -W/--wait are mutually exclusive" ;;
+esac
+
+if [[ ${ARG_OUTPUT_DIR+set} ]]; then
+	if [[ -s "$ARG_OUTPUT_DIR" ]]; then
+		die "-O/--output-dir not empty"
+	fi
+	ARG_OUTPUT_DIR="$(realpath -qm "$ARG_OUTPUT_DIR")"
+	log "Output directory: $ARG_OUTPUT_DIR"
+elif [[ ${ARG_WAIT+set} ]]; then
+	log "Not backing up, just starting the server"
+else
+	die "Unreachable"
 fi
-if [[ -s "$ARG_OUTPUT_DIR" ]]; then
-	die "-O/--output-dir not empty"
-fi
-ARG_OUTPUT_DIR="$(realpath -qm "$ARG_OUTPUT_DIR")"
-log "Output directory: $ARG_OUTPUT_DIR"
 
 if ! [[ ${ARG_PGPORT+set} ]]; then
 	ARG_PGPORT="$(( 54320 + (RANDOM % 10) ))"
@@ -128,7 +138,9 @@ eval "$(globaltraps)"
 unset OK
 fail_cleanup() {
 	if ! [[ ${OK+set} ]]; then
-		trace rm -vf "$ARG_OUTPUT_DIR"/*
+		if [[ $ARG_OUTPUT_DIR ]]; then
+			trace rm -vf "${ARG_OUTPUT_DIR:?}"/*
+		fi
 	fi
 }
 ltrap fail_cleanup
@@ -245,7 +257,9 @@ dumpdbs() {
 	OK=1
 }
 
-if [[ ${ARG_DATABASES+set} ]]; then
+if [[ ${ARG_WAIT+set} ]]; then
+	journalctl -u "pg_backup_to-$ARG_PGPORT.service" -If -nall
+elif [[ ${ARG_DATABASES+set} ]]; then
 	dumpdbs "${ARG_DATABASES[@]}"
 else
 	dumpall
