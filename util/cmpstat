@@ -23,7 +23,7 @@ usage() {
 
 _usage() {
 	cat <<EOF
-Usage: ${0##*/} [-v|--verbose] FILE1 FILE2
+Usage: ${0##*/} [-v|--verbose] [-x|--xattrs] FILE1 FILE2
 
 Compare contents and metadata (stat fields and xattrs) of two files.
 Differences are reported on stdout.
@@ -31,6 +31,7 @@ Differences are reported on stdout.
 Options:
   -v, --verbose  also report differences in file identity (device, inode,
                  link count, birth time); these never affect exit status
+  -x, --xattrs   also report differences in xattrs
 
 Exit status:
   0  no differences
@@ -45,7 +46,7 @@ EOF
 # args
 #
 
-if args=$(getopt -o 'v' --long 'verbose' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o 'vx' --long 'verbose,xattrs' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -53,9 +54,11 @@ fi
 unset args
 
 verbose=0
+compare_xattrs=0
 while :; do
 	case "$1" in
 	-v|--verbose) verbose=1 ;;
+	-x|--xattrs) compare_xattrs=1 ;;
 	--) shift; break ;;
 	*) die "getopt error" ;;
 	esac
@@ -113,7 +116,7 @@ for (( i = 0; i < ${#FIELDS[@]} / 3; i++ )); do
 	printf '%s: %s -> %s\n' "${FIELDS[i*3]}" "${sa[i]}" "${sb[i]}"
 done
 
-if command -v getfattr &>/dev/null; then
+if (( compare_xattrs )) && command -v getfattr &>/dev/null; then
 	xattrs() {
 		getfattr -h --absolute-names -d -m - -e hex -- "$1" | sed '/^# file:/d; /^$/d'
 	}
