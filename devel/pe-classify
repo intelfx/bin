@@ -19,17 +19,19 @@ import hashlib
 import logging
 import os
 import re
+import shlex
 import shutil
 import string
 import struct
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections import abc
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePath, PureWindowsPath
 from typing import (
+	IO,
 	Annotated,
 	Any,
 	Optional,
@@ -1380,13 +1382,14 @@ def _classify_platform(facts: Facts, v: Verdict) -> None:
 	)
 
 	if v.runtime in ('netcf', 'silverlight'):
-		v.target = 'windows-mobile'
-		v.platform = (
-			'Windows Mobile / Windows CE device (managed)'
-			if v.runtime == 'netcf'
-			else 'Windows Phone 7 / Silverlight'
-		)
-		v.os_tag = v.net_version if v.runtime == 'netcf' else 'wp7'
+		if v.runtime == 'netcf':
+			v.target = 'windows-ce'
+			v.platform = 'Windows Mobile / Windows CE device (managed)'
+			v.os_tag = v.net_version
+		else:
+			v.target = 'windows-mobile'
+			v.platform = 'Windows Phone 7 / Silverlight'
+			v.os_tag = 'wp7'
 		if not ce_subsystem:
 			v.notes.append(
 				'managed device assemblies keep a desktop subsystem value; '
@@ -1587,7 +1590,7 @@ class ArchiveItem(Item):
 def _archive_fields(item: ArchiveItem) -> dict[str, str]:
 	arc, v = item.archive, item.verdict
 	inst = arc.install
-	out = {
+	out: dict[str, str] = {
 		'target': v.target,
 		'os': v.os_tag,
 		'platform': v.platform,
@@ -1624,7 +1627,7 @@ def _image_fields(item: ImageItem) -> dict[str, str]:
 	if 0 < image.timestamp < 0x7FFFFFFF:
 		when = datetime.fromtimestamp(image.timestamp, timezone.utc)
 
-	out = {
+	out: dict[str, str] = {
 		'target': v.target if v.target != 'unknown' else '',
 		'os': v.os_tag,
 		'platform': v.platform,
@@ -1644,7 +1647,7 @@ def _image_fields(item: ImageItem) -> dict[str, str]:
 		'fileversion': info.get('FileVersion', ''),
 		'productversion': info.get('ProductVersion', ''),
 		'origname': info.get('OriginalFilename', ''),
-		'assembly': image.net.assembly if image.net else '',
+		'assembly': str(image.net.assembly) if image.net else '',
 		'date': when.strftime('%Y-%m-%d') if when else '',
 		'year': when.strftime('%Y') if when else '',
 	}
@@ -1692,7 +1695,8 @@ ALL_FIELDS = [
 
 
 def fields(item: Item, allfields: bool = True, metapath: bool = False) -> dict[str, str | None]:
-	"""Flat namespace for --format. Empty string means 'not determined'.
+	"""Flat namespace for --format. Empty string means 'not determined',
+	None means 'not applicable' (only if :param:`allfields` is True).
 
 	:param allfields:
 		If True, all known fields are pre-initialized with None
@@ -1800,7 +1804,7 @@ def _md_display_paths(display: list[str], sep: str = ' // ', markup: tuple[str, 
 	return sep.join(f'{markup[0]}{_md_safe(i)}{markup[1]}' for i in display)
 
 
-def _archive_row(item: ArchiveItem) -> dict[str, str | None]:
+def _archive_details(item: ArchiveItem) -> dict[str, str | None]:
 	arc, v = item.archive, item.verdict
 	f = fields(item)
 	inst = arc.install
@@ -1826,7 +1830,7 @@ def _archive_row(item: ArchiveItem) -> dict[str, str | None]:
 	}
 
 
-def _image_row(item: ImageItem) -> dict[str, str | None]:
+def _image_details(item: ImageItem) -> dict[str, str | None]:
 	image, v = item.image, item.verdict
 	f = fields(item)
 	notes = []
@@ -1852,28 +1856,71 @@ def _image_row(item: ImageItem) -> dict[str, str | None]:
 	}
 
 
-def render_table(items: list[Item], base: Path | None) -> str:
-	header = ['File', 'Target', 'Arch', 'Runtime', 'Sub', 'OS ver', 'Lang', 'Version', 'Notes']
-	rows: list[list[str]] = [
-		header,
-		['---'] * len(header),
+ALL_DETAILS = [
+	'File',
+	'Target',
+	'Arch',
+	'Runtime',
+	'Sub',
+	'OS ver',
+	'Lang',
+	'Version',
+	'Notes',
+]
+
+
+def details(item: Item) -> dict[str, str | None]:
+	"""Human-readable details for --table. Unlike :func:`fields`,
+	None means 'not determined'.
+	"""
+	if isinstance(item, ImageItem):
+		cells = _image_details(item)
+	elif isinstance(item, ArchiveItem):
+		cells = _archive_details(item)
+	else:
+		assert False
+	return cells
+
+
+def _render_table(fields: list[str], rows: list[list[str | None]]) -> str:
+	header_rows: list[list[str]] = [
+		fields,
+		['---'] * len(fields),
 	]
-	for item in items:
-		if isinstance(item, ImageItem):
-			cells = _image_row(item)
-		elif isinstance(item, ArchiveItem):
-			cells = _archive_row(item)
-		else:
-			assert False
-		rows.append([
-			cells.get(key) or '--'
-			for key in header
-		])
 	lines = [
-		'| ' + ' | '.join(cells) + ' |'
-		for cells in rows
+		'| '
+		+ ' | '.join(cell if cell is not None else '--' for cell in row)
+		+ ' |'
+		for row in header_rows + rows
 	]
 	return '\n'.join(lines)
+
+
+def render_table_human(items: list[Item], base: Path | None) -> str:
+	header = ALL_DETAILS
+	rows: list[list[str | None]] = []
+	for item in items:
+		cells = details(item)
+		rows.append([
+			cells[key]
+			for key in header
+		])
+	return _render_table(header, rows)
+
+
+def render_table_verbose(items: list[Item], base: Path | None) -> str:
+	header = ['File'] + ALL_FIELDS
+	rows: list[list[str | None]] = []
+	for item in items:
+		cells = fields(item, allfields=True)
+		cells.update({
+			'File': _md_display_paths([str(item.metapath)]),
+		})
+		rows.append([
+			cells[key]
+			for key in header
+		])
+	return _render_table(header, rows)
 
 
 def _kv(console: Console, key: str, value: str, style: str = '', raw: bool = False) -> None:
@@ -2116,6 +2163,10 @@ FIELD_HELP = (
 
 EXTRACT_TIMEOUT = 600
 
+MARKDOWN_RENDERER_FMT = 'glow -w{columns}'
+
+g_markdown_renderer_installed = None
+
 
 def analyse(
 	path: Path,
@@ -2124,7 +2175,7 @@ def analyse(
 	scratch: Scratch,
 	opts: 'Options',
 	depth: int = 0,
-) -> Iterator[Item]:
+) -> abc.Iterator[Item]:
 	"""Classify one file, descending into it when it is an archive."""
 	kind = archive_kind(path)
 	if not kind:
@@ -2191,10 +2242,10 @@ class Options:
 	max_depth: int = 3
 	show_non_pe: bool = False
 	keep_strings: bool = False
-	serial: Iterator[int] = field(default_factory=lambda: iter(range(1 << 30)))
+	serial: abc.Iterator[int] = field(default_factory=lambda: iter(range(1 << 30)))
 
 
-def _collect(paths: list[Path]) -> Iterator[Path]:
+def _collect(paths: list[Path]) -> abc.Iterator[Path]:
 	for path in paths:
 		if str(path) == '-':
 			for line in sys.stdin:
@@ -2212,6 +2263,29 @@ def _collect(paths: list[Path]) -> Iterator[Path]:
 			yield path
 
 
+def _isatty_cols(file: IO | None) -> Optional[int]:
+	"""Checks if the given file is a TTY and returns the number of columns if so."""
+	if file and file.isatty():
+		return shutil.get_terminal_size().columns
+	return None
+
+
+def _ensure_markdown_renderer(markdown: bool, markdown_tool: Optional[str]):
+	global g_markdown_renderer_installed
+
+	stdout_cols = _isatty_cols(sys.stdout)
+	if markdown and g_markdown_renderer_installed is None and stdout_cols is not None:
+		markdown_tool = (markdown_tool or MARKDOWN_RENDERER_FMT).format(columns=stdout_cols)
+		pipe_fd = os.pipe()
+		sub = subprocess.Popen(
+			shlex.split(markdown_tool),
+			stdin=os.fdopen(pipe_fd[0], 'r'),
+			text=True,
+		)
+		sys.stdout = os.fdopen(pipe_fd[1], 'w')
+		g_markdown_renderer_installed = sub
+
+
 @app.command()
 def main(
 	paths: Annotated[
@@ -2221,7 +2295,7 @@ def main(
 		),
 	],
 	fmt: Annotated[
-		str,
+		list[str],
 		typer.Option(
 			'--format',
 			'-f',
@@ -2230,8 +2304,9 @@ def main(
 				f'Output is omitted entirely if any referenced field is unknown. '
 				f'Fields: {FIELD_HELP}'
 			),
+			default_factory=list,
 		),
-	] = '',
+	],
 	table: Annotated[
 		Optional[bool],
 		typer.Option(
@@ -2240,6 +2315,29 @@ def main(
 			help='Force markdown table or detailed report (default: table for >1 file).',
 		),
 	] = None,
+	markdown: Annotated[
+		bool,
+		typer.Option(
+			'--markdown',
+			'-M',
+			help=f'Render markdown output, if needed, using a given tool (default: `{MARKDOWN_RENDERER_FMT}`)'
+		)
+	] = False,
+	markdown_tool: Annotated[
+		Optional[str],
+		typer.Option(
+			'--markdown-tool',
+			help=f'Use TOOL instead of `{MARKDOWN_RENDERER_FMT}` to render markdown output on a terminal'
+		)
+	] = None,
+	verbose: Annotated[
+		bool,
+		typer.Option(
+			'--verbose',
+			'-v',
+			help='Display raw fields instead of human-readable summary table.'
+		),
+	] = False,
 	strings: Annotated[
 		int,
 		typer.Option(
@@ -2282,9 +2380,9 @@ def main(
 			help='How deep to recurse into nested archives.',
 		),
 	] = 3,
-	verbose: Annotated[
+	debug: Annotated[
 		bool,
-		typer.Option('--verbose', '-v', help='Log parser diagnostics.'),
+		typer.Option('--debug', help='Log parser diagnostics.'),
 	] = False,
 ) -> None:
 	"""Classify Windows PE binaries by target platform and runtime,
@@ -2303,10 +2401,10 @@ def main(
 		],
 		logger_factory=structlog.PrintLoggerFactory(sys.stderr),
 		wrapper_class=structlog.make_filtering_bound_logger(
-			logging.DEBUG if verbose else logging.ERROR
+			logging.DEBUG if debug else logging.ERROR
 		),
 	)
-	if not verbose:
+	if not debug:
 		for name in ('dnfile', 'pefile'):
 			logging.getLogger(name).setLevel(logging.CRITICAL)
 
@@ -2331,11 +2429,19 @@ def main(
 
 	if fmt:
 		for item in results:
-			print(render_format(fmt, fields(item, allfields=True, metapath=True)))
+			labels = (
+				render_format(f, fields(item, allfields=True, metapath=True))
+				for f in fmt
+			)
+			print('.'.join(filter(None, labels)))
 		return
 
 	if table if table is not None else len(results) > 1:
-		print(render_table(results, base))
+		_ensure_markdown_renderer(markdown, markdown_tool)
+		if verbose:
+			print(render_table_verbose(results, base))
+		else:
+			print(render_table_human(results, base))
 		return
 
 	console = Console(highlight=False, soft_wrap=True)
