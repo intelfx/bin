@@ -1,0 +1,156 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 3
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 3
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [-v|--verbose] FILE1 FILE2
+
+Compare contents and metadata (stat fields and xattrs) of two files.
+Differences are reported on stdout.
+
+Options:
+  -v, --verbose  also report differences in file identity (device, inode,
+                 link count, birth time); these never affect exit status
+
+Exit status:
+  0  no differences
+  1  metadata differs, contents identical
+  2  contents differ
+  3  error
+EOF
+}
+
+
+#
+# args
+#
+
+if args=$(getopt -o 'v' --long 'verbose' -n "${0##*/}" -- "$@"); then
+	eval set -- "$args"
+else
+	usage
+fi
+unset args
+
+verbose=0
+while :; do
+	case "$1" in
+	-v|--verbose) verbose=1 ;;
+	--) shift; break ;;
+	*) die "getopt error" ;;
+	esac
+	shift
+done
+
+case "$#" in
+2) a="$1"; b="$2" ;;
+*) usage "wrong number of positional arguments" ;;
+esac
+
+for f in "$a" "$b"; do
+	[[ -e $f || -L $f ]] || die "$f: no such file"
+done
+
+
+#
+# main
+#
+
+# name, format, and whether the field describes identity rather than state
+# (reported only with --verbose, ignored for exit status)
+FIELDS=(
+	type   %F    0
+	device %D    1
+	inode  %i    1
+	links  %h    1
+	mode   %A    0
+	owner  %u:%g 0
+	size   %s    0
+	birth  %w    1
+	mtime  %y    0
+	ctime  %z    0
+	atime  %x    0
+)
+
+fmt=
+for (( i = 1; i < ${#FIELDS[@]}; i += 3 )); do
+	fmt+="${FIELDS[i]}\n"
+done
+
+stat --printf="$fmt" -- "$a" | mapfile -t sa
+stat --printf="$fmt" -- "$b" | mapfile -t sb
+
+meta=0
+content=0
+
+for (( i = 0; i < ${#FIELDS[@]} / 3; i++ )); do
+	[[ ${sa[i]} != "${sb[i]}" ]] || continue
+	if (( FIELDS[i*3+2] )); then
+		(( verbose )) || continue
+	else
+		meta=1
+	fi
+	printf '%s: %s -> %s\n' "${FIELDS[i*3]}" "${sa[i]}" "${sb[i]}"
+done
+
+if command -v getfattr &>/dev/null; then
+	xattrs() {
+		getfattr -h --absolute-names -d -m - -e hex -- "$1" | sed '/^# file:/d; /^$/d'
+	}
+	if ! out="$(diff -- <(xattrs "$a") <(xattrs "$b"))"; then
+		echo "xattrs:"
+		sed -n 's/^[<>] /&/p' <<<"$out"
+		meta=1
+	fi
+fi
+
+if [[ -L $a && -L $b ]]; then
+	la="$(readlink -- "$a")"
+	lb="$(readlink -- "$b")"
+	if [[ $la != "$lb" ]]; then
+		printf 'target: %s -> %s\n' "$la" "$lb"
+		content=1
+	fi
+elif [[ -f $a && ! -L $a && -f $b && ! -L $b ]]; then
+	# size is already reported above, don't bother reading
+	if [[ $(stat -c %s -- "$a") != "$(stat -c %s -- "$b")" ]]; then
+		content=1
+	elif out="$(cmp -- "$a" "$b")"; then
+		:
+	elif (( $? == 1 )); then
+		echo "content: ${out#"$a $b "}"
+		content=1
+	else
+		die "cmp failed"
+	fi
+elif [[ ${sa[0]} != "${sb[0]}" ]]; then
+	content=1
+fi
+
+if (( content )); then
+	exit 2
+elif (( meta )); then
+	exit 1
+else
+	exit 0
+fi
