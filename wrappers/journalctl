@@ -31,6 +31,8 @@ declare -A JOURNALCTL_ARGS=(
 	[-b|--boot::]="$pass_filter"
 	[-u|--unit:]="ARG_UNIT $pass_filter"
 	[--user-unit:]="ARG_USER_UNIT $pass_filter"
+	[-I]="$pass_filter"
+	[--invocation:]="$pass_filter"
 	[-t|--identifier:]="$pass_filter"
 	[-p|--priority:]="$pass_filter"
 	[--facility:]="$pass_filter"
@@ -167,13 +169,8 @@ if [[ ${ARG_LAST+set} ]]; then
 		| read invocation
 	fi
 
-	# this appends _SYSTEMD_INVOCATION_ID=... to whatever matches are there (AND),
-	# then ORs it all with INVOCATION_ID=... (which is supposed to represent systemd's own messages about it)
-	# and USER_INVOCATION_ID=... (same, but for systemd --user)
 	ARGS_MATCHES+=(
-		_SYSTEMD_INVOCATION_ID="$invocation"
-		+ _COMM=systemd INVOCATION_ID="$invocation"
-		+ _COMM=systemd USER_INVOCATION_ID="$invocation"
+		--invocation="$invocation"
 	)
 fi
 
