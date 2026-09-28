@@ -82,13 +82,13 @@ done
 # name, format, and whether the field describes identity rather than state
 # (reported only with --verbose, ignored for exit status)
 FIELDS=(
-	type   %F    0
+	type   %F    0  # must remain index 0
+	size   %s    0  # must remain index 1
 	device %D    1
 	inode  %i    1
 	links  %h    1
 	mode   %A    0
 	owner  %u:%g 0
-	size   %s    0
 	birth  %w    1
 	mtime  %y    0
 	ctime  %z    0
@@ -135,8 +135,8 @@ if [[ -L $a && -L $b ]]; then
 		content=1
 	fi
 elif [[ -f $a && ! -L $a && -f $b && ! -L $b ]]; then
-	# size is already reported above, don't bother reading
-	if [[ $(stat -c %s -- "$a") != "$(stat -c %s -- "$b")" ]]; then
+	# size is already reported above
+	if [[ ${sa[1]} != "${sb[1]}" ]]; then
 		content=1
 	elif out="$(cmp -- "$a" "$b")"; then
 		:
