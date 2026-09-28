@@ -107,8 +107,11 @@ meta=0
 content=0
 
 for (( i = 0; i < ${#FIELDS[@]} / 3; i++ )); do
+	name="${FIELDS[i*3]}"
+	irrelevant="${FIELDS[i*3+2]}"
+
 	[[ ${sa[i]} != "${sb[i]}" ]] || continue
-	if (( FIELDS[i*3+2] )); then
+	if (( irrelevant )); then
 		(( verbose )) || continue
 	else
 		meta=1
