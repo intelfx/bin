@@ -1691,9 +1691,13 @@ ALL_FIELDS = [
 ]
 
 
-def fields(item: Item, metapath: bool = False) -> dict[str, str | None]:
+def fields(item: Item, allfields: bool = True, metapath: bool = False) -> dict[str, str | None]:
 	"""Flat namespace for --format. Empty string means 'not determined'.
 
+	:param allfields:
+		If True, all known fields are pre-initialized with None
+		(for use when generating a source dictionary for ``--format``).
+		Otherwise, inapplicable fields are not set in the returned dictionary.
 	:param metapath:
 		If True, include synthetic fields representing the file's metapath
 		(for use when generating a source dictionary for ``--format``).
@@ -1704,7 +1708,7 @@ def fields(item: Item, metapath: bool = False) -> dict[str, str | None]:
 		fields = _image_fields(item)
 	else:
 		assert False
-	out = dict.fromkeys(ALL_FIELDS, None)
+	out = dict.fromkeys(ALL_FIELDS, None) if allfields else {}
 	out.update(fields)
 	# add synthetic fields representing components of the file's metapath
 	# (equivalent to physical path unless the file is an archive member),
@@ -2327,7 +2331,7 @@ def main(
 
 	if fmt:
 		for item in results:
-			print(render_format(fmt, fields(item, metapath=True)))
+			print(render_format(fmt, fields(item, allfields=True, metapath=True)))
 		return
 
 	if table if table is not None else len(results) > 1:
