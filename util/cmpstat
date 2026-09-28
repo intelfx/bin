@@ -23,7 +23,7 @@ usage() {
 
 _usage() {
 	cat <<EOF
-Usage: ${0##*/} [-v|--verbose] [-x|--xattrs] FILE1 FILE2
+Usage: ${0##*/} [-v|--verbose] [-x|--xattrs] [--skip=ATTR[,ATTR...]] FILE1 FILE2
 
 Compare contents and metadata (stat fields and xattrs) of two files.
 Differences are reported on stdout.
@@ -32,6 +32,7 @@ Options:
   -v, --verbose  also report differences in file identity (device, inode,
                  link count, birth time); these never affect exit status
   -x, --xattrs   also report differences in xattrs
+  --skip=ATTRS   do not report differences in ATTRS (comma-separated)
 
 Exit status:
   0  no differences
@@ -46,7 +47,7 @@ EOF
 # args
 #
 
-if args=$(getopt -o 'vx' --long 'verbose,xattrs' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o 'vx' --long 'verbose,xattrs,skip:' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -55,10 +56,12 @@ unset args
 
 verbose=0
 compare_xattrs=0
+skip_list=()
 while :; do
 	case "$1" in
 	-v|--verbose) verbose=1 ;;
 	-x|--xattrs) compare_xattrs=1 ;;
+	--skip) shift; IFS=, read -ra val <<<"$1"; skip_list+=("${val[@]}") ;;
 	--) shift; break ;;
 	*) die "getopt error" ;;
 	esac
@@ -78,6 +81,11 @@ done
 #
 # main
 #
+
+declare -A skip_attrs
+for s in "${skip_list[@]}"; do
+	skip_attrs["$s"]=1
+done
 
 # name, format, and whether the field describes identity rather than state
 # (reported only with --verbose, ignored for exit status)
@@ -111,12 +119,13 @@ for (( i = 0; i < ${#FIELDS[@]} / 3; i++ )); do
 	irrelevant="${FIELDS[i*3+2]}"
 
 	[[ ${sa[i]} != "${sb[i]}" ]] || continue
+	[[ ! ${skip_attrs[$name]+set} ]] || continue
 	if (( irrelevant )); then
 		(( verbose )) || continue
 	else
 		meta=1
 	fi
-	printf '%s: %s -> %s\n' "${FIELDS[i*3]}" "${sa[i]}" "${sb[i]}"
+	printf '%s: %s -> %s\n' "${name}" "${sa[i]}" "${sb[i]}"
 done
 
 if (( compare_xattrs )) && command -v getfattr &>/dev/null; then
