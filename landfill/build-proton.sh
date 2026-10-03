@@ -114,6 +114,8 @@ if [[ ${ARG_PATCH_VERSION+set} ]]; then
 	PATCH_VERSION="$ARG_PATCH_VERSION"
 else
 	case "$SOURCE_TAG" in
+		GE-Proton11-*)
+			PATCH_VERSION=11ge ;;
 		GE-Proton10-*)
 			PATCH_VERSION=10ge ;;
 		GE-Proton9-*)
