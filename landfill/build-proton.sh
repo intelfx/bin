@@ -175,6 +175,13 @@ print_header() {
 	git nuke
 	git submodule update --init --recursive --progress
 
+	# newer Makefiles do not use offline tarballs -- sunrise by hand
+	# even more newer Makefiles need this before patches/*.sh
+	mkdir -p "$SCRIPT_DIR/contrib" "$SOURCE_DIR/contrib"
+	cp -av \
+		"$SCRIPT_DIR/contrib" \
+		-T "$SOURCE_DIR/contrib"
+
 	if [[ -e ./patches/protonprep-valve-staging.sh ]]; then
 		./patches/protonprep-valve-staging.sh |& tee "$BUILD_DIR/protonprep-valve-staging.log"
 	fi
@@ -240,12 +247,6 @@ aexport CCACHE_BASEDIR := $BUILD_DIR
 aexport CCACHE_CONFIGPATH := $CCACHE_CONFIGPATH
 aexport CCACHE_DIR := $CCACHE_DIR
 }" -i Makefile
-
-# newer Makefiles do not use offline tarballs -- sunrise by hand
-mkdir -p "$SCRIPT_DIR/contrib" "$SOURCE_DIR/contrib"
-cp -av \
-	"$SCRIPT_DIR/contrib" \
-	-T "$SOURCE_DIR/contrib"
 
 make redist
 
