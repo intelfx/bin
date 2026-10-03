@@ -194,7 +194,7 @@ print_header() {
 		patch_subdir="$(dirname "$p")"
 		patch_name="$(basename "$p")"
 		log "applying: subdir ${patch_subdir@Q} patch ${patch_name@Q}"
-		git -C "$patch_subdir" apply -3 "$PATCH_DIR/$p"
+		git -C "$patch_subdir" apply -3 "$PATCH_DIR/$p" || git -C "$patch_subdir" apply "$PATCH_DIR/$p" || (cd "$patch_subdir" && patch --fuzz 2 -Np1 -i "$PATCH_DIR/$p")
 	done
 )
 
