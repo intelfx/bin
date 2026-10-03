@@ -3,6 +3,7 @@
 set -eo pipefail
 shopt -s lastpipe
 shopt -s nullglob
+shopt -s extglob
 
 . $HOME/bin/lib/lib.sh
 
@@ -23,6 +24,8 @@ declare -A CC_FLAGS_DEVICES=(
 	[mtl8]="-march=skylake -mtune=generic -mabm -mavx256-split-unaligned-load -mavx256-split-unaligned-store -mclwb -mgfni -mmovdir64b -mmovdiri -mno-sgx -mpconfig -mpku -mptwrite -mrdpid -msha -mshstk -mvaes -mvpclmulqdq -mwaitpkg --param=l1-cache-line-size=64 --param=l1-cache-size=32 --param=l2-cache-size=24576"  # gcc 10
 	[mtl]="-march=meteorlake -mabm -mno-cldemote -mno-kl -mno-sgx -mno-widekl -mshstk --param=l1-cache-line-size=64 --param=l1-cache-size=48 --param=l2-cache-size=24576"  # gcc 14
 	#[mtl]="-march=meteorlake -mabm -mno-kl -mno-sgx -mno-widekl -mshstk --param=l1-cache-line-size=64 --param=l1-cache-size=48 --param=l2-cache-size=24576"  # gcc 15
+	# XXX: wine makes no distinction between host and target tools, and they SIGILL on host if built for znver4
+	[box]="-march=znver3 -mtune=znver4 -mshstk --param=l1-cache-line-size=64 --param=l1-cache-size=32 --param=l2-cache-size=1024"
 )
 declare -A RUST_FLAGS_DEVICES=(
 	[native]="-Ctarget-cpu=native"
@@ -30,6 +33,8 @@ declare -A RUST_FLAGS_DEVICES=(
 	[mtl8]="-Ctarget-cpu=alderlake" # rustc 1.68 / LLVM 15
 	[mtl]="-Ctarget-cpu=alderlake" # rustc 1.68 / LLVM 15
 	#[mtl]="-Ctarget-cpu=meteorlake"
+	[box]="-Ctarget-cpu=znver3"
+	#[box]="-Ctarget-cpu=znver4"
 )
 declare -A TAGS_DEVICES=(
 	[mtl8]=mtl
