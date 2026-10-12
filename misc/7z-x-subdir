@@ -1,0 +1,93 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+# shellcheck source=../lib/lib.sh
+. lib.sh
+
+_usage() {
+	cat <<EOF
+Usage: $0 [-h|--help] | [7Z-ARGS] FILE
+EOF
+}
+
+
+#
+# args
+#
+
+declare -A _args=(
+	[-h\|--help]=ARG_USAGE
+	[--]=ARGS
+)
+parse_args _args "$@" || usage
+[[ ! $ARG_USAGE ]] || usage
+
+case "${#ARGS[@]}" in
+0) usage "no arguments" ;;
+esac
+
+set -- "${ARGS[@]}"
+
+_7Z_ARGS=()
+_7Z_FILES=()
+# all 7z switches are strictly single-word (i.e. 7z's parser does not accept
+# `-key value`, it's always `-KEYvalue`), so the parser is simple
+while (( $# )); do
+	case "$1" in
+	# explicit output directory (-o) conflicts with the purpose of this script
+	-o*) die "switch must not be used: ${1@Q}" ;;
+	-*) _7Z_ARGS+=("$1") ;;
+	*) break ;;
+	esac
+	shift
+done
+_7Z_FILES=("$@")
+
+case "${#_7Z_FILES[@]}" in
+0) usage "no file" ;;
+esac
+
+SRC_FILE="${_7Z_FILES[0]}"
+[[ -e "$SRC_FILE" ]] || die "source file ${SRC_FILE@Q} not found, or cmdline parsing error"
+
+
+#
+# main
+#
+
+eval "$(globaltraps)"
+
+SRC_BASENAME="$(basename "$SRC_FILE")"
+# try to trim known suffixes from the archive file name,
+# such that `archive.7z` is extracted into `archive/`
+DEST_DIRNAME="${SRC_BASENAME%.@(7z|zip|rar|tar.gz|tgz|tar.bz2|tbz2|tar.xz|txz|tar.lzma|tlzma|tar.lz4|tlz4|tar.zst|tzst)}"
+if [[ $DEST_DIRNAME == "$SRC_BASENAME" ]]; then
+	# if no suffix was trimmed, append `.d` to the entire archive file name,
+	# such that `archive.weird` is extracted into `archive.weird.d/`
+	DEST_DIRNAME="$SRC_BASENAME.d"
+fi
+
+
+
+target_dir="./${DEST_DIRNAME}"
+_tmp_dir_pat="./.${DEST_DIRNAME}.XXXXXX"
+tmp_dir="$(mktemp -d "$_tmp_dir_pat")"
+ltrap 'rm -rf "${tmp_dir:?}"'
+
+Trace 7z x "${_7Z_ARGS[@]}" -o"$tmp_dir" "${_7Z_FILES[@]}"
+
+find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d \
+| readarray -t children
+
+case "${#children[@]}" in
+1)
+	# archive contains a toplevel directory, use that
+	mv -v -- "${children[0]}" .
+	;;
+*)
+	# archive does not contain a toplevel directory (or is empty), use the tmpdir as the toplevel
+	mv -v -T -- "$tmp_dir" "$target_dir"
+	;;
+esac
