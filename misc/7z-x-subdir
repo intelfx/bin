@@ -8,7 +8,15 @@ shopt -s lastpipe
 
 _usage() {
 	cat <<EOF
-Usage: $0 [-h|--help] | [7Z-ARGS] FILE
+Usage: $0 [-h|--help]
+       $0 [-Xforce] [-Xrename] [7Z-ARGS] FILE
+
+Options:
+	-Xforce		Always create a subdirectory, even if the archive has
+			exactly one toplevel directory
+
+	-Xrename	If the archive contains exactly one toplevel directory,
+			rename it to match the archive name
 EOF
 }
 
@@ -19,6 +27,7 @@ EOF
 
 declare -A _args=(
 	[-h\|--help]=ARG_USAGE
+	[-X:]="ARG_EXTRA append"
 	[--]=ARGS
 )
 parse_args _args "$@" || usage
@@ -27,6 +36,18 @@ parse_args _args "$@" || usage
 case "${#ARGS[@]}" in
 0) usage "no arguments" ;;
 esac
+
+ARG_SUBDIR_RENAME=
+ARG_SUBDIR_FORCE=
+for arg in "${ARG_EXTRA[@]}"; do
+	case "$arg" in
+	# -Xrename: always rename the subdir to match the archive name
+	rename) ARG_SUBDIR_RENAME=1 ;;
+	# -Xforce: always create a subdir even if the archive has exactly one toplevel item
+	force) ARG_SUBDIR_FORCE=1 ;;
+	*) usage "unknown argument: -X${arg}" ;;
+	esac
+done
 
 set -- "${ARGS[@]}"
 
@@ -78,16 +99,17 @@ ltrap 'rm -rf "${tmp_dir:?}"'
 
 Trace 7z x "${_7Z_ARGS[@]}" -o"$tmp_dir" "${_7Z_FILES[@]}"
 
-find "$tmp_dir" -mindepth 1 -maxdepth 1 -type d \
+find "$tmp_dir" -mindepth 1 -maxdepth 1 \
 | readarray -t children
 
-case "${#children[@]}" in
-1)
+if (( ${#children[@]} == 1 )) && [[ -d "${children[0]}" ]] && (( ! ARG_SUBDIR_FORCE )); then
 	# archive contains a toplevel directory, use that
-	mv -v -- "${children[0]}" .
-	;;
-*)
+	if (( ARG_SUBDIR_RENAME )); then
+		mv -v -T -- "${children[0]}" "$target_dir"
+	else
+		mv -v -- "${children[0]}" .
+	fi
+else
 	# archive does not contain a toplevel directory (or is empty), use the tmpdir as the toplevel
 	mv -v -T -- "$tmp_dir" "$target_dir"
-	;;
-esac
+fi
