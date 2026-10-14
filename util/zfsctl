@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+. lib.sh
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [KEY ...] | [KEY=VALUE ...]
+
+Read or write zfs(4) module parameters, a la sysctl.
+EOF
+}
+
+rc=0
+
+for arg; do
+	if [[ $arg == *'='* ]]; then
+		IFS='=' read -r k v <<<"$arg"
+		log "setting: $k = $v"
+		printf "%s" "$v" >"/sys/module/zfs/parameters/$k" || rc=$?
+	else
+		k="$arg"
+		v="$(< "/sys/module/zfs/parameters/$k")" || { rc=$?; continue; }
+		printf "%s = %s\n" "$k" "$v"
+	fi
+done
+
+exit "$rc"
