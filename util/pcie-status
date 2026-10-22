@@ -1,0 +1,1815 @@
+#!/usr/bin/env python3
+
+"""
+Report PCIe link, bandwidth and power management state of PCI devices, and
+flag whatever deserves a second look: links trained below what both ends
+support (and what holds them back), end-to-end bandwidth bottlenecks, ASPM and
+L1 substates left disabled, runtime PM switched off, latched errors.
+
+Facts come from `lspci -vvv` -- run live, or read from a saved dump -- and,
+when running live, from sysfs (runtime PM, ASPM knobs, AER counters) and the
+kernel log of the current boot.
+
+The three layers below are kept apart on purpose:
+  - probe_*()    -- extraction only, no judgement
+  - analyse()    -- findings over the extracted facts
+  - render_*()   -- presentation
+"""
+
+import logging
+import math
+import os
+import re
+import shlex
+import shutil
+import string
+import subprocess
+import sys
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import (
+	IO,
+	Annotated,
+	Any,
+	Optional,
+	cast,
+)
+
+import structlog
+import typer
+from rich.console import Console
+from rich.markup import escape
+
+
+log: structlog.BoundLogger = structlog.get_logger()
+
+
+# --------------------------------------------------------------------------
+# lookup tables
+# --------------------------------------------------------------------------
+
+# lspci's name for the PCIe port type -> (tag, side of the link it sits on):
+#   'up'   -- links towards the root (endpoints, switch upstream ports)
+#   'down' -- links towards the leaves (root ports, switch downstream ports)
+#   ''     -- has no link (integrated endpoints, event collectors)
+PORT_TYPES = {
+	'Endpoint': ('EP', 'up'),
+	'Legacy Endpoint': ('LEP', 'up'),
+	'Upstream Port': ('USP', 'up'),
+	'PCI-Express to PCI/PCI-X Bridge': ('PCIe-PCI', 'up'),
+	'Root Port': ('RP', 'down'),
+	'Downstream Port': ('DSP', 'down'),
+	'PCI/PCI-X to PCI-Express Bridge': ('PCI-PCIe', 'down'),
+	'Root Complex Integrated Endpoint': ('RCiEP', ''),
+	'Root Complex Event Collector': ('RCEC', ''),
+}
+
+ENDPOINT_KINDS = {'EP', 'LEP'}
+
+ASPM_STATES = ['L0s', 'L1']
+L1SS_STATES = ['ASPM L1.1', 'ASPM L1.2', 'PCI-PM L1.1', 'PCI-PM L1.2']
+
+# ASPM state -> sysfs knob under /sys/bus/pci/devices/*/link/
+ASPM_KNOBS = {
+	'L0s': 'l0s_aspm',
+	'L1': 'l1_aspm',
+	'ASPM L1.1': 'l1_1_aspm',
+	'ASPM L1.2': 'l1_2_aspm',
+	'PCI-PM L1.1': 'l1_1_pcipm',
+	'PCI-PM L1.2': 'l1_2_pcipm',
+	'ClockPM': 'clkpm',
+}
+
+GPU_DRIVERS = {
+	'amdgpu',
+	'radeon',
+	'nouveau',
+	'nvidia',
+	'i915',
+	'xe',
+}
+
+# downstream ports whose links are tunnelled, and so report a nominal
+# speed and width that bear no relation to the actual throughput
+TUNNEL_RE = re.compile(r'Thunderbolt|USB4|Type-C|\bJHL\d', re.IGNORECASE)
+
+# correctable errors that do not on their own indicate a link problem
+BENIGN_CE = {'AdvNonFatalErr'}
+# uncorrectable errors routinely latched by enumeration and config probing
+BENIGN_UE = {'UnsupReq'}
+
+INFO, WARN, ERROR = 1, 2, 3
+SEVERITY_NAMES = {
+	0: '',
+	INFO: 'info',
+	WARN: 'warn',
+	ERROR: 'error',
+}
+SEVERITY_MARKS = {
+	INFO: '',
+	WARN: '!',
+	ERROR: '!!',
+}
+SEVERITY_COLOURS = {
+	0: 'green',
+	INFO: 'green',
+	WARN: 'yellow',
+	ERROR: 'red',
+}
+
+SYSFS_PCI = Path('/sys/bus/pci/devices')
+SYSFS_ASPM_POLICY = Path('/sys/module/pcie_aspm/parameters/policy')
+UDEV_DATA = Path('/run/udev/data')
+BDF_RE = re.compile(r'^[0-9a-f]{4,}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$')
+
+
+def lane_mbps(speed: float) -> int:
+	"""Usable per-lane bandwidth after encoding overhead, rounded the way the
+	kernel does it (PCIE_SPEED2MBS_ENC), so that figures match its log."""
+	mts = round(speed * 1000)
+	if speed >= 64:
+		return mts
+	if speed >= 8:
+		return mts * 128 // 130
+	return mts * 8 // 10
+
+
+def fmt_speed(speed: float | None) -> str:
+	return f'{speed:g}GT/s' if speed is not None else '?'
+
+
+def fmt_link(speed: float | None, width: int | None) -> str:
+	if width == 0:
+		return 'down'
+	return f'{fmt_speed(speed)} x{width if width is not None else "?"}'
+
+
+def fmt_gbps(mbps: int) -> str:
+	return f'{mbps / 1000:.1f}'
+
+
+def fmt_ns(ns: float) -> str:
+	if math.isinf(ns):
+		return 'unlimited'
+	if ns >= 1000:
+		return f'{ns / 1000:g}us'
+	return f'{ns:g}ns'
+
+
+def fmt_size(size: int) -> str:
+	for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+		if size < 1024 or unit == 'TB':
+			return f'{size:g}{unit}'
+		size //= 1024
+	assert False
+
+
+def _min(*values: Any) -> Any:
+	present = [v for v in values if v is not None]
+	return min(present) if present else None
+
+
+# --------------------------------------------------------------------------
+# layer 1: parser
+# --------------------------------------------------------------------------
+
+@dataclass
+class LinkFacts:
+	"""One port's view of its link (LnkCap, LnkCtl, LnkSta and their "2" twins).
+
+	ASPM sets are None when unknown, as opposed to empty.
+	"""
+	max_speed: float | None = None
+	max_width: int | None = None
+	speeds: str = ''
+	aspm_cap: frozenset[str] | None = None
+	exit_latency: dict[str, float] = field(default_factory=dict)
+	clockpm_cap: bool = False
+	aspm: frozenset[str] | None = None
+	clockpm: bool = False
+	commclk: bool = False
+	speed: float | None = None
+	width: int | None = None
+	status: dict[str, bool] = field(default_factory=dict)
+	target: float | None = None
+
+
+@dataclass
+class ExpressFacts:
+	version: int = 0
+	kind: str = ''
+	side: str = ''
+	hotplug: bool = False
+	mps_cap: int | None = None
+	mps: int | None = None
+	mrrs: int | None = None
+	# ASPM state -> exit latency the function tolerates, ns
+	acceptable: dict[str, float] = field(default_factory=dict)
+	ltr_cap: bool = False
+	ltr: bool = False
+	link: LinkFacts | None = None
+	# reconstructed from sysfs: only link speed, width and ASPM are known
+	partial: bool = False
+
+
+@dataclass
+class PmFacts:
+	version: int = 0
+	d1: bool = False
+	d2: bool = False
+	pme: list[str] = field(default_factory=list)
+	state: str = ''
+	no_soft_reset: bool = False
+
+
+@dataclass
+class L1ssFacts:
+	cap: frozenset[str] = frozenset()
+	ctl: frozenset[str] = frozenset()
+
+
+@dataclass
+class SysFacts:
+	parent: str = ''
+	power_state: str = ''
+	rpm_control: str = ''
+	rpm_status: str = ''
+	d3cold_allowed: bool | None = None
+	# link/* knob -> enabled; a knob is present only for states the kernel
+	# considers usable on the link
+	knobs: dict[str, bool] = field(default_factory=dict)
+	# 'correctable' / 'fatal' / 'nonfatal' -> {error name: count}
+	aer: dict[str, dict[str, int]] = field(default_factory=dict)
+	speed: float | None = None
+	max_speed: float | None = None
+	width: int | None = None
+	max_width: int | None = None
+	is_bridge: bool = False
+	udev: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class Facts:
+	bdf: str
+	cls: str = ''
+	name: str = ''
+	rev: str = ''
+	driver: str = ''
+	secondary: int | None = None
+	error: str = ''
+	denied: bool = False
+	express: ExpressFacts | None = None
+	pm: PmFacts | None = None
+	l1ss: L1ssFacts | None = None
+	# (BAR index, current size, largest supported size)
+	rebar: list[tuple[int, int, int]] = field(default_factory=list)
+	ce_status: list[str] = field(default_factory=list)
+	ue_status: list[str] = field(default_factory=list)
+	sys: SysFacts | None = None
+	klog: list[str] = field(default_factory=list)
+
+	@property
+	def domain(self) -> str:
+		return self.bdf.split(':')[0]
+
+	@property
+	def bus(self) -> int:
+		return int(self.bdf.split(':')[1], 16)
+
+	@property
+	def short(self) -> str:
+		return self.bdf.removeprefix('0000:')
+
+	@property
+	def link(self) -> LinkFacts | None:
+		return self.express.link if self.express else None
+
+	@property
+	def kind(self) -> str:
+		return self.express.kind if self.express else ''
+
+	@property
+	def side(self) -> str:
+		return self.express.side if self.express else ''
+
+	@property
+	def is_gpu(self) -> bool:
+		return self.driver in GPU_DRIVERS or self.cls.startswith(('VGA', '3D', 'Display'))
+
+
+HEADER_RE = re.compile(
+	r'^(?:(?P<domain>[0-9a-f]{4,}):)?(?P<bus>[0-9a-f]{2}):(?P<dev>[0-9a-f]{2})\.(?P<fn>[0-7])'
+	r' (?P<cls>[^:]+): (?P<name>.*)$'
+)
+CAP_RE = re.compile(r'^Capabilities: \[[0-9a-f]+(?: v\d+)?\] (?P<name>.*)$')
+FIELD_RE = re.compile(r'^(?P<key>[A-Za-z][\w .#/-]*?):\s*(?P<value>.*)$')
+FLAG_RE = re.compile(r'([^\s,;:()]+?)([+-])(?=[\s,;)]|$)')
+SPEED_RE = re.compile(r'(\d+(?:\.\d+)?)GT/s')
+
+
+def _flags(text: str) -> dict[str, bool]:
+	"""lspci's `Name+ Other-` notation."""
+	return {m[1]: m[2] == '+' for m in FLAG_RE.finditer(text)}
+
+
+def _set_flags(text: str) -> list[str]:
+	return [k for k, v in _flags(text).items() if v]
+
+
+def _speed(text: str) -> float | None:
+	m = SPEED_RE.search(text)
+	return float(m[1]) if m else None
+
+
+def _int(pattern: str, text: str) -> int | None:
+	m = re.search(pattern, text)
+	return int(m[1]) if m else None
+
+
+def _latency(text: str) -> float | None:
+	"""An lspci latency bound in ns. Open-ended codes take the values the
+	kernel assumes for them: '>4us' and '>64us' as 5us and 65us."""
+	if text == 'unlimited':
+		return math.inf
+	m = re.fullmatch(r'([<>])(\d+)(ns|us)', text)
+	if not m:
+		return None
+	unit = 1000 if m[3] == 'us' else 1
+	return int(m[2]) * unit + (unit if m[1] == '>' else 0)
+
+
+def _size(text: str) -> int | None:
+	m = re.fullmatch(r'(\d+)([KMGT]?)B', text)
+	if not m:
+		return None
+	return int(m[1]) << (10 * ' KMGT'.index(m[2] or ' '))
+
+
+def _parse_link(f: dict[str, str]) -> LinkFacts:
+	cap, ctl, sta = f.get('LnkCap', ''), f.get('LnkCtl', ''), f.get('LnkSta', '')
+	link = LinkFacts(
+		max_speed=_speed(cap),
+		max_width=_int(r'Width x(\d+)', cap),
+		speed=_speed(sta),
+		width=_int(r'Width x(\d+)', sta),
+		status=_flags(sta),
+	)
+
+	# the Supported Link Speeds vector, where present, is authoritative
+	m = re.search(r'Supported Link Speeds: ([^,]+)', f.get('LnkCap2', ''))
+	if m and _speed(m[1]):
+		link.speeds = m[1]
+		link.max_speed = _speed(m[1])
+	m = re.search(r'Target Link Speed: (\S+)', f.get('LnkCtl2', ''))
+	if m:
+		link.target = _speed(m[1])
+
+	m = re.search(r'ASPM (not supported|unknown|L0s L1|L0s|L1)\b', cap)
+	if m:
+		link.aspm_cap = frozenset(s for s in m[1].split() if s in ASPM_STATES)
+	for state in ASPM_STATES:
+		m = re.search(rf'Exit Latency\b.*?\b{state} ([<>]\d+[nu]s)', cap)
+		lat = _latency(m[1]) if m else None
+		if lat is not None:
+			link.exit_latency[state] = lat
+	link.clockpm_cap = _flags(cap).get('ClockPM', False)
+
+	m = re.search(r'ASPM (Disabled|L0s L1 Enabled|L0s Enabled|L1 Enabled)', ctl)
+	if m:
+		link.aspm = frozenset(s for s in m[1].split() if s in ASPM_STATES)
+	ctl_flags = _flags(ctl)
+	link.clockpm = ctl_flags.get('ClockPM', False)
+	link.commclk = ctl_flags.get('CommClk', False)
+	return link
+
+
+def _parse_express(dev: Facts, name: str, f: dict[str, str]) -> None:
+	m = re.match(r'Express \(v(\d+)\) (.+?)(?: \(Slot[+-]\))?,', name)
+	if not m:
+		log.warning('unrecognised Express capability', bdf=dev.bdf, header=name)
+		return
+	kind, side = PORT_TYPES.get(m[2], (m[2], ''))
+	devcap, devctl = f.get('DevCap', ''), f.get('DevCtl', '')
+	e = ExpressFacts(
+		version=int(m[1]),
+		kind=kind,
+		side=side,
+		hotplug=_flags(f.get('SltCap', '')).get('HotPlug', False),
+		mps_cap=_int(r'MaxPayload (\d+) bytes', devcap),
+		mps=_int(r'MaxPayload (\d+) bytes', devctl),
+		mrrs=_int(r'MaxReadReq (\d+) bytes', devctl),
+		ltr_cap=_flags(f.get('DevCap2', '')).get('LTR', False),
+		ltr=_flags(f.get('DevCtl2', '')).get('LTR', False),
+	)
+	m = re.search(r'Latency L0s ([^,\s]+), L1 ([^,\s]+)', devcap)
+	if m:
+		for state, text in zip(ASPM_STATES, (m[1], m[2])):
+			lat = _latency(text)
+			if lat is not None:
+				e.acceptable[state] = lat
+	if 'LnkCap' in f:
+		e.link = _parse_link(f)
+	dev.express = e
+
+
+def _parse_pm(dev: Facts, name: str, f: dict[str, str]) -> None:
+	flags = f.get('Flags', '')
+	status = f.get('Status', '').split()
+	m = re.search(r'PME\(([^)]*)\)', flags)
+	state = status[0] if status else ''
+	dev.pm = PmFacts(
+		version=_int(r'version (\d+)', name) or 0,
+		d1=_flags(flags).get('D1', False),
+		d2=_flags(flags).get('D2', False),
+		pme=[s[:-1] for s in m[1].split(',') if s.endswith('+')] if m else [],
+		state='D3hot' if state == 'D3' else state,
+		no_soft_reset=_flags(f.get('Status', '')).get('NoSoftRst', False),
+	)
+
+
+def _parse_l1ss(dev: Facts, name: str, f: dict[str, str]) -> None:
+	def states(text: str) -> frozenset[str]:
+		return frozenset(
+			k.replace('_', ' ')
+			for k in _set_flags(text)
+			if k.replace('_', ' ') in L1SS_STATES
+		)
+
+	dev.l1ss = L1ssFacts(
+		cap=states(f.get('L1SubCap', '')),
+		ctl=states(f.get('L1SubCtl1', '')),
+	)
+
+
+def _parse_aer(dev: Facts, name: str, f: dict[str, str]) -> None:
+	dev.ce_status = _set_flags(f.get('CESta', ''))
+	dev.ue_status = _set_flags(f.get('UESta', ''))
+
+
+def _parse_rebar(dev: Facts, name: str, f: dict[str, str]) -> None:
+	for key, value in f.items():
+		m = re.fullmatch(r'BAR (\d+)', key)
+		sizes = re.search(r'current size: (\S+?), supported: (.*)', value)
+		if not m or not sizes:
+			continue
+		current = _size(sizes[1])
+		supported = [s for s in map(_size, sizes[2].split()) if s]
+		if current and supported:
+			dev.rebar.append((int(m[1]), current, max(supported)))
+
+
+CAP_PARSERS = [
+	('Express', _parse_express),
+	('Power Management', _parse_pm),
+	('L1 PM Substates', _parse_l1ss),
+	('Advanced Error Reporting', _parse_aer),
+	('Physical Resizable BAR', _parse_rebar),
+	('Resizable BAR', _parse_rebar),
+]
+
+
+def _parse_device_line(dev: Facts, line: str) -> None:
+	if line.startswith('Bus: '):
+		m = re.search(r'secondary=([0-9a-f]+)', line)
+		if m:
+			dev.secondary = int(m[1], 16)
+	elif line.startswith('Kernel driver in use: '):
+		dev.driver = line.split(': ', 1)[1]
+	elif line == 'Capabilities: <access denied>':
+		dev.denied = True
+	elif line.startswith('!!!'):
+		dev.error = line.lstrip('! ')
+
+
+def parse_lspci(text: str) -> list[Facts]:
+	"""Split `lspci -vvv` output into per-function facts.
+
+	Device-level lines are indented by one tab, capability fields by two,
+	and anything deeper continues the field above it.
+	"""
+	out: list[Facts] = []
+	dev: Facts | None = None
+	cap: tuple[str, dict[str, str]] | None = None
+	key = ''
+
+	def finish() -> None:
+		nonlocal cap
+		if dev is not None and cap is not None:
+			name, fields = cap
+			for prefix, parser in CAP_PARSERS:
+				if name.startswith(prefix):
+					parser(dev, name, fields)
+					break
+		cap = None
+
+	for raw in text.splitlines():
+		if not raw.strip():
+			continue
+		m = HEADER_RE.match(raw)
+		if m:
+			finish()
+			name = re.sub(r' \(prog-if [^)]*\)$', '', m['name'])
+			rev = re.search(r' \(rev ([0-9a-f]+)\)$', name)
+			dev = Facts(
+				bdf=f'{m["domain"] or "0000"}:{m["bus"]}:{m["dev"]}.{m["fn"]}',
+				cls=m['cls'],
+				name=name[: rev.start()] if rev else name,
+				rev=rev[1] if rev else '',
+			)
+			out.append(dev)
+			continue
+		if dev is None:
+			continue
+
+		depth = len(raw) - len(raw.lstrip('\t'))
+		line = raw.strip()
+		if depth <= 1:
+			finish()
+			m = CAP_RE.match(line)
+			if m:
+				cap = (m['name'], {})
+				key = ''
+			else:
+				_parse_device_line(dev, line)
+		elif cap is not None:
+			m = FIELD_RE.match(line) if depth == 2 else None
+			if m:
+				key = m['key']
+				cap[1].setdefault(key, m['value'])
+			elif key:
+				cap[1][key] += ' ' + line
+	finish()
+	return out
+
+
+def _read(path: Path) -> str:
+	try:
+		return path.read_text().strip()
+	except OSError:
+		return ''
+
+
+def _sys_speed(text: str) -> float | None:
+	m = re.match(r'(\d+(?:\.\d+)?) GT/s', text)
+	return float(m[1]) if m else None
+
+
+def _sys_int(text: str) -> int | None:
+	return int(text) if text.isdigit() else None
+
+
+def probe_sysfs(bdf: str) -> SysFacts:
+	d = SYSFS_PCI / bdf
+	s = SysFacts(
+		power_state=_read(d / 'power_state'),
+		rpm_control=_read(d / 'power' / 'control'),
+		rpm_status=_read(d / 'power' / 'runtime_status'),
+		speed=_sys_speed(_read(d / 'current_link_speed')),
+		max_speed=_sys_speed(_read(d / 'max_link_speed')),
+		width=_sys_int(_read(d / 'current_link_width')),
+		max_width=_sys_int(_read(d / 'max_link_width')),
+		is_bridge=_read(d / 'class').startswith('0x0604'),
+	)
+	parent = d.resolve().parent.name
+	if BDF_RE.match(parent):
+		s.parent = parent
+	d3cold = _read(d / 'd3cold_allowed')
+	if d3cold:
+		s.d3cold_allowed = d3cold == '1'
+
+	try:
+		knobs = sorted((d / 'link').iterdir())
+	except OSError:
+		knobs = []
+	for knob in knobs:
+		s.knobs[knob.name] = _read(knob) == '1'
+
+	for kind in ('correctable', 'fatal', 'nonfatal'):
+		counters = {}
+		for line in _read(d / f'aer_dev_{kind}').splitlines():
+			name, _, count = line.rpartition(' ')
+			if count.isdigit():
+				counters[name] = int(count)
+		if counters:
+			s.aer[kind] = counters
+
+	for line in _read(UDEV_DATA / f'+pci:{bdf}').splitlines():
+		k, _, v = line.removeprefix('E:').partition('=')
+		if line.startswith('E:') and v:
+			s.udev[k] = v
+	return s
+
+
+def _would_wake(bdf: str, sysfacts: dict[str, SysFacts]) -> bool:
+	"""Reading config space through sysfs resumes the parent bridge, and the
+	device itself if it is in D3cold (see pci_config_pm_runtime_get())."""
+	s = sysfacts[bdf]
+	parent = sysfacts.get(s.parent)
+	return s.power_state == 'D3cold' or (parent is not None and parent.rpm_status == 'suspended')
+
+
+def run_lspci(*args: str) -> str:
+	argv = ['lspci', '-D', '-vvv', *args]
+	try:
+		proc = subprocess.run(argv, check=True, capture_output=True, text=True)
+	except (OSError, subprocess.CalledProcessError) as exc:
+		raise typer.BadParameter(f'{shlex.join(argv)}: {exc}') from exc
+	return proc.stdout
+
+
+KLOG_RE = re.compile(r'^\S+ (?P<bdf>[0-9a-f]{4,}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]): (?P<msg>.*)$')
+KLOG_INTERESTING = re.compile(
+	r'ASPM|PCIe Bus Error|AER: (?:Corrected|Uncorrected|Multiple)|bandwidth|'
+	r'Link (?:Up|Down)|retrain|downtrain|L1 ?SS|L1\.2|LTR|power state|D3cold|bwctrl'
+)
+KLOG_BORING = re.compile(r'PME# supported')
+KLOG_BANDWIDTH = re.compile(r'available PCIe bandwidth')
+KLOG_AER = re.compile(r'PCIe Bus Error')
+KLOG_POWER = re.compile(r'Unable to change power state|Refused to change power state')
+
+
+def probe_klog() -> dict[str, list[str]]:
+	"""Kernel messages of the current boot that speak about link or power
+	management of a particular device, keyed by device."""
+	argv = ['journalctl', '--dmesg', '--boot', '--output=cat', '--no-pager', '--quiet']
+	try:
+		proc = subprocess.run(argv, check=True, capture_output=True, text=True)
+	except (OSError, subprocess.CalledProcessError) as exc:
+		log.warning('cannot read the kernel log', error=str(exc))
+		return {}
+	out: dict[str, list[str]] = {}
+	for line in proc.stdout.splitlines():
+		m = KLOG_RE.match(line)
+		if m and KLOG_INTERESTING.search(m['msg']) and not KLOG_BORING.search(m['msg']):
+			out.setdefault(m['bdf'], []).append(m['msg'])
+	return out
+
+
+@dataclass
+class Context:
+	live: bool = False
+	# pcie_aspm.policy, and pcie_aspm= on the kernel command line
+	policy: str = ''
+	cmdline: str = ''
+
+
+def probe_context() -> Context:
+	ctx = Context(live=True)
+	m = re.search(r'\[(\w+)\]', _read(SYSFS_ASPM_POLICY))
+	if m:
+		ctx.policy = m[1]
+	m = re.search(r'(?:^|\s)pcie_aspm=(\S+)', _read(Path('/proc/cmdline')))
+	if m:
+		ctx.cmdline = m[1]
+	return ctx
+
+
+def _from_sysfs(bdf: str, s: SysFacts) -> Facts:
+	"""Facts about a device lspci was not run on, as far as sysfs knows them."""
+	return Facts(
+		bdf=bdf,
+		cls=s.udev.get('ID_PCI_SUBCLASS_FROM_DATABASE', s.udev.get('ID_PCI_CLASS_FROM_DATABASE', '')),
+		name=' '.join(
+			x
+			for x in (
+				s.udev.get('ID_VENDOR_FROM_DATABASE', ''),
+				s.udev.get('ID_MODEL_FROM_DATABASE', ''),
+			)
+			if x
+		),
+		error='config space not read: doing so would wake the device',
+	)
+
+
+def probe_live(no_wake: bool) -> list[Facts]:
+	# capture power state before lspci perturbs it
+	sysfacts = {bdf: probe_sysfs(bdf) for bdf in sorted(os.listdir(SYSFS_PCI))}
+
+	if no_wake:
+		facts = []
+		for bdf, s in sysfacts.items():
+			if _would_wake(bdf, sysfacts):
+				facts.append(_from_sysfs(bdf, s))
+			else:
+				facts.extend(parse_lspci(run_lspci('-s', bdf)))
+	else:
+		facts = parse_lspci(run_lspci())
+
+	klog = probe_klog()
+	for f in facts:
+		f.sys = sysfacts.get(f.bdf)
+		f.klog = klog.get(f.bdf, [])
+		if f.sys and not f.driver:
+			driver = SYSFS_PCI / f.bdf / 'driver'
+			if driver.exists():
+				f.driver = driver.resolve().name
+
+	denied = sum(f.denied for f in facts)
+	if denied:
+		log.warning(
+			f'lspci could not read capabilities of {denied} device(s); '
+			f'run as root for complete data'
+		)
+	return facts
+
+
+def _fill_from_sysfs(f: Facts, parent: Facts | None) -> None:
+	"""Stand in for an unreadable PCIe capability with what sysfs exposes
+	without privileges: link speed and width, and the kernel's ASPM knobs.
+
+	The knobs describe the link as a whole, so they are attributed to both of
+	its ends, unless the port's own capability could be read.
+	"""
+	s = f.sys
+	if f.express is not None or s is None or not s.max_width:
+		return
+	if s.is_bridge and parent is not None and parent.side == 'down':
+		kind, side = 'USP', 'up'
+	elif s.is_bridge:
+		kind, side = ('DSP' if parent is not None else 'RP'), 'down'
+	elif parent is not None:
+		kind, side = 'EP', 'up'
+	else:
+		return
+	link = LinkFacts(
+		max_speed=s.max_speed,
+		max_width=s.max_width,
+		speed=s.speed,
+		width=s.width,
+	)
+	f.express = ExpressFacts(kind=kind, side=side, link=link, partial=True)
+	if side != 'up' or not s.knobs:
+		return
+
+	link.aspm_cap = frozenset(k for k in ASPM_STATES if ASPM_KNOBS[k] in s.knobs)
+	link.aspm = frozenset(k for k in ASPM_STATES if s.knobs.get(ASPM_KNOBS[k]))
+	f.l1ss = L1ssFacts(
+		cap=frozenset(k for k in L1SS_STATES if ASPM_KNOBS[k] in s.knobs),
+		ctl=frozenset(k for k in L1SS_STATES if s.knobs.get(ASPM_KNOBS[k])),
+	)
+	if parent is not None and parent.express is not None and parent.express.partial:
+		assert parent.link is not None
+		parent.link.aspm_cap = link.aspm_cap
+		parent.link.aspm = link.aspm
+		parent.l1ss = f.l1ss
+
+
+# --------------------------------------------------------------------------
+# layer 2: analysis
+# --------------------------------------------------------------------------
+
+@dataclass
+class Finding:
+	severity: int
+	text: str
+
+
+@dataclass
+class Pair:
+	"""A link: the port facing away from the root, and the first function of
+	the component below it."""
+	up: Facts
+	down: Facts
+	# set by the link check when the link trained below its capability for
+	# no benign reason
+	degraded: bool = False
+	# (endpoint, path exit latency, acceptable latency) for every endpoint
+	# whose L1 latency budget this link breaks
+	l1_blockers: list[tuple[Facts, float, float]] = field(default_factory=list)
+
+	@property
+	def ul(self) -> LinkFacts:
+		assert self.up.link is not None
+		return self.up.link
+
+	@property
+	def dl(self) -> LinkFacts:
+		assert self.down.link is not None
+		return self.down.link
+
+	@property
+	def speed(self) -> float | None:
+		return self.dl.speed if self.dl.speed is not None else self.ul.speed
+
+	@property
+	def width(self) -> int | None:
+		return self.dl.width if self.dl.width is not None else self.ul.width
+
+	@property
+	def max_speed(self) -> float | None:
+		return _min(self.ul.max_speed, self.dl.max_speed)
+
+	@property
+	def max_width(self) -> int | None:
+		return _min(self.ul.max_width, self.dl.max_width)
+
+	@property
+	def tunnelled(self) -> bool:
+		e = self.up.express
+		return bool(e and e.hotplug and TUNNEL_RE.search(self.up.name))
+
+	def aspm_states(self) -> tuple[list[str], list[str]]:
+		"""(enabled, supported) link power states, by the stricter end."""
+		sup = _both(self.ul.aspm_cap, self.dl.aspm_cap)
+		en = _both(self.ul.aspm, self.dl.aspm) & sup
+		supported = [s for s in ASPM_STATES if s in sup]
+		enabled = [s for s in ASPM_STATES if s in en]
+		if self.up.l1ss and self.down.l1ss and 'L1' in sup:
+			ss_sup = self.up.l1ss.cap & self.down.l1ss.cap
+			ss_en = self.up.l1ss.ctl & self.down.l1ss.ctl & ss_sup
+			supported += [s.removeprefix('ASPM ') for s in L1SS_STATES[:2] if s in ss_sup]
+			if 'L1' in en:
+				enabled += [s.removeprefix('ASPM ') for s in L1SS_STATES[:2] if s in ss_en]
+		return enabled, supported
+
+
+def _both(a: frozenset[str] | None, b: frozenset[str] | None) -> frozenset[str]:
+	"""Intersection of two sets, either of which may be unknown."""
+	if a is None:
+		return b or frozenset()
+	if b is None:
+		return a
+	return a & b
+
+
+@dataclass
+class Bandwidth:
+	available: int
+	capable: int
+	limiter: Facts
+	speed: float
+	width: int
+	degraded: bool
+
+
+@dataclass
+class Verdict:
+	depth: int = 0
+	parent: Facts | None = None
+	# the link towards the root, for every function of the component below it
+	uplink: Pair | None = None
+	# the link towards the leaves, for ports with something behind them
+	downlink: Pair | None = None
+	# whether this is the function that carries findings about the uplink
+	owner: bool = False
+	bw: Bandwidth | None = None
+	dstate: str = ''
+	findings: list[Finding] = field(default_factory=list)
+
+	@property
+	def severity(self) -> int:
+		return max((f.severity for f in self.findings), default=0)
+
+	def add(self, severity: int, text: str) -> None:
+		self.findings.append(Finding(severity, text))
+
+
+@dataclass
+class Item:
+	facts: Facts
+	verdict: Verdict
+
+
+def _speed_cause(pair: Pair, v: Verdict) -> tuple[int, str]:
+	ul, dl = pair.ul, pair.dl
+	cap = pair.max_speed
+	assert cap is not None and pair.speed is not None
+	if ul.target is not None and ul.target < cap and pair.speed <= ul.target:
+		return WARN, f'Target Link Speed on {pair.up.short} is {fmt_speed(ul.target)}'
+	if ul.status.get('BWMgmt'):
+		return WARN, 'retrained to cope with an unreliable link (BWMgmt+)'
+	if ul.status.get('ABWMgmt') or dl.status.get('ABWMgmt'):
+		return INFO, 'changed autonomously by the device (ABWMgmt+)'
+	if pair.down.is_gpu:
+		return INFO, 'likely GPU dynamic link power management'
+	if v.dstate not in ('', 'D0'):
+		return INFO, f'device in {v.dstate}'
+	return WARN, 'cause unknown (signal integrity? check slot, riser, cable, firmware)'
+
+
+def _check_link(pair: Pair, v: Verdict) -> None:
+	ul, dl = pair.ul, pair.dl
+	up = f'{pair.up.kind} {pair.up.short}'
+	if pair.width == 0:
+		v.add(WARN, 'link down')
+		pair.degraded = True
+		return
+	if ul.status.get('Train') or dl.status.get('Train'):
+		v.add(INFO, 'link training in progress')
+
+	if pair.tunnelled:
+		v.add(INFO, f'tunnelled link (via {pair.up.short}): reported speed and width are nominal')
+		return
+
+	if ul.max_speed is not None and dl.max_speed is not None and ul.max_speed < dl.max_speed:
+		v.add(
+			INFO,
+			f'speed capped by {up} ({fmt_speed(ul.max_speed)} < {fmt_speed(dl.max_speed)})',
+		)
+	if ul.max_width is not None and dl.max_width is not None and ul.max_width < dl.max_width:
+		v.add(INFO, f'width capped by {up} (x{ul.max_width} < x{dl.max_width})')
+
+	if pair.speed is not None and pair.max_speed is not None and pair.speed < pair.max_speed:
+		severity, cause = _speed_cause(pair, v)
+		v.add(severity, f'speed {fmt_speed(pair.speed)} < {fmt_speed(pair.max_speed)}: {cause}')
+		pair.degraded |= severity >= WARN
+	if pair.width is not None and pair.max_width is not None and pair.width < pair.max_width:
+		if ul.status.get('ABWMgmt') or dl.status.get('ABWMgmt'):
+			severity, cause = INFO, 'changed autonomously by the device (ABWMgmt+)'
+		else:
+			severity, cause = WARN, 'lanes failed to train (slot wiring, bifurcation, riser?)'
+		v.add(severity, f'width x{pair.width} < x{pair.max_width}: {cause}')
+		pair.degraded |= severity >= WARN
+
+
+def _knob_reason(state: str, pair: Pair, ctx: Context) -> str:
+	"""Best guess at why a link power state supported by both ends is off."""
+	if ctx.cmdline == 'off':
+		return 'pcie_aspm=off'
+	s = pair.down.sys
+	if s is None:
+		return ''
+	if not s.knobs:
+		return 'ASPM not under OS control'
+	if ASPM_KNOBS[state] not in s.knobs:
+		return 'not offered by the kernel'
+	if ctx.policy == 'performance':
+		return 'pcie_aspm.policy=performance'
+	if ctx.policy == 'default':
+		return 'firmware setting kept by pcie_aspm.policy=default'
+	if state.endswith('L1.2') or state.endswith('L1.1'):
+		if ctx.policy != 'powersupersave':
+			return f'needs pcie_aspm.policy=powersupersave (is {ctx.policy})'
+	return 'disabled by driver or via sysfs'
+
+
+def _with_reason(text: str, reason: str) -> str:
+	return f'{text} ({reason})' if reason else text
+
+
+def _check_aspm(pair: Pair, v: Verdict, ctx: Context) -> None:
+	ul, dl = pair.ul, pair.dl
+	sup = _both(ul.aspm_cap, dl.aspm_cap)
+	l1_on = False
+	for state in ASPM_STATES:
+		if state not in sup or ul.aspm is None or dl.aspm is None:
+			continue
+		on_up, on_down = state in ul.aspm, state in dl.aspm
+		if on_up and on_down:
+			l1_on |= state == 'L1'
+		elif on_up or on_down:
+			# L0s is controlled per direction and may legitimately be
+			# enabled in one only; L1 needs both ends
+			where = pair.up.short if on_up else pair.down.short
+			severity = WARN if state == 'L1' else INFO
+			v.add(severity, f'ASPM {state} enabled on {where} only')
+		elif state == 'L1' and pair.l1_blockers:
+			ep, lat, acc = pair.l1_blockers[0]
+			v.add(
+				WARN,
+				f'ASPM L1 disabled: exit latency {fmt_ns(lat)} '
+				f'exceeds {fmt_ns(acc)} acceptable to {ep.short}',
+			)
+		else:
+			severity = WARN if state == 'L1' else INFO
+			v.add(severity, _with_reason(
+				f'ASPM {state} supported but disabled',
+				_knob_reason(state, pair, ctx),
+			))
+
+	up_ss, down_ss = pair.up.l1ss, pair.down.l1ss
+	if l1_on and up_ss and down_ss:
+		ss_sup = up_ss.cap & down_ss.cap
+		for state in L1SS_STATES:
+			if state not in ss_sup:
+				continue
+			on_up, on_down = state in up_ss.ctl, state in down_ss.ctl
+			if on_up and on_down:
+				continue
+			if on_up or on_down:
+				where = pair.up.short if on_up else pair.down.short
+				v.add(WARN, f'{state} enabled on {where} only')
+			else:
+				severity = WARN if state.startswith('ASPM') else INFO
+				v.add(severity, _with_reason(
+					f'{state} supported but disabled',
+					_knob_reason(state, pair, ctx),
+				))
+
+		if any(s.endswith('L1.2') for s in ss_sup):
+			for side in (pair.up, pair.down):
+				e = side.express
+				assert e is not None
+				if e.ltr_cap and not e.ltr:
+					v.add(WARN, f'LTR supported but disabled on {side.short} (L1.2 needs it)')
+				elif not e.ltr_cap and not e.partial:
+					v.add(INFO, f'{side.short} lacks LTR, so L1.2 is unusable')
+
+	if dl.clockpm_cap and not dl.clockpm:
+		v.add(INFO, _with_reason(
+			'Clock PM supported but disabled',
+			_knob_reason('ClockPM', pair, ctx) if l1_on else '',
+		))
+	if ul.status.get('SlotClk') and dl.status.get('SlotClk') and not (ul.commclk and dl.commclk):
+		v.add(INFO, 'common reference clock available but not in use (CommClk-)')
+
+
+def _check_mps(f: Facts, v: Verdict, path: list[Facts]) -> None:
+	e = f.express
+	if e is None or e.mps is None:
+		return
+	if v.uplink and v.uplink.up.express and v.uplink.up.express.mps is not None:
+		port = v.uplink.up.express.mps
+		if e.mps > port:
+			v.add(ERROR, f'MPS {e.mps} exceeds {port} of {v.uplink.up.short}')
+	if e.kind in ENDPOINT_KINDS:
+		caps = [x.express.mps_cap for x in path if x.express and x.express.mps_cap]
+		if caps and e.mps < min(caps):
+			v.add(INFO, f'MPS {e.mps} < {min(caps)} supported along the path')
+
+
+def _check_pm(f: Facts, v: Verdict) -> None:
+	s = f.sys
+	if s is not None:
+		if s.rpm_control == 'on':
+			v.add(WARN, 'runtime PM disabled (power/control=on)')
+		if s.d3cold_allowed is False and f.kind in ENDPOINT_KINDS:
+			v.add(INFO, 'D3cold disallowed')
+	if not f.driver and 'bridge' not in f.cls.lower() and not f.error:
+		v.add(INFO, 'no driver bound')
+
+
+def _check_errors(f: Facts, v: Verdict) -> None:
+	aer = f.sys.aer if f.sys else {}
+	counted = False
+	for kind, severity in (('fatal', ERROR), ('nonfatal', ERROR), ('correctable', WARN)):
+		counters = aer.get(kind, {})
+		total = next((n for k, n in counters.items() if k.startswith('TOTAL_')), 0)
+		if not total:
+			continue
+		counted = True
+		top = sorted(
+			((n, k) for k, n in counters.items() if n and not k.startswith('TOTAL_')),
+			reverse=True,
+		)
+		v.add(severity, (
+			f'{total} {kind} AER error(s) this boot'
+			f' ({", ".join(f"{k} {n}" for n, k in top[:3])})'
+		))
+
+	if f.ue_status:
+		severity = INFO if set(f.ue_status) <= BENIGN_UE else ERROR
+		v.add(severity, f'uncorrectable error status latched: {" ".join(f.ue_status)}')
+	if f.ce_status and not counted:
+		severity = INFO if set(f.ce_status) <= BENIGN_CE else WARN
+		v.add(severity, f'correctable error status latched: {" ".join(f.ce_status)}')
+
+	reports = sum(1 for msg in f.klog if KLOG_AER.search(msg))
+	if reports and not counted:
+		v.add(WARN, f'{reports} AER error report(s) in the kernel log')
+	if any(KLOG_POWER.search(msg) for msg in f.klog):
+		v.add(WARN, 'failed power state transition(s) in the kernel log')
+
+
+def _check_rebar(f: Facts, v: Verdict) -> None:
+	for bar, current, largest in f.rebar:
+		if current < largest:
+			v.add(
+				WARN if f.is_gpu else INFO,
+				f'BAR {bar} is {fmt_size(current)}, resizable to {fmt_size(largest)}',
+			)
+
+
+def _bandwidth(f: Facts, path: list[Facts], pairs: dict[str, Pair]) -> Bandwidth | None:
+	"""End-to-end bandwidth the way pcie_bandwidth_available() computes it:
+	the slowest link on the path, reporting the one closest to the root."""
+	link = f.link
+	if link is None or link.max_speed is None or not link.max_width:
+		return None
+	best: Bandwidth | None = None
+	for node in path:
+		nl = node.link
+		if nl is None or nl.speed is None or not nl.width:
+			continue
+		mbps = lane_mbps(nl.speed) * nl.width
+		if best is None or mbps <= best.available:
+			pair = pairs.get(node.bdf)
+			best = Bandwidth(
+				available=mbps,
+				capable=lane_mbps(link.max_speed) * link.max_width,
+				limiter=node,
+				speed=nl.speed,
+				width=nl.width,
+				degraded=bool(pair and pair.degraded),
+			)
+	return best
+
+
+def _check_bandwidth(f: Facts, v: Verdict) -> None:
+	bw = v.bw
+	boot = next((m for m in reversed(f.klog) if KLOG_BANDWIDTH.search(m)), '')
+	if bw and bw.available < bw.capable:
+		v.add(WARN if bw.degraded else INFO, (
+			f'{fmt_gbps(bw.available)} of {fmt_gbps(bw.capable)} Gb/s available, '
+			f'limited by {fmt_link(bw.speed, bw.width)} at {bw.limiter.short}'
+		))
+	elif boot:
+		m = re.search(r'limited by (.*?) link at (\S+)', boot)
+		what = f'{m[1]} at {m[2].removeprefix("0000:")}' if m else boot
+		v.add(INFO, f'bandwidth was limited by {what} at enumeration')
+
+
+def _topology(facts: list[Facts]) -> dict[str, Facts | None]:
+	by_bdf = {f.bdf: f for f in facts}
+	bridges = {(f.domain, f.secondary): f for f in facts if f.secondary is not None}
+	parents: dict[str, Facts | None] = {}
+	for f in facts:
+		if f.sys is not None and f.sys.parent:
+			parents[f.bdf] = by_bdf.get(f.sys.parent)
+		else:
+			parent = bridges.get((f.domain, f.bus))
+			parents[f.bdf] = parent if parent is not f else None
+	return parents
+
+
+def analyse(facts: list[Facts], ctx: Context) -> list[Item]:
+	parents = _topology(facts)
+	children: dict[str | None, list[Facts]] = {}
+	for f in facts:
+		parent = parents[f.bdf]
+		children.setdefault(parent.bdf if parent else None, []).append(f)
+
+	ordered: list[tuple[Facts, int]] = []
+
+	def walk(key: str | None, depth: int) -> None:
+		for f in sorted(children.get(key, []), key=lambda x: x.bdf):
+			ordered.append((f, depth))
+			walk(f.bdf, depth + 1)
+
+	walk(None, 0)
+
+	def path_of(f: Facts) -> list[Facts]:
+		out: list[Facts] = []
+		node: Facts | None = f
+		while node is not None:
+			out.append(node)
+			node = parents[node.bdf]
+		return out
+
+	verdicts: dict[str, Verdict] = {}
+	# by the bdf of either end of the link
+	pairs: dict[str, Pair] = {}
+	for f, depth in ordered:
+		parent = parents[f.bdf]
+		_fill_from_sysfs(f, parent)
+		v = verdicts[f.bdf] = Verdict(depth=depth, parent=parent)
+		v.dstate = (f.sys.power_state if f.sys else '') or (f.pm.state if f.pm else '')
+		if (
+			parent is None
+			or f.side != 'up'
+			or parent.side != 'down'
+			or f.link is None
+			or parent.link is None
+		):
+			continue
+		pair = pairs.get(parent.bdf)
+		if pair is None:
+			pair = pairs[parent.bdf] = Pair(up=parent, down=f)
+			verdicts[parent.bdf].downlink = pair
+			v.owner = True
+		pairs[f.bdf] = pair
+		v.uplink = pair
+
+	# every endpoint function holds every link above it to its own latency budget
+	for f, _ in ordered:
+		acceptable = f.express.acceptable.get('L1') if f.express else None
+		if f.kind not in ENDPOINT_KINDS or acceptable is None:
+			continue
+		worst, switches = 0.0, 0.0
+		for node in path_of(f):
+			# a port's entry is the link below it, already seen from the child
+			pair = pairs.get(node.bdf)
+			if pair is None or node.side != 'up':
+				continue
+			exits = [x for x in (pair.ul.exit_latency.get('L1'), pair.dl.exit_latency.get('L1')) if x]
+			worst = max([worst, *exits])
+			if worst + switches > acceptable:
+				pair.l1_blockers.append((f, worst + switches, acceptable))
+			switches += 1000
+
+	items = []
+	for f, _ in ordered:
+		v = verdicts[f.bdf]
+		path = path_of(f)
+		if f.error:
+			v.add(INFO, f.error)
+		if v.owner and v.uplink:
+			_check_link(v.uplink, v)
+			_check_aspm(v.uplink, v, ctx)
+		_check_mps(f, v, path)
+		_check_pm(f, v)
+		_check_errors(f, v)
+		_check_rebar(f, v)
+		items.append(Item(facts=f, verdict=v))
+
+	# bandwidth depends on every link on the path having been checked
+	for item in items:
+		f, v = item.facts, item.verdict
+		if v.owner:
+			v.bw = _bandwidth(f, path_of(f), pairs)
+			_check_bandwidth(f, v)
+		v.findings.sort(key=lambda x: -x.severity)
+	return items
+
+
+# --------------------------------------------------------------------------
+# layer 3: output
+# --------------------------------------------------------------------------
+
+def _clean_name(name: str) -> str:
+	return re.sub(r',? (?:Corporation|Corp\.|Inc\.|Co\., Ltd\.|Technology Co\., Ltd\.)', '', name)
+
+
+def _pair_of(v: Verdict) -> Pair | None:
+	return v.uplink or v.downlink
+
+
+ALL_FIELDS = [
+	'bdf',
+	'domain',
+	'type',
+	'class',
+	'name',
+	'rev',
+	'driver',
+	'parent',
+	'depth',
+	'speed',
+	'width',
+	'maxspeed',
+	'maxwidth',
+	'target',
+	'linkspeed',
+	'linkwidth',
+	'bw',
+	'bwcap',
+	'limiter',
+	'aspm',
+	'aspmcap',
+	'clockpm',
+	'commclk',
+	'ltr',
+	'mps',
+	'mpscap',
+	'mrrs',
+	'dstate',
+	'rpm',
+	'rpmstatus',
+	'd3cold',
+	'severity',
+	'findings',
+]
+
+FIELD_HELP = ' '.join(ALL_FIELDS)
+
+
+def _yn(value: bool) -> str:
+	return 'yes' if value else 'no'
+
+
+def fields(item: Item) -> dict[str, str | None]:
+	"""Flat namespace for --format and --verbose. Empty string means
+	'not determined', None means 'not applicable'."""
+	f, v = item.facts, item.verdict
+	e, link, pair, s = f.express, f.link, _pair_of(v), f.sys
+	out: dict[str, str | None] = dict.fromkeys(ALL_FIELDS, None)
+	out.update({
+		'bdf': f.bdf,
+		'domain': f.domain,
+		'type': f.kind or 'PCI',
+		'class': f.cls,
+		'name': f.name,
+		'rev': f.rev,
+		'driver': f.driver,
+		'parent': v.parent.bdf if v.parent else None,
+		'depth': str(v.depth),
+		'dstate': v.dstate,
+		'severity': SEVERITY_NAMES[v.severity],
+		'findings': '; '.join(x.text for x in v.findings),
+	})
+	if s is not None:
+		out.update({
+			'rpm': s.rpm_control,
+			'rpmstatus': s.rpm_status,
+			'd3cold': _yn(s.d3cold_allowed) if s.d3cold_allowed is not None else '',
+		})
+	if link is not None:
+		out.update({
+			'speed': fmt_speed(link.speed) if link.speed is not None else '',
+			'width': f'x{link.width}' if link.width is not None else '',
+			'maxspeed': fmt_speed(link.max_speed) if link.max_speed is not None else '',
+			'maxwidth': f'x{link.max_width}' if link.max_width is not None else '',
+			'target': fmt_speed(link.target) if link.target is not None else '',
+		})
+	if link is not None and e is not None and not e.partial:
+		out.update({
+			'clockpm': _yn(link.clockpm) if link.clockpm_cap else None,
+			'commclk': _yn(link.commclk),
+		})
+	if pair is not None:
+		enabled, supported = pair.aspm_states()
+		out.update({
+			'linkspeed': fmt_speed(pair.max_speed) if pair.max_speed is not None else '',
+			'linkwidth': f'x{pair.max_width}' if pair.max_width is not None else '',
+			'aspm': ' '.join(enabled) or ('off' if supported else 'n/a'),
+			'aspmcap': ' '.join(supported) or 'n/a',
+		})
+	if v.bw is not None:
+		out.update({
+			'bw': fmt_gbps(v.bw.available),
+			'bwcap': fmt_gbps(v.bw.capable),
+			'limiter': v.bw.limiter.bdf,
+		})
+	if e is not None and not e.partial:
+		out.update({
+			'ltr': _yn(e.ltr) if e.ltr_cap else None,
+			'mps': str(e.mps) if e.mps else '',
+			'mpscap': str(e.mps_cap) if e.mps_cap else '',
+			'mrrs': str(e.mrrs) if e.mrrs else '',
+		})
+	return out
+
+
+class _StrictFormatter(string.Formatter):
+	"""Formatter that reports, rather than renders, unresolved fields."""
+
+	def __init__(self, values: dict[str, str | None]):
+		self.values = values
+		self.missing: list[str] = []
+
+	def get_value(self, key, args, kwargs) -> str:
+		value = self.values[cast(Any, key)]
+		if value is None:
+			self.missing.append(f'{key} (inapplicable)')
+		elif not value:
+			self.missing.append(f'{key} (not determined)')
+		return value or ''
+
+
+def render_format(spec: str, values: dict[str, str | None]) -> str:
+	formatter = _StrictFormatter(values)
+	try:
+		text = formatter.vformat(spec, (), {})
+	except (ValueError, KeyError) as exc:
+		raise typer.BadParameter(f'bad format string: {exc}') from exc
+	return '' if formatter.missing else text
+
+
+def _md_safe(text: str) -> str:
+	"""Escape characters that interfere with Markdown tables."""
+	return text.replace('\\', '\\\\').replace('|', '\\|').replace('\n', ' ')
+
+
+def _note(finding: Finding) -> str:
+	mark = SEVERITY_MARKS[finding.severity]
+	return f'{mark} {finding.text}' if mark else finding.text
+
+
+def details(item: Item, quiet: bool) -> dict[str, str | None]:
+	"""Human-readable cells for --table. Unlike :func:`fields`,
+	None means 'not determined'."""
+	f, v = item.facts, item.verdict
+	link, pair = f.link, _pair_of(v)
+	# NBSP survives Markdown's trimming of table cells
+	indent = '\u00a0\u00a0' * v.depth
+
+	link_cell = cap_cell = aspm_cell = bw_cell = None
+	if f.side == 'down' and v.downlink is None:
+		link_cell = 'empty'
+	elif link is not None and (link.speed is not None or link.width is not None):
+		link_cell = fmt_link(link.speed, link.width)
+	if pair is not None:
+		cap_cell = fmt_link(pair.max_speed, pair.max_width)
+		enabled, supported = pair.aspm_states()
+		aspm_cell = ' '.join(enabled) or ('off' if supported else 'n/a')
+	elif link is not None and link.max_speed is not None:
+		cap_cell = fmt_link(link.max_speed, link.max_width)
+	if v.bw is not None:
+		bw_cell = (
+			f'{fmt_gbps(v.bw.available)} / {fmt_gbps(v.bw.capable)}'
+			if v.bw.available < v.bw.capable
+			else fmt_gbps(v.bw.capable)
+		)
+
+	pm = v.dstate
+	if f.sys is not None and f.sys.rpm_control:
+		pm = f'{pm} {f.sys.rpm_control}'.strip()
+
+	notes = [_note(x) for x in v.findings if not quiet or x.severity > INFO]
+	return {
+		'Device': indent + f.short,
+		'Type': f.kind or 'PCI',
+		'Name': _md_safe(_clean_name(f.name)) or None,
+		'Driver': f.driver or None,
+		'Link': link_cell,
+		'Cap': cap_cell,
+		'Gb/s': bw_cell,
+		'ASPM': aspm_cell,
+		'PM': pm or None,
+		'Notes': _md_safe('; '.join(notes)) or None,
+	}
+
+
+ALL_DETAILS = [
+	'Device',
+	'Type',
+	'Name',
+	'Driver',
+	'Link',
+	'Cap',
+	'Gb/s',
+	'ASPM',
+	'PM',
+	'Notes',
+]
+
+
+def _render_table(header: list[str], rows: list[list[str | None]]) -> str:
+	lines = [
+		'| '
+		+ ' | '.join(cell if cell is not None else '--' for cell in row)
+		+ ' |'
+		for row in [header, ['---'] * len(header)] + rows
+	]
+	return '\n'.join(lines)
+
+
+def render_table_human(items: list[Item], quiet: bool) -> str:
+	rows: list[list[str | None]] = []
+	for item in items:
+		cells = details(item, quiet)
+		rows.append([cells[key] for key in ALL_DETAILS])
+	return _render_table(ALL_DETAILS, rows)
+
+
+def render_table_verbose(items: list[Item]) -> str:
+	rows: list[list[str | None]] = []
+	for item in items:
+		cells = fields(item)
+		rows.append([
+			_md_safe(value) if value is not None else None
+			for value in (cells[key] for key in ALL_FIELDS)
+		])
+	return _render_table(ALL_FIELDS, rows)
+
+
+def _kv(console: Console, key: str, value: str, style: str = '') -> None:
+	if value:
+		escaped = escape(value)
+		printable = f'[{style}]{escaped}[/{style}]' if style else escaped
+		console.print(f'    [dim]{key:<16}[/dim] {printable}')
+
+
+def _sides(pair: Pair, what: Callable[[Any], str]) -> str:
+	return f'{pair.up.short}: {what(pair.up)}, {pair.down.short}: {what(pair.down)}'
+
+
+def _states(states: frozenset[str] | None, order: list[str]) -> str:
+	if states is None:
+		return '?'
+	return ' '.join(s for s in order if s in states) or 'none'
+
+
+def render_detail(console: Console, item: Item, ctx: Context) -> None:
+	f, v = item.facts, item.verdict
+	e, link, pair, s = f.express, f.link, _pair_of(v), f.sys
+	colour = SEVERITY_COLOURS[v.severity]
+
+	console.print(f'[bold]{escape(f.bdf)}[/bold]  {escape(f.name)}')
+	summary = ' · '.join(
+		x
+		for x in (
+			f.cls,
+			f'PCIe {e.kind}' if e else 'conventional PCI',
+			f.driver or 'no driver',
+		)
+		if x
+	)
+	console.print(f'  [{colour}]{escape(summary)}[/{colour}]')
+
+	console.print('\n  [bold]Topology[/bold]')
+	_kv(console, 'parent', f'{v.parent.short} ({v.parent.kind or "PCI"})' if v.parent else '(root)')
+	if pair is not None:
+		peer = pair.down if pair.up is f else pair.up
+		_kv(console, 'link peer', f'{peer.short} ({peer.kind}) {_clean_name(peer.name)}')
+
+	if link is not None:
+		console.print('\n  [bold]Link[/bold]')
+		status = ' '.join(f'{k}{"+" if x else "-"}' for k, x in link.status.items() if x)
+		_kv(console, 'status', f'{fmt_link(link.speed, link.width)}  {status}'.strip())
+		_kv(console, 'capability', ' '.join(x for x in (
+			fmt_link(link.max_speed, link.max_width),
+			f'({link.speeds})' if link.speeds else '',
+		) if x))
+		if pair is not None:
+			_kv(console, 'link capability', (
+				f'{fmt_link(pair.max_speed, pair.max_width)}  '
+				f'[{_sides(pair, lambda x: fmt_link(x.link.max_speed, x.link.max_width))}]'
+			))
+		if link.target is not None:
+			_kv(console, 'target speed', fmt_speed(link.target))
+
+	if v.bw is not None:
+		console.print('\n  [bold]Bandwidth[/bold]')
+		_kv(console, 'available', f'{fmt_gbps(v.bw.available)} Gb/s')
+		_kv(console, 'capable', f'{fmt_gbps(v.bw.capable)} Gb/s')
+		if v.bw.available < v.bw.capable:
+			_kv(console, 'limited by', f'{fmt_link(v.bw.speed, v.bw.width)} at {v.bw.limiter.short}')
+		for msg in dict.fromkeys(m for m in f.klog if KLOG_BANDWIDTH.search(m)):
+			_kv(console, 'at enumeration', msg)
+
+	if pair is not None:
+		console.print('\n  [bold]ASPM[/bold]')
+		if ctx.policy:
+			_kv(console, 'policy', ctx.policy + (f' (pcie_aspm={ctx.cmdline})' if ctx.cmdline else ''))
+		enabled, supported = pair.aspm_states()
+		_kv(console, 'link', f'enabled: {" ".join(enabled) or "none"}; supported: {" ".join(supported) or "none"}')
+		_kv(console, 'supported', _sides(pair, lambda x: _states(x.link.aspm_cap, ASPM_STATES)))
+		_kv(console, 'enabled', _sides(pair, lambda x: _states(x.link.aspm, ASPM_STATES)))
+		_kv(console, 'exit latency', _sides(pair, lambda x: ' '.join(
+			f'{k} {fmt_ns(lat)}' for k, lat in x.link.exit_latency.items()
+		) or 'n/a'))
+		if e is not None and e.acceptable:
+			_kv(console, 'acceptable', ' '.join(f'{k} {fmt_ns(lat)}' for k, lat in e.acceptable.items()))
+		if pair.up.l1ss and pair.down.l1ss:
+			_kv(console, 'L1SS supported', _sides(pair, lambda x: _states(x.l1ss.cap, L1SS_STATES)))
+			_kv(console, 'L1SS enabled', _sides(pair, lambda x: _states(x.l1ss.ctl, L1SS_STATES)))
+		_kv(console, 'LTR', _sides(pair, lambda x: (
+			'?' if x.express.partial
+			else ('enabled' if x.express.ltr else 'disabled') if x.express.ltr_cap
+			else 'unsupported'
+		)))
+		if pair.dl.clockpm_cap:
+			_kv(console, 'clock PM', 'enabled' if pair.dl.clockpm else 'disabled')
+		if not (pair.up.express and pair.up.express.partial) and not (pair.down.express and pair.down.express.partial):
+			_kv(console, 'common clock', _yn(pair.ul.commclk and pair.dl.commclk))
+		knobs = pair.down.sys.knobs if pair.down.sys else {}
+		_kv(console, 'kernel knobs', ' '.join(f'{k}={int(x)}' for k, x in knobs.items()))
+
+	if f.pm is not None or s is not None:
+		console.print('\n  [bold]Power[/bold]')
+		if s is not None:
+			_kv(console, 'state', s.power_state)
+			_kv(console, 'runtime PM', ', '.join(x for x in (s.rpm_control, s.rpm_status) if x))
+			if s.d3cold_allowed is not None:
+				_kv(console, 'D3cold allowed', _yn(s.d3cold_allowed))
+		if f.pm is not None:
+			_kv(console, 'PM capability', ' '.join(x for x in (
+				f'v{f.pm.version}',
+				'D1' if f.pm.d1 else '',
+				'D2' if f.pm.d2 else '',
+				'NoSoftRst' if f.pm.no_soft_reset else '',
+			) if x))
+			_kv(console, 'PME from', ' '.join(f.pm.pme) or 'none')
+			if s is None:
+				_kv(console, 'state', f.pm.state)
+
+	if e is not None and e.mps is not None:
+		console.print('\n  [bold]Transactions[/bold]')
+		_kv(console, 'max payload', f'{e.mps} (supported {e.mps_cap})')
+		_kv(console, 'max read req', str(e.mrrs or ''))
+
+	aer = s.aer if s else {}
+	if f.ce_status or f.ue_status or any(c.get(k) for c in aer.values() for k in c):
+		console.print('\n  [bold]Errors[/bold]')
+		for kind, counters in aer.items():
+			_kv(console, kind, ' '.join(f'{k}={n}' for k, n in counters.items() if n))
+		_kv(console, 'CESta', ' '.join(f.ce_status))
+		_kv(console, 'UESta', ' '.join(f.ue_status))
+
+	if f.rebar:
+		console.print('\n  [bold]Resizable BARs[/bold]')
+		for bar, current, largest in f.rebar:
+			_kv(console, f'BAR {bar}', f'{fmt_size(current)} (up to {fmt_size(largest)})')
+
+	if f.klog:
+		console.print('\n  [bold]Kernel log[/bold]  [dim](this boot)[/dim]')
+		for msg, n in Counter(f.klog).most_common(10):
+			count = f'[dim]{n}×[/dim] ' if n > 1 else ''
+			console.print(f'      {count}{escape(msg)}')
+
+	if v.findings:
+		console.print('\n  [bold]Findings[/bold]')
+		for x in v.findings:
+			mark = {INFO: '[dim]·[/dim]', WARN: '[yellow]![/yellow]', ERROR: '[red]!![/red]'}[x.severity]
+			console.print(f'    {mark} {escape(x.text)}')
+	console.print()
+
+
+# --------------------------------------------------------------------------
+# CLI
+# --------------------------------------------------------------------------
+
+app = typer.Typer(
+	add_completion=False,
+	context_settings={'help_option_names': ['-h', '--help']},
+)
+
+MARKDOWN_RENDERER_FMT = 'glow -w{columns}'
+
+g_markdown_renderer_installed = None
+
+
+def _isatty_cols(file: IO[str] | None) -> Optional[int]:
+	"""Checks if the given file is a TTY and returns the number of columns if so."""
+	if file and file.isatty():
+		return shutil.get_terminal_size().columns
+	return None
+
+
+def _ensure_markdown_renderer(markdown: bool, markdown_tool: Optional[str]):
+	global g_markdown_renderer_installed
+
+	stdout_cols = _isatty_cols(sys.stdout)
+	if markdown and g_markdown_renderer_installed is None and stdout_cols is not None:
+		markdown_tool = (markdown_tool or MARKDOWN_RENDERER_FMT).format(columns=stdout_cols)
+		pipe_fd = os.pipe()
+		sub = subprocess.Popen(
+			shlex.split(markdown_tool),
+			stdin=os.fdopen(pipe_fd[0], 'r'),
+			text=True,
+		)
+		sys.stdout = os.fdopen(pipe_fd[1], 'w')
+		g_markdown_renderer_installed = sub
+
+
+def _selected(f: Facts, selectors: list[str]) -> bool:
+	return not selectors or any(
+		f.bdf.startswith(sel) or f.short.startswith(sel)
+		for sel in map(str.lower, selectors)
+	)
+
+
+@app.command()
+def main(
+	fmt: Annotated[
+		list[str],
+		typer.Option(
+			'--format',
+			'-f',
+			help=(
+				f'Emit a format string per device instead of a report. '
+				f'Output is omitted entirely if any referenced field is unknown. '
+				f'Fields: {FIELD_HELP}'
+			),
+			default_factory=list,
+			show_default=False,
+		),
+	],
+	devices: Annotated[
+		Optional[list[str]],
+		typer.Argument(
+			help='Devices to report on: a BDF or a prefix of one (e.g. "01:00", "0000:03:"). Default: all.',
+			show_default=False,
+		),
+	] = None,
+	input: Annotated[
+		Optional[Path],
+		typer.Option(
+			'--input',
+			'-i',
+			help='Analyse saved `lspci -vvv` output ("-" for stdin) instead of this machine.',
+		),
+	] = None,
+	table: Annotated[
+		Optional[bool],
+		typer.Option(
+			'--table/--detail',
+			'-t/-l',
+			help='Force markdown table or detailed report (default: table for >1 device).',
+		),
+	] = None,
+	markdown: Annotated[
+		bool,
+		typer.Option(
+			'--markdown',
+			'-M',
+			help=f'Render markdown output, if needed, using a given tool (default: `{MARKDOWN_RENDERER_FMT}`)',
+		),
+	] = False,
+	markdown_tool: Annotated[
+		Optional[str],
+		typer.Option(
+			'--markdown-tool',
+			help=f'Use TOOL instead of `{MARKDOWN_RENDERER_FMT}` to render markdown output on a terminal',
+		),
+	] = None,
+	verbose: Annotated[
+		bool,
+		typer.Option(
+			'--verbose',
+			'-v',
+			help='Display raw fields instead of human-readable summary table.',
+		),
+	] = False,
+	all_devices: Annotated[
+		bool,
+		typer.Option(
+			'--all',
+			'-a',
+			help='Include conventional PCI devices and functions without a PCIe link.',
+		),
+	] = False,
+	problems: Annotated[
+		bool,
+		typer.Option(
+			'--problems',
+			'-p',
+			help='Only report devices with warnings or errors.',
+		),
+	] = False,
+	quiet: Annotated[
+		bool,
+		typer.Option(
+			'--quiet',
+			'-q',
+			help='Omit informational notes from the table.',
+		),
+	] = False,
+	no_wake: Annotated[
+		bool,
+		typer.Option(
+			'--no-wake',
+			'-W',
+			help=(
+				'Do not read config space of devices where doing so would resume them '
+				'(runtime-suspended parent, or D3cold); report what sysfs knows instead.'
+			),
+		),
+	] = False,
+	debug: Annotated[
+		bool,
+		typer.Option('--debug', help='Log parser diagnostics.'),
+	] = False,
+) -> None:
+	"""Report PCIe link speed/width, end-to-end bandwidth, ASPM and power
+	management state of PCI devices, and flag anything suboptimal.
+
+	By default, this machine is probed with `lspci -vvv` (run as root for
+	complete data), sysfs and the kernel log. Power states are captured before
+	lspci runs, as reading config space resumes suspended devices.
+	"""
+	structlog.configure(
+		processors=[
+			structlog.processors.add_log_level,
+			structlog.dev.ConsoleRenderer(colors=sys.stderr.isatty()),
+		],
+		logger_factory=structlog.PrintLoggerFactory(sys.stderr),
+		wrapper_class=structlog.make_filtering_bound_logger(
+			logging.DEBUG if debug else logging.WARNING
+		),
+	)
+
+	if input is not None:
+		text = sys.stdin.read() if str(input) == '-' else input.read_text()
+		facts = parse_lspci(text)
+		ctx = Context()
+	else:
+		facts = probe_live(no_wake)
+		ctx = probe_context()
+
+	items = [
+		item
+		for item in analyse(facts, ctx)
+		if _selected(item.facts, devices or [])
+		and (all_devices or devices or item.facts.link is not None)
+		and (not problems or item.verdict.severity >= WARN)
+	]
+	if not items:
+		raise typer.Exit(1)
+
+	if fmt:
+		for item in items:
+			values = fields(item)
+			line = ' '.join(filter(None, (render_format(f, values) for f in fmt)))
+			if line:
+				print(line)
+		return
+
+	if table if table is not None else len(items) > 1:
+		_ensure_markdown_renderer(markdown, markdown_tool)
+		if verbose:
+			print(render_table_verbose(items))
+		else:
+			print(render_table_human(items, quiet))
+		return
+
+	console = Console(highlight=False, soft_wrap=True)
+	for item in items:
+		render_detail(console, item, ctx)
+
+
+if __name__ == '__main__':
+	app()
