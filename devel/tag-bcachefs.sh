@@ -214,3 +214,6 @@ sync_one_revision branch "$last_tools_ref" bcachefs-tools/release
 # master is on top of the last release, so advance the parent here
 parent_kernel_ref="$last_kernel_ref"
 sync_one_revision branch "$BCACHEFS_TOOLS_REMOTE/master" bcachefs-tools/master
+
+# testing is not necessarily on top of master
+sync_one_revision branch "$BCACHEFS_TOOLS_REMOTE/testing" bcachefs-tools/testing
