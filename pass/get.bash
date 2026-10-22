@@ -21,12 +21,27 @@ VERSION="0.1.0"
 set -eo pipefail
 shopt -s lastpipe
 
+usage() {
+	if (( $# )); then
+		printf "E: %s\n" "$*"
+	fi
+	cat <<EOF
+Usage: $PROGRAM $COMMAND [-1|--first|--password] [-F|--field field-name[,...]] pass-name...
+
+If neither -1 nor -F are specified, -1 is the implied default.
+EOF
+	exit 1
+}
+
 cmd_get() {
-	local opts fields=() password
-	opts="$($GETOPT -o '1,F:' -l first,password,field: -n "$PROGRAM" -- "$@")"
+	local opts fields=() password clipboard
+	opts="$($GETOPT -o '1F:c' -l first,password,field: -n "$PROGRAM-get" -- "$@")"
 	local err=$?
 	eval set -- "$opts"
 	while true; do case $1 in
+		-c)
+			clipboard=1
+			shift ;;
 		-1|--first|--password)
 			password=1
 			shift ;;
@@ -38,7 +53,12 @@ cmd_get() {
 		--) shift; break ;;
 	esac done
 
-	[[ $err -ne 0 || $# -lt 1 ]] && die "Usage: $PROGRAM $COMMAND [-1|--first|--password] [--field field-name[,...]] pass-name..."
+	(( ! $err )) || usage
+	(( $# )) || usage "expected at least 1 positional argument"
+
+	if ! [[ ${password+set} || ${fields+set} ]]; then
+		password=1
+	fi
 
 	local f
 	local line k v
@@ -75,9 +95,24 @@ cmd_get() {
 		fi
 	done
 
-	if (( ${#output[@]} )); then
+	if ! (( ${#output[@]} )); then
+		return
+	fi
+
+
+	if (( clipboard )); then
+		if (( ${#output[@]} == 1 )); then
+			clip "${output[0]}" "$1"
+		else
+			local text
+			printf -v text '%s\n' "${output[@]}"
+			local name="(${#output[@]} lines)"
+			clip "$text" "$name"
+		fi
+	else
 		printf '%s\n' "${output[@]}"
 	fi
+
 }
 
 cmd_get "$@"
