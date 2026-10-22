@@ -29,6 +29,18 @@ usage() {
 _usage() {
 	cat <<EOF
 Usage: ${0##*/}
+
+	-S|--size) shift; SMALL_PACK_BYTES=\$1 ;;
+	-T|--time) shift; OLD_PACK_TIME=\$1 ;;
+	-s|--seconds) shift; OLD_PACK_TIME=\$1 ;;
+	--gc) GIT_GC=1 ;;
+	--gc-no-prune) GIT_GC_NO_PRUNE=1 ;;
+	-g|--geometric) GIT_GEOMETRIC=1 ;;
+	-b|--bitmap) PACK_ARGS+=( --write-bitmap-index ) ;;
+	-m|--midx) PACK_ARGS+=( --write-midx ) ;;
+	-f|--force) FORCE=1 ;;
+	--all) NO_REUSE=() ;&
+	--all-no-reuse) ALL=1; KEEP_LARGEST_PACK=() ;;
 EOF
 }
 
@@ -54,7 +66,7 @@ KEEP_LARGEST_PACK=( --keep-largest-pack )
 NO_REUSE=( -fF )
 ALL=0
 
-if args=$(getopt -o '+S:T:s:gbmf' --long 'all,all-no-reuse,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o '+S:T:s:gbmfh' --long 'all,all-no-reuse,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force,help' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -63,6 +75,7 @@ unset args
 
 while :; do
 	case "$1" in
+	-h|--help) usage ;;
 	-S|--size) shift; SMALL_PACK_BYTES="$(bscalcq -b "$1")" ;;
 	-T|--time) shift; OLD_PACK_TIME="$(date -d "$1" +%s)" ;;
 	-s|--seconds) shift; OLD_PACK_TIME="$(( now - "$1" ))" ;;
