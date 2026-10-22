@@ -28,7 +28,46 @@ usage() {
 
 _usage() {
 	cat <<EOF
-Usage: ${0##*/}
+Usage: ${0##*/} [OPTIONS...]
+
+Opinionated \`git gc\` / \`git repack\` wrapper to optimize git repositories
+in a way that minimizes churn (useful for taking incremental backups).
+
+All packs that are newer than a preset time and/or smaller than a preset size
+are repacked together with no object or delta reuse, and all other packs are
+preserved. The largest pack is always kept. This preserves the "append-mostly"
+nature of Git packs while removing excess redundancy in recently created packs.
+
+This is intended as a post-fetch pass to coalesce heavily redundant packs and
+get rid of bad deltas after fetching from a large number of unrelated remotes
+(as is common in large integration trees, e.g. Linux kernel).
+
+By default, this script uses cruft packs (\`git repack --cruft\`) and preserves
+all reflogs and unreachable objects.
+
+Options:
+	-S, --size=SIZE			Consider packs less than SIZE bytes.
+	-T, --time=TIME			Consider packs newer than absolute TIME.
+	-s, --seconds=SECONDS		Consider packs not more than SECONDS old.
+	-f, --force			Force repacking, even if there is
+					less than two candidate packs
+					(useful for packing loose objects).
+	-m, --midx			Write a multi-pack index.
+	-b, --bitmap			Write a bitmap index (only makes sense
+					with either \`--all\` or \`--midx\`).
+
+Modes of operation:
+	--gc				Use \`git gc\` instead of \`git repack\`
+					and aggressively prune unreachable objects.
+	--gc-no-prune			Use \`git gc\` instead of \`git repack\`,
+					but do not prune any objects.
+	-g				Use geometric repack (\`git repack -g2\`)
+					instead of the default \`git repack --cruft\`.
+	--all				Force repacking of *ALL* packs with
+					no exclusions (for infrequent use).
+	--all-reuse			Force repacking of *ALL* packs, but
+					keep delta/object reuse on
+					(for extremely large repos).
 EOF
 }
 
@@ -64,7 +103,7 @@ GIT_GC_CFG=(
 	-c gc.writeCommitGraph=true
 )
 
-if args=$(getopt -o '+S:T:s:gbmf' --long 'all,all-reuse,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
+if args=$(getopt -o '+S:T:s:gbmfh' --long 'all,all-reuse,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force,help' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -73,6 +112,7 @@ unset args
 
 while :; do
 	case "$1" in
+	-h|--help) usage ;;
 	-S|--size) shift; SMALL_PACK_BYTES="$(bscalcq -b "$1")" ;;
 	-T|--time) shift; OLD_PACK_TIME="$(date -d "$1" +%s)" ;;
 	-s|--seconds) shift; OLD_PACK_TIME="$(( now - "$1" ))" ;;
