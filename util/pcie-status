@@ -1650,6 +1650,14 @@ def _ensure_markdown_renderer(markdown: bool, markdown_tool: Optional[str]):
 		g_markdown_renderer_installed = sub
 
 
+def _finish_markdown_renderer():
+	"""Hand the renderer EOF and wait for it, so that its output is not
+	interleaved with whatever runs after this process exits."""
+	if g_markdown_renderer_installed is not None:
+		sys.stdout.close()
+		g_markdown_renderer_installed.wait()
+
+
 def _selected(f: Facts, selectors: list[str]) -> bool:
 	return not selectors or any(
 		f.bdf.startswith(sel) or f.short.startswith(sel)
@@ -1809,6 +1817,7 @@ def main(
 			print(render_table_verbose(items))
 		else:
 			print(render_table_human(items, quiet, g_markdown_renderer_installed is not None))
+		_finish_markdown_renderer()
 		return
 
 	console = Console(highlight=False, soft_wrap=True)
