@@ -1377,9 +1377,14 @@ def _note(finding: Finding) -> str:
 	return f'{mark} {finding.text}' if mark else finding.text
 
 
-def details(item: Item, quiet: bool) -> dict[str, str | None]:
+def details(item: Item, quiet: bool, multiline: bool) -> dict[str, str | None]:
 	"""Human-readable cells for --table. Unlike :func:`fields`,
-	None means 'not determined'."""
+	None means 'not determined'.
+
+	:param multiline:
+		If True, break notes onto separate lines within the cell, for
+		renderers that honour ``<br/>`` in tables.
+	"""
 	f, v = item.facts, item.verdict
 	link, pair = f.link, _pair_of(v)
 	# NBSP survives Markdown's trimming of table cells
@@ -1418,7 +1423,7 @@ def details(item: Item, quiet: bool) -> dict[str, str | None]:
 		'Gb/s': bw_cell,
 		'ASPM': aspm_cell,
 		'PM': pm or None,
-		'Notes': _md_safe('; '.join(notes)) or None,
+		'Notes': (';<br/>' if multiline else '; ').join(map(_md_safe, notes)) or None,
 	}
 
 
@@ -1446,10 +1451,10 @@ def _render_table(header: list[str], rows: list[list[str | None]]) -> str:
 	return '\n'.join(lines)
 
 
-def render_table_human(items: list[Item], quiet: bool) -> str:
+def render_table_human(items: list[Item], quiet: bool, multiline: bool) -> str:
 	rows: list[list[str | None]] = []
 	for item in items:
-		cells = details(item, quiet)
+		cells = details(item, quiet, multiline)
 		rows.append([cells[key] for key in ALL_DETAILS])
 	return _render_table(ALL_DETAILS, rows)
 
@@ -1803,7 +1808,7 @@ def main(
 		if verbose:
 			print(render_table_verbose(items))
 		else:
-			print(render_table_human(items, quiet))
+			print(render_table_human(items, quiet, g_markdown_renderer_installed is not None))
 		return
 
 	console = Console(highlight=False, soft_wrap=True)
