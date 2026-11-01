@@ -3,6 +3,7 @@
 set -eo pipefail
 shopt -s lastpipe
 shopt -s nullglob
+shopt -s extglob
 
 log() {
 	echo ":: $*" >&2
@@ -75,6 +76,20 @@ EOF
 #
 # git-gc-fetch -- `git gc` after fetching many redundant packs
 #
+
+#
+# functions
+#
+
+bscalcq() {
+	bscalc "$@" | readarray -t response
+	case "${#response[@]}" in
+	0) ;;
+	1) printf "%s\n" "${response%%+([a-zA-Z ])}"; return 0 ;;
+	*) printf >&2 "%s\n" "${response[@]}" ;;
+	esac
+	die "bscalcq ${*@Q}: invalid response"
+}
 
 
 #
