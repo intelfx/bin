@@ -57,6 +57,8 @@ ALL=0
 GIT_REPACK_CFG=(
 	-c pack.depth=50
 	-c pack.window=1000
+	-c pack.compression=9
+	-c pack.allowPackReuse=multi
 )
 GIT_GC_CFG=(
 	-c gc.writeCommitGraph=true
