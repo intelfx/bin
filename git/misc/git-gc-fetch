@@ -49,12 +49,20 @@ GIT_GC=0
 GIT_GC_NO_PRUNE=0
 GIT_GEOMETRIC=0
 FORCE=0
-PACK_ARGS=()
-KEEP_LARGEST_PACK=( --keep-largest-pack )
-NO_REUSE=( -fF )
+GIT_REPACK_ARGS=()
+GIT_GC_KEEP_LARGEST_PACK=( --keep-largest-pack )
+GIT_REPACK_NO_REUSE=( -fF )
 ALL=0
 
-if args=$(getopt -o '+S:T:s:gbmf' --long 'all,all-no-reuse,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
+GIT_REPACK_CFG=(
+	-c pack.depth=50
+	-c pack.window=1000
+)
+GIT_GC_CFG=(
+	-c gc.writeCommitGraph=true
+)
+
+if args=$(getopt -o '+S:T:s:gbmf' --long 'all,all-reuse,size:,time:,seconds:,gc,gc-no-prune,geometric,bitmap,midx,force' -n "${0##*/}" -- "$@"); then
 	eval set -- "$args"
 else
 	usage
@@ -69,11 +77,11 @@ while :; do
 	--gc) GIT_GC=1 ;;
 	--gc-no-prune) GIT_GC_NO_PRUNE=1 ;;
 	-g|--geometric) GIT_GEOMETRIC=1 ;;
-	-b|--bitmap) PACK_ARGS+=( --write-bitmap-index ) ;;
-	-m|--midx) PACK_ARGS+=( --write-midx ) ;;
+	-b|--bitmap) GIT_REPACK_ARGS+=( --write-bitmap-index ) ;;
+	-m|--midx) GIT_REPACK_ARGS+=( --write-midx ) ;;
 	-f|--force) FORCE=1 ;;
-	--all) NO_REUSE=() ;&
-	--all-no-reuse) ALL=1; KEEP_LARGEST_PACK=() ;;
+	--all-reuse) GIT_REPACK_NO_REUSE=() ;&
+	--all) ALL=1; GIT_GC_KEEP_LARGEST_PACK=() ;;
 	--) shift; break ;;
 	*) die "getopt error" ;;
 	esac
@@ -213,40 +221,40 @@ fi
 if (( GIT_GC || GIT_GC_NO_PRUNE )); then
 	if (( ! GIT_GC_NO_PRUNE ))
 	then
-		_gc_cfg=(
+		_git_gc_cfg=(
 			-c gc.pruneExpire=now
-		); _gc_args=(
+		); _git_gc_args=(
 			--prune=now
 		)
 	else
-		_gc_cfg=(
+		_git_gc_cfg=(
 			-c gc.cruftPacks=true
 			-c gc.pruneExpire=never
 			-c gc.reflogExpire=never
 			-c gc.reflogExpireUnreachable=never
-		); _gc_args=(
+		); _git_gc_args=(
 			--no-prune
 		)
 	fi
 	git \
-		-c pack.depth=50 -c pack.window=1000 \
-		-c gc.writeCommitGraph=true \
-		"${_gc_cfg[@]}"
+		"${GIT_REPACK_CFG[@]}" \
+		"${GIT_GC_CFG[@]}" \
+		"${_git_gc_cfg[@]}"
 		gc \
-		"${KEEP_LARGEST_PACK[@]}" \
-		"${_gc_args[@]}" \
+		"${GIT_GC_KEEP_LARGEST_PACK[@]}" \
+		"${_git_gc_args[@]}" \
 		"$@"
 else
 	if (( ! GIT_GEOMETRIC ))
-	then _repack_args=( --cruft )
-	else _repack_args=( -g2 )
+	then _git_repack_args=( --cruft )
+	else _git_repack_args=( -g2 )
 	fi
 	git \
-		-c pack.depth=50 -c pack.window=1000 \
+		"${GIT_REPACK_CFG[@]}" \
 		repack \
-		"${_repack_args[@]}" -d -l \
-		"${NO_REUSE[@]}" \
-		"${PACK_ARGS[@]}" \
+		"${_git_repack_args[@]}" -d -l \
+		"${GIT_REPACK_NO_REUSE[@]}" \
+		"${GIT_REPACK_ARGS[@]}" \
 		"$@"
 	# git \
 	# 	multi-pack-index \
