@@ -574,7 +574,7 @@ v7.2)
 		work/btrfs-allocation-hint-7.0 \
 		work/tsc-directsync-7.2 \
 		work/no-jobserver-exec-6.19 \
-		work/kbuild-6.18 \
+		work/kbuild-7.2.15 \
 		work/em7565-ids-6.18 \
 		work/zswap-writeback-6.18 \
 		work/acpi-osc-7.2.12 \
