@@ -41,6 +41,10 @@ EOF
 # args
 #
 
+GIT_DIFF_ARGS_DEFAULT=(
+	--no-index
+	--color-moved=zebra
+)
 GIT_DIFF_ARGS=()
 DIFF_SPLIT=0
 DIFF_SIZE=0
@@ -115,6 +119,24 @@ disassemble_split() {
 	done
 }
 
+git_diff_simple() {
+	git \
+		-C "$WORKDIR" \
+		--no-pager \
+		diff "${GIT_DIFF_ARGS_DEFAULT[@]}"  "${@#"$WORKDIR"/}" \
+	||:
+}
+
+git_diff_with_attrs() {
+	git \
+		-C "$WORKDIR" \
+		--no-pager \
+		-c core.attributesFile="$GITATTRIBUTES" \
+		-c diff.objdump.xfuncname='^(Disassembly of section .*|([0-9a-f]+ )?<.*>):$' \
+		diff "${GIT_DIFF_ARGS_DEFAULT[@]}" "${GIT_DIFF_ARGS[@]}" "${@#"$WORKDIR"/}" \
+	||:
+}
+
 #
 # main
 #
@@ -147,10 +169,7 @@ if (( DIFF_SIZE )); then
 	${NM[@]} -S --size-sort --format=sysv "$ARG1" >"$LIST1"
 	${NM[@]} -S --size-sort --format=sysv "$ARG2" >"$LIST2"
 
-	git \
-		--no-pager \
-		diff --no-index --color-moved=zebra "$LIST1" "$LIST2" \
-	||:
+	git_diff_simple "$LIST1" "$LIST2"
 
 elif (( DIFF_SPLIT )); then
 	DIR1="$TMP1.s.d"
@@ -159,12 +178,7 @@ elif (( DIFF_SPLIT )); then
 	disassemble_split "$ARG1" "$DIR1" "${OBJDUMP_ARGS[@]}"
 	disassemble_split "$ARG2" "$DIR2" "${OBJDUMP_ARGS[@]}"
 
-	git \
-		--no-pager \
-		-c core.attributesFile="$GITATTRIBUTES" \
-		-c diff.objdump.xfuncname='^(Disassembly of section .*|([0-9a-f]+ )?<.*>):$' \
-		diff --no-index --color-moved=zebra "${GIT_DIFF_ARGS[@]}" "$DIR1" "$DIR2" \
-	||:
+	git_diff_with_attrs "$DIR1" "$DIR2"
 
 else
 	DIS1="$WORKDIR/${ARG1##*/}.s"
@@ -173,11 +187,5 @@ else
 	disassemble "$ARG1" "${OBJDUMP_ARGS[@]}" >"$DIS1"
 	disassemble "$ARG2" "${OBJDUMP_ARGS[@]}" >"$DIS2"
 
-	git \
-		--no-pager \
-		-c core.attributesFile="$GITATTRIBUTES" \
-		-c diff.objdump.xfuncname='^(Disassembly of section .*|([0-9a-f]+ )?<.*>):$' \
-		diff --no-index --color-moved=zebra "${GIT_DIFF_ARGS[@]}" "$DIS1" "$DIS2" \
-	||:
-
+	git_diff_with_attrs "$DIS1" "$DIS2"
 fi
