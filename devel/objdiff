@@ -124,7 +124,7 @@ git_diff_simple() {
 		-C "$WORKDIR" \
 		--no-pager \
 		diff "${GIT_DIFF_ARGS_DEFAULT[@]}"  "${@#"$WORKDIR"/}" \
-	||:
+	|| (( $? == 1 ))
 }
 
 git_diff_with_attrs() {
@@ -134,7 +134,7 @@ git_diff_with_attrs() {
 		-c core.attributesFile="$GITATTRIBUTES" \
 		-c diff.objdump.xfuncname='^(Disassembly of section .*|([0-9a-f]+ )?<.*>):$' \
 		diff "${GIT_DIFF_ARGS_DEFAULT[@]}" "${GIT_DIFF_ARGS[@]}" "${@#"$WORKDIR"/}" \
-	||:
+	|| (( $? == 1 ))
 }
 
 #
