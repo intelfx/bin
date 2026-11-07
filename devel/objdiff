@@ -44,6 +44,9 @@ EOF
 GIT_DIFF_ARGS_DEFAULT=(
 	--no-index
 	--color-moved=zebra
+	# files under workdir are placed into a/ and b/ already
+	--src-prefix=
+	--dst-prefix=
 )
 GIT_DIFF_ARGS=()
 DIFF_SPLIT=0
@@ -172,8 +175,9 @@ cat <<EOF >"$GITATTRIBUTES"
 *.s diff=objdump
 EOF
 
-TMP1="$WORKDIR/${ARG1##*/}"
-TMP2="$WORKDIR/${ARG2##*/}"
+mkdir -p "$WORKDIR"/{a,b}
+TMP1="$WORKDIR/a/${ARG1##*/}"
+TMP2="$WORKDIR/b/${ARG2##*/}"
 
 if (( DIFF_SIZE )); then
 	LIST1="$TMP1.list"
@@ -185,8 +189,8 @@ if (( DIFF_SIZE )); then
 	git_diff_simple "$LIST1" "$LIST2"
 
 elif (( DIFF_SPLIT )); then
-	DIR1="$TMP1.s.d"
-	DIR2="$TMP2.s.d"
+	DIR1="$TMP1.d"
+	DIR2="$TMP2.d"
 
 	disassemble_split "$ARG1" "$DIR1" "${OBJDUMP_ARGS[@]}"
 	disassemble_split "$ARG2" "$DIR2" "${OBJDUMP_ARGS[@]}"
