@@ -111,7 +111,7 @@ disassemble_split() {
 
 	mkdir -p "$dir"
 
-	"${NM[@]}" -P --defined-only "$obj" | awk '$2 ~ /^[Tt]$/ {print $1}' \
+	"${NM[@]}" -P --defined-only "$obj" | awk '$2 ~ /^[TtWi]$/ {print $1}' \
 	| sort -u \
 	| while IFS= read -r sym; do
 		disassemble "$obj" "$@" --disassemble="$sym" \
@@ -127,7 +127,7 @@ nm_with_size() {
 		echo
 		echo
 		"${NM[@]}" -PS --defined-only "$obj" \
-		| awk '$2 ~ /^[Tt]$/ {print $2, $1, strtonum("0x" $4)}' \
+		| awk '$2 ~ /^[TtWi]$/ {print $2, $1, strtonum("0x" $4)}' \
 		| sort -k2,2
 	} | column -t | sed -E 's/ +$//'
 }
