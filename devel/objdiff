@@ -52,6 +52,7 @@ while getopts ':WSsk' opt; do
 	S) DIFF_SPLIT=1 ;;
 	s) DIFF_SIZE=1 ;;
 	k) KEEP=1 ;;
+	'?') usage "unknown option: -$OPTARG" ;;
 	*) break ;;
 	esac
 done
