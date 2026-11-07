@@ -122,7 +122,7 @@ cleanup() {
 	fi
 }
 trap cleanup EXIT
-WORKDIR="$(mktemp --tmpdir -d objdiff.XXXXXX)" || die
+WORKDIR="$(mktemp --tmpdir -d objdiff.XXXXXX)" || die "mktemp error"
 
 GITATTRIBUTES="$WORKDIR/gitattributes"
 cat <<EOF >"$GITATTRIBUTES"
