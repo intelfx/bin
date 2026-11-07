@@ -1,0 +1,174 @@
+#!/bin/bash
+
+set -eo pipefail
+shopt -s lastpipe
+
+log() {
+	echo ":: $*" >&2
+}
+
+err() {
+	echo "E: $*" >&2
+}
+
+die() {
+	err "$@"
+	exit 1
+}
+
+usage() {
+	if (( $# )); then
+		echo "${0##*/}: $*" >&2
+		echo >&2
+	fi
+	_usage >&2
+	exit 1
+}
+
+_usage() {
+	cat <<EOF
+Usage: ${0##*/} [-W] [-S | -s] FILE1 FILE2 [TOOLCHAIN-PREFIX [OBJDUMP-ARGS...]]
+
+Options:
+	-W		Use \`git diff -W\`
+	-S		Split object files by functions and diff separately
+	-s		Diff lists of functions in each object file
+EOF
+}
+
+
+#
+# args
+#
+
+GIT_DIFF_ARGS=()
+DIFF_SPLIT=0
+DIFF_SIZE=0
+KEEP=0
+
+while getopts ':WSsk' opt; do
+	case "$opt" in
+	W) GIT_DIFF_ARGS+=( -W ) ;;
+	S) DIFF_SPLIT=1 ;;
+	s) DIFF_SIZE=1 ;;
+	k) KEEP=1 ;;
+	*) break ;;
+	esac
+done
+set -- "${@:$OPTIND}"
+
+(( $# >= 2 )) || usage "expected at least 2 positional arguments"
+(( DIFF_SPLIT + DIFF_SIZE <= 1 )) || usage "-S/-s are mutually exclusive"
+
+ARG1="$1"
+ARG2="$2"
+shift 2
+
+OBJDUMP=(objdump)
+NM=(nm)
+SIZE=(size)
+CROSS_COMPILE=""
+if [[ ${1+set} && $1 != -* ]]; then
+	CROSS_COMPILE="${1}"
+	OBJDUMP=("${1}objdump")
+	NM=("${1}nm")
+	SIZE=("${1}size")
+	shift
+fi
+
+OBJDUMP_ARGS=("$@")
+
+
+#
+# functions
+#
+
+disassemble() {
+	local obj="$1"
+	shift
+
+	"${OBJDUMP[@]}" -drwC --no-show-raw-insn --no-addresses "$@" "$obj" \
+	| sed -E 's/\b[0-9a-f]+ (<[^>]+>)/\1/g'   # turn "1c <foo+0x1c>" branch operands into "<foo+0x1c>"
+}
+
+disassemble_split() {
+	local obj="$1" dir="$2" sym
+	shift 2
+
+	mkdir -p "$dir"
+
+	"${NM[@]}" --defined-only "$obj" | awk '$2 ~ /^[Tt]$/ {print $3}' \
+	| sort -u \
+	| while IFS= read -r sym; do
+		disassemble "$obj" "$@" --disassemble="$sym" \
+		| sed -E -n '/^Disassembly of section/,$p' \
+		>"$dir/$sym.s"
+	done
+}
+
+#
+# main
+#
+
+
+cleanup() {
+	if [[ $WORKDIR ]]; then
+		if (( KEEP )); then
+			log "Working directory retained: ${WORKDIR@Q}"
+		else
+			rm -r "$WORKDIR"
+		fi
+	fi
+}
+trap cleanup EXIT
+WORKDIR="$(mktemp --tmpdir -d objdiff.XXXXXX)" || die
+
+GITATTRIBUTES="$WORKDIR/gitattributes"
+cat <<EOF >"$GITATTRIBUTES"
+*.s diff=objdump
+EOF
+
+TMP1="$WORKDIR/${ARG1##*/}"
+TMP2="$WORKDIR/${ARG2##*/}"
+
+if (( DIFF_SIZE )); then
+	LIST1="$TMP1.list"
+	LIST2="$TMP2.list"
+
+	${NM[@]} -S --size-sort --format=sysv "$ARG1" >"$LIST1"
+	${NM[@]} -S --size-sort --format=sysv "$ARG2" >"$LIST2"
+
+	git \
+		--no-pager \
+		diff --no-index --color-moved=zebra "$LIST1" "$LIST2" \
+	||:
+
+elif (( DIFF_SPLIT )); then
+	DIR1="$TMP1.s.d"
+	DIR2="$TMP2.s.d"
+
+	disassemble_split "$ARG1" "$DIR1" "${OBJDUMP_ARGS[@]}"
+	disassemble_split "$ARG2" "$DIR2" "${OBJDUMP_ARGS[@]}"
+
+	git \
+		--no-pager \
+		-c core.attributesFile="$GITATTRIBUTES" \
+		-c diff.objdump.xfuncname='^(Disassembly of section .*|([0-9a-f]+ )?<.*>):$' \
+		diff --no-index --color-moved=zebra "${GIT_DIFF_ARGS[@]}" "$DIR1" "$DIR2" \
+	||:
+
+else
+	DIS1="$WORKDIR/${ARG1##*/}.s"
+	DIS2="$WORKDIR/${ARG2##*/}.s"
+
+	disassemble "$ARG1" "${OBJDUMP_ARGS[@]}" >"$DIS1"
+	disassemble "$ARG2" "${OBJDUMP_ARGS[@]}" >"$DIS2"
+
+	git \
+		--no-pager \
+		-c core.attributesFile="$GITATTRIBUTES" \
+		-c diff.objdump.xfuncname='^(Disassembly of section .*|([0-9a-f]+ )?<.*>):$' \
+		diff --no-index --color-moved=zebra "${GIT_DIFF_ARGS[@]}" "$DIS1" "$DIS2" \
+	||:
+
+fi
