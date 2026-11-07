@@ -90,9 +90,15 @@ disassemble() {
 	local obj="$1"
 	shift
 
+	local sed=(
+		-n
+		-e 's/\b[0-9a-f]+ (<[^>]+>)/\1/g'   # remove absolute address when a relative offset is present ("1c <foo+0x1c>" -> "<foo+0x1c>")
+		-e '/^Disassembly of section/,$p'   # drop fixed header before any sections
+	)
+
 	"${OBJDUMP[@]}" -drw --no-show-raw-insn --no-addresses "$@" "$obj" \
 	| "${CXXFILT[@]}" \
-	| sed -E 's/\b[0-9a-f]+ (<[^>]+>)/\1/g'   # turn "1c <foo+0x1c>" branch operands into "<foo+0x1c>"
+	| sed -E "${sed[@]}"
 }
 
 disassemble_split() {
@@ -105,7 +111,6 @@ disassemble_split() {
 	| sort -u \
 	| while IFS= read -r sym; do
 		disassemble "$obj" "$@" --disassemble="$sym" \
-		| sed -E -n '/^Disassembly of section/,$p' \
 		>"$dir/$sym.s"
 	done
 }
