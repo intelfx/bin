@@ -99,7 +99,9 @@ disassemble() {
 
 	local sed=(
 		-n
+		-e 's/\$LC([0-9]+)/$LCnnn/'         # mitigate renumbering of locals
 		-e 's/\b[0-9a-f]+ (<[^>]+>)/\1/g'   # remove absolute address when a relative offset is present ("1c <foo+0x1c>" -> "<foo+0x1c>")
+		-e '/\tR_/ s/ <[^>]+>//'            # remove literal relative offset when a relocation is present ("<foo+0x1d> R_X86_64_PLT32 g-0x4" -> "R_X86_64_PLT32 g-0x4")
 		-e '/^Disassembly of section/,$p'   # drop fixed header before any sections
 	)
 
