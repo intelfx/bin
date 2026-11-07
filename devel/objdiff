@@ -68,12 +68,14 @@ shift 2
 OBJDUMP=(objdump)
 NM=(nm)
 SIZE=(size)
+CXXFILT=(c++filt)
 CROSS_COMPILE=""
 if [[ ${1+set} && $1 != -* ]]; then
 	CROSS_COMPILE="${1}"
 	OBJDUMP=("${1}objdump")
 	NM=("${1}nm")
 	SIZE=("${1}size")
+	CXXFILT=("${1}c++filt")
 	shift
 fi
 
@@ -88,7 +90,8 @@ disassemble() {
 	local obj="$1"
 	shift
 
-	"${OBJDUMP[@]}" -drwC --no-show-raw-insn --no-addresses "$@" "$obj" \
+	"${OBJDUMP[@]}" -drw --no-show-raw-insn --no-addresses "$@" "$obj" \
+	| "${CXXFILT[@]}" \
 	| sed -E 's/\b[0-9a-f]+ (<[^>]+>)/\1/g'   # turn "1c <foo+0x1c>" branch operands into "<foo+0x1c>"
 }
 
