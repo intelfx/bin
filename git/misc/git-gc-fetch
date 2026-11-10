@@ -18,6 +18,12 @@ die() {
 	exit 1
 }
 
+trace() {
+	local -
+	set -x
+	"$@"
+}
+
 usage() {
 	if (( $# )); then
 		echo "${0##*/}: $*" >&2
@@ -293,7 +299,7 @@ if (( GIT_GC || GIT_GC_NO_PRUNE )); then
 			--no-prune
 		)
 	fi
-	git \
+	trace git \
 		"${GIT_REPACK_CFG[@]}" \
 		"${GIT_GC_CFG[@]}" \
 		"${_git_gc_cfg[@]}" \
@@ -306,7 +312,7 @@ else
 	then _git_repack_args=( --cruft )
 	else _git_repack_args=( -g2 )
 	fi
-	git \
+	trace git \
 		"${GIT_REPACK_CFG[@]}" \
 		repack \
 		"${_git_repack_args[@]}" -d -l \
@@ -317,11 +323,11 @@ else
 	# 	multi-pack-index \
 	# 	write \
 	# 	--bitmap
-	git \
+	trace git \
 		commit-graph \
 		write \
 		--reachable \
 		--changed-paths
 fi
 
-rm -vf "$GIT_DIR/objects/pack"/tmp_pack_*
+trace rm -vf "$GIT_DIR/objects/pack"/tmp_pack_*
