@@ -1,0 +1,11 @@
+#!/bin/bash
+
+ARGS=(
+	--cookies="$HOME/.netcookies"
+)
+
+set -x
+exec /usr/bin/yt-dlp \
+	"${ARGS[@]}" \
+	"$@"
+
