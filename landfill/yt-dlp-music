@@ -24,7 +24,7 @@ process() {
 			-o '%(playlist_index)02d - %(title)s [%(id)s].%(ext)s'
 		)
 	fi
-	trace yt-dlp \
+	trace /usr/bin/yt-dlp \
 		"${YT_DLP_DEFAULTS[@]}" \
 		"${YT_DLP_FORMAT[@]}" \
 		"${output_format[@]}" \
@@ -35,6 +35,7 @@ process() {
 YT_DLP_ARGS=()
 YT_DLP_FORMAT=(-f bestaudio)
 YT_DLP_DEFAULTS=(
+	--cookies="$HOME/.netcookies"
 	-x
 	--embed-thumbnail --write-thumbnail
 	--embed-metadata
