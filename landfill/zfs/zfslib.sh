@@ -96,8 +96,15 @@ zfs_allow_to() {
 	local pool="$1"
 	shift
 
+	# -u/-g
+	local spec=()
+	if [[ $1 == -* ]]; then
+		spec+=( "$1" )
+		shift
+	fi
+
 	local IFS=,
-	zfs allow "$*" \
+	zfs allow "${spec[@]}" "$*" \
 		@allops,@allprops,@allquota \
 		"$pool"
 }
