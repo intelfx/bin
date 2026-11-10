@@ -36,11 +36,11 @@ YT_DLP_ARGS=()
 YT_DLP_FORMAT=(-f bestaudio)
 YT_DLP_DEFAULTS=(
 	--cookies="$HOME/.netcookies"
-	-x
-	--embed-thumbnail --write-thumbnail
+	--extract-audio
 	--embed-metadata
 	--embed-chapters
-	#--embed-info-json
+	--embed-thumbnail --write-thumbnail
+	--embed-info-json --write-info-json
 )
 
 while (( $# )); do
