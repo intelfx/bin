@@ -6,6 +6,6 @@ ARGS=(
 )
 
 set -x
-exec yt-dlp \
+exec /usr/bin/yt-dlp \
 	"${ARGS[@]}" \
 	"$@"
